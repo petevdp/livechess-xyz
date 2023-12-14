@@ -1,0 +1,19 @@
+{
+	"extends": [
+		"eslint:recommended",
+		"plugin:@typescript-eslint/recommended",
+		"plugin:editorconfig/all"
+	],
+	"parser": "@typescript-eslint/parser",
+	"plugins": [
+		"@typescript-eslint",
+		"eslint-plugin-prettier",
+		"editorconfig",
+		":spellcheck"
+	],
+	"root": true,
+	"rules": {
+		"comments": true,
+		"minlength": 3
+	}
+}
