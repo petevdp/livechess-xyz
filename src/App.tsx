@@ -1,23 +1,35 @@
 import {Route, Router, useNavigate, useParams} from "@solidjs/router";
-import {createSignal, For, Match, onMount, Show, Switch} from "solid-js";
+import {createEffect, createSignal, For, Match, onMount, Show, Switch} from "solid-js";
 import * as P from "./systems/player";
 import * as R from './systems/room'
 import * as G from './systems/game.ts'
 import {yMapToSignal, yMapToStore} from "./utils/yjs.ts";
 import {RoomState} from "./systems/room.ts";
+import {ModalContainer} from "./components/Modal.tsx";
+import {Choice, MultiChoiceButton} from "./MultiChoiceButton.tsx";
+import {Board} from "./components/Board.tsx";
 
 
 function App() {
     onMount(() => {
-        P.setup()
-        R.setup()
+        G.newGame('p1', 'p2')
     })
-    return (
-        <Router>
-            <Route path="/" component={Home}/>
-            <Route path="/room/:id" component={Room}/>
-        </Router>
-    )
+
+    return <Board/>
+
+
+    // onMount(() => {
+    //     P.setup()
+    // })
+    // return (
+    //     <>
+    //         <ModalContainer/>
+    //         <Router>
+    //             <Route path="/" component={Home}/>
+    //             <Route path="/room/:id" component={Room}/>
+    //         </Router>
+    //     </>
+    // )
 }
 
 function Home() {
@@ -25,7 +37,6 @@ function Home() {
     const [timeControl, setTimeControl] = createSignal<G.TimeControl>("5m")
     const [increment, setIncrement] = createSignal<G.Increment>("0")
     const navigate = useNavigate();
-
 
     return <div class="h-screen grid place-items-center">
         <div class="flex flex-col items-center">
@@ -64,11 +75,13 @@ function Room() {
     const {status: roomStatus} = R.useRoomConnection(params.id)
     const [gameState, setGameState] = yMapToSignal<RoomState>(R.room.details, 'status')
     const [players, setPlayers] = yMapToStore<P.Player>(R.room.players)
+    const [host, _] = yMapToSignal<string>(R.room.details, 'host')
 
     const copyInviteLink = () => {
         navigator.clipboard.writeText(window.location.href)
     }
     const startGame = () => {
+        R.room.details.set('status', 'in-progress')
     }
 
     return <div><h1>Room {params.id}</h1>
@@ -89,7 +102,7 @@ function Room() {
                         <button onclick={copyInviteLink}>Copy Invite Link</button>
                         <For each={players}>{([_, player]) => <div>{player.name || '<unnamed>'} is
                             connected</div>}</For>
-                        <Show when={R.room.details.get('host') === P.player().id}>
+                        <Show when={host() === P.player().id}>
                             <button onClick={startGame} disabled={players.length < 2}>Start Game</button>
                         </Show>
                     </div>
@@ -122,20 +135,6 @@ function DisplayNameForm() {
                onInput={e => setDisplayName(e.target.value.trim())}/>
         <input type="submit" value="Submit"/>
     </form>
-}
-
-type Choice<T> = { id: T; label: string }
-
-function MultiChoiceButton<T extends string>(props: {
-    choices: Choice<T>[],
-    selected: string,
-    onChange: (id: T) => void
-}) {
-    return <div class={'flex'}>
-        <For each={props.choices}>{(choice => <button class="p-0.5"
-                                                      classList={{"bg-blue-500": choice.id == props.selected}}
-                                                      onClick={() => props.onChange(choice.id)}>{choice.label}</button>)}</For>
-    </div>
 }
 
 

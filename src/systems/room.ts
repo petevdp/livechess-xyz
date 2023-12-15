@@ -3,8 +3,9 @@ import {createId} from "../utils/ids.ts";
 import * as G from "./game.ts";
 import * as Y from "yjs";
 import * as P from "./player.ts";
+import * as Modal from '../components/Modal.tsx'
 import {WS_CONNECTION} from "../config.ts";
-import {createEffect, createSignal, onCleanup} from "solid-js";
+import {createEffect, createSignal, getOwner, onCleanup, Owner} from "solid-js";
 import {yMapToSignal} from "../utils/yjs.ts";
 
 
@@ -46,28 +47,35 @@ export async function createRoom(config: G.GameConfig) {
     console.log(room.wsProvider.awareness)
 }
 
-export function connectToRoom(roomId: string) {
+export function connectToRoom(roomId: string, owner: Owner) {
+    if (room.initialized && room.roomId === roomId) {
+        throw new Error('already connected to room ' + room.roomId)
+    }
     console.log('connecting to room ' + roomId)
     room.roomId = roomId
+    room.wsProvider?.destroy()
     room.wsProvider = new WebsocketProvider(WS_CONNECTION, roomId, room.doc)
-    return new Promise<true>((resolve) => {
+    return new Promise<boolean>((resolve) => {
         const listener = (e: any) => {
+            if (e.status === 'connecting') {
+                console.log('connecting...')
+                return;
+            }
             if (e.status === 'connected') {
                 console.log('connected')
                 resolve(true)
+            } else if (e.status() === 'disconnected') {
+                console.log('disconnected')
+                resolve(false)
             }
             room.wsProvider.off(listener)
         }
         room.wsProvider.on('status', listener)
+        room.wsProvider.on('connection-error', (e: any) => {
+            console.log('connection error', e)
+            Modal.prompt(owner, 'Connection Error', () => 'There was an error connecting to the room. Please try again later.', true)
+        });
     });
-}
-
-export function setup() {
-    // const conn = useRoomConnection(room.roomId!)
-    // const listener = (e: any) => {
-    //     console.log({awarenessEvent: e})
-    // }
-    // room.wsProvider.awareness.observe(listener)
 }
 
 let watchingAwareness = false
@@ -75,7 +83,7 @@ let watchingAwareness = false
 export function useRoomConnection(roomId: string) {
 
     if (!room.initialized) {
-        connectToRoom(roomId).then(() => {
+        connectToRoom(roomId, getOwner()!).then(() => {
             console.log('connected to room ' + roomId)
         })
     }
@@ -103,10 +111,11 @@ export function useRoomConnection(roomId: string) {
         }
     }
 
+
+    // keep room player state up to date with awareness
     createEffect(() => {
         if (status() === 'connected' && !!host() && host() === P.player().id && !watchingAwareness) {
             watchingAwareness = true
-            // get room player state up to date with awareness
             for (let [id, player] of room.players) {
                 for (let clientId of player.clientIds) {
                     if (!room.wsProvider.awareness.states.has(clientId)) {
