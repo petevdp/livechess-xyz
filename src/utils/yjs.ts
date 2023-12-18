@@ -35,6 +35,26 @@ export function yMapToStore<T>(map: Y.Map<T>): readonly[EntityCollection<T>, (ke
     return [store, set] as const
 }
 
+
+export function yArrayToStore<T>(array: Y.Array<T>) {
+	const [store] = createStore([...array])
+	const observer = (e: Y.YArrayEvent<T>) => {
+		console.log([...e.changes.keys.entries()])
+		for (let item of e.changes.added) {
+			console.log({added: item})
+		}
+	}
+	onMount(() => {
+		array.observe(observer)
+	})
+	onCleanup(() => {
+		array.unobserve(observer)
+	})
+
+	return store
+}
+
+
 export function yMapToSignal<T>(map: Y.Map<T>, key: string) {
     const [accessor, setAccessor] = createSignal<T | undefined>(map.get(key))
     const observer = (e: Y.YMapEvent<T>) => {
