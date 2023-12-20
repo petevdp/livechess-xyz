@@ -189,7 +189,7 @@ export function applyMoveToBoard(move: CandidateMove | Move, board: Board) {
 
 //#region move generation
 
-type CandidateMove = {
+export type CandidateMove = {
 	from: Coords
 	to: Coords
 	piece: Piece
@@ -198,7 +198,7 @@ type CandidateMove = {
 	promotion?: PromotionPiece
 }
 
-type CandidateMoveOptions = {
+export type CandidateMoveOptions = {
 	from: Coords,
 	to: Coords,
 	piece: Piece,

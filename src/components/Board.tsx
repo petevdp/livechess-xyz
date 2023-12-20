@@ -1,16 +1,19 @@
-import {batch, createEffect, createSignal, onMount, Show} from "solid-js";
+import {batch, createEffect, createSignal, For, onMount, Show} from "solid-js";
 import * as G from '../systems/game/game.ts'
 import * as GL from '../systems/game/gameLogic.ts'
 import {ColoredPiece} from '../systems/game/gameLogic.ts'
 import * as R from '../systems/room.ts'
 import * as P from '../systems/player.ts'
+import {yMapToStore} from "../utils/yjs.ts";
+import styles from './Board.module.css'
+import {Button} from "./Button.tsx";
 
 
 export function Board() {
 	const [boardFlipped, setBoardFlipped] = createSignal(false)
 
 
-	const canvas = <canvas width={600} height={600}/> as HTMLCanvasElement
+	const canvas = <canvas class={styles.board} width={600} height={600}/> as HTMLCanvasElement
 	const squareSize = canvas.width / 8
 	const [hoveredSquare, setHoveredSquare] = createSignal(null as null | string)
 	const [grabbedSquare, setGrabbedSquare] = createSignal(null as null | string)
@@ -39,17 +42,19 @@ export function Board() {
 			}
 		}
 
-		const highlightedSquares = G.game.moveHistory.length > 0 ? [G.game.lastMove.from, G.game.lastMove.to] : []
-		for (let square of highlightedSquares) {
-			if (!square) continue
-			let x = square[0].charCodeAt(0) - 'a'.charCodeAt(0)
-			let y = 8 - parseInt(square[1])
-			if (boardFlipped()) {
-				x = 7 - x
-				y = 7 - y
+		if (G.game.lastMove) {
+			const highlightedSquares = G.game.moveHistory.length > 0 ? [G.game.lastMove.from, G.game.lastMove.to] : []
+			for (let square of highlightedSquares) {
+				if (!square) continue
+				let x = square[0].charCodeAt(0) - 'a'.charCodeAt(0)
+				let y = 8 - parseInt(square[1])
+				if (boardFlipped()) {
+					x = 7 - x
+					y = 7 - y
+				}
+				ctx.fillStyle = highlightColor
+				ctx.fillRect(x * squareSize, y * squareSize, squareSize, squareSize)
 			}
-			ctx.fillStyle = highlightColor
-			ctx.fillRect(x * squareSize, y * squareSize, squareSize, squareSize)
 		}
 
 
@@ -85,14 +90,13 @@ export function Board() {
 	}
 
 	createEffect(() => {
-		if (G.playerColor() === 'black') {
+		if (G.playerColor(P.player().id) === 'black') {
 			setBoardFlipped(true)
 		}
 	})
+	const [players] = yMapToStore(R.room()!.players)
 
 	onMount(async () => {
-
-
 		function getSquareFromCoords(x: number, y: number) {
 			let col = Math.floor(x / squareSize)
 			let row = Math.floor(y / squareSize)
@@ -125,7 +129,7 @@ export function Board() {
 				if (clickedSquare() && hoveredSquare() && clickedSquare() !== hoveredSquare()) {
 					G.tryMakeMove(clickedSquare()!, hoveredSquare()!)
 					setClickedSquare(null)
-				} else if (hoveredSquare() && G.game.board.pieces[hoveredSquare()!] && (G.playForBothSides || G.game.board.pieces[hoveredSquare()!]!.color === G.playerColor())) {
+				} else if (hoveredSquare() && G.game.board.pieces[hoveredSquare()!] && (G.playForBothSides || G.game.board.pieces[hoveredSquare()!]!.color === G.playerColor(P.player().id))) {
 					setGrabbedSquare(hoveredSquare)
 					const rect = canvas.getBoundingClientRect()
 					setGrabbedSquareMousePos({x: e.clientX - rect.left, y: e.clientY - rect.top})
@@ -160,7 +164,7 @@ export function Board() {
 	createEffect(() => {
 		if (grabbedSquare()) {
 			canvas.style.cursor = 'grabbing'
-		} else if (hoveredSquare() && G.game.board.pieces[hoveredSquare()!] && (G.playForBothSides || G.game.board.pieces[hoveredSquare()!]!.color === G.playerColor())) {
+		} else if (hoveredSquare() && G.game.board.pieces[hoveredSquare()!] && (G.playForBothSides || G.game.board.pieces[hoveredSquare()!]!.color === G.playerColor(P.player().id))) {
 			canvas.style.cursor = 'grab'
 		} else {
 			canvas.style.cursor = 'default'
@@ -175,42 +179,46 @@ export function Board() {
 	//     }
 	// })
 
-	function copyPosition() {
-		return navigator.clipboard.writeText(JSON.stringify(G.game.board))
-	}
-
-	function resign() {
-		if (!G.isPlaying()) return
-		R.dispatchAction({type: 'resign'})
-	}
-
+	// @ts-ignore
 	const setPromotion = (piece: GL.PromotionPiece) => G.setPromotionSelection(s => ({
 		status: 'selected',
 		piece,
-		from: s!.from,
-		to: s!.to
+		from: s!.from as string,
+		to: s!.to as string,
 	}));
-	createEffect(() => {
-		console.log({color: G.playerColor(), player: P.player().id})
-		console.table(Object.keys(G.game.players).map(id => ({...R.room.players.get(id), color: G.game.players[id]})))
-	})
 
-	return <div class="flex flex-col justify-center items-center">
+	const opponent = () => players.find(([_, p]) => p.id !== P.player().id)![1]
+	const player = () => players.find(([_, p]) => p.id === P.player().id)![1]
+
+
+	return <div class={styles.boardContainer}>
+		<PlayerDisplay player={opponent()} class={styles.opponent}/>
 		{canvas}
-		<span>{G.isPlaying() ? `${G.game.board.toMove} to move` : G.game.endReason + (G.game.winner ? `: ${G.game.winner} wins` : '')}</span>
-		<Show when={GL.inCheck(G.game)}>Check!</Show>
-		<button onclick={() => setBoardFlipped(f => !f)}>flip</button>
-		<button onclick={() => R.startGame()}>new game</button>
-		<button onclick={() => copyPosition()}>copy game state</button>
-		<button onclick={() => resign()}>resign</button>
-		<div> playing: {G.playerColor()}</div>
+		<PlayerDisplay player={player()} class={styles.player}/>
+		<div class={styles.leftPanel}>
+			<span>{G.isPlaying() ? `${G.game.board.toMove} to move` : G.game.endReason + (G.game.winner ? `: ${G.game.winner} wins` : '')}</span>
+			<div class="flex flex-col align-center">
+				<For each={G.game.moveHistory}>
+					{move => <pre><code class="text-neutral-400">{move.from} {move.to}</code></pre>}
+				</For>
+			</div>
+			<Show when={GL.inCheck(G.game)}>Check!</Show>
+		</div>
+		<div class={styles.rightPanel}>
+			<Button kind="secondary" onclick={() => setBoardFlipped(f => !f)} class="mb-1">flip</Button>
+			<Button kind="secondary" onclick={() => R.dispatchAction({type: 'offer-draw'})} class="mb-1">offer draw</Button>
+			<Button kind="secondary" onclick={() => R.dispatchAction({type: 'resign'})} class="mb-1">resign</Button>
+		</div>
 		<Show when={G.promotionSelection()?.status === 'selecting'}>
 			{GL.PROMOTION_PIECES.map(piece => {
-				return <button onclick={() => setPromotion(piece)}>{piece}</button>;
+				return <Button kind={'secondary'} onclick={() => setPromotion(piece)}>{piece}</Button>;
 			})}
 		</Show>
-		{/*<textarea class="border-2 border-black" value={_pastedPosition() || ''}*/}
-		{/*          oninput={(e) => setPastedPosition(e.currentTarget.value)}/>*/}
+	</div>
+}
+
+function PlayerDisplay(props: { player: P.Player, class: string }) {
+	return <div class={props.class}>{props.player.name} <i class="text-neutral-400">({G.playerColor(props.player.id)})</i>
 	</div>
 }
 

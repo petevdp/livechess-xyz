@@ -1,5 +1,5 @@
-import {createStore, produce} from "solid-js/store";
-import {batch, createEffect, createRoot, createSignal} from "solid-js";
+import {createStore, produce, SetStoreFunction} from "solid-js/store";
+import {Accessor, batch, createEffect, createSignal} from "solid-js";
 import * as GL from "./gameLogic.ts";
 import * as R from '../room.ts'
 import * as P from '../player.ts'
@@ -8,7 +8,7 @@ export const VARIANTS = ["regular", "fog-of-war", "duck", "fischer-random"] as c
 export type Variant = typeof VARIANTS[number]
 export const TIME_CONTROLS = ["15m", "10m", "5m", "3m", "1m"] as const
 export type TimeControl = typeof TIME_CONTROLS[number]
-export const INCREMENTS = ["0", "1", "2", "3", "5", "10"] as const
+export const INCREMENTS = ["0", "1", "2", "5"] as const
 export type Increment = typeof INCREMENTS[number]
 
 
@@ -58,25 +58,11 @@ const startPos = () => ({
 	toMove: 'white'
 } as GL.Board)
 
-function buildNewGame(player1: string, player2: string, board?: GL.Board): GL.GameNoGetters {
-	return {
-		winner: null,
-		boardHistory: [toBoardHistoryEntry(board || startPos())],
-		moveHistory: [],
-		players: {[player1]: 'white', [player2]: 'black'},
-	} satisfies GL.GameNoGetters
+export const defaultGameConfig: GameConfig = {
+	variant: 'regular',
+	timeControl: '5m',
+	increment: '0'
 }
-
-export const [game, setGame] = createStore({
-	...buildNewGame('player1', 'player2', undefined),
-	get board() {
-		return this.boardHistory[this.boardHistory.length - 1][1]
-	},
-	get lastMove() {
-		return this.moveHistory[this.moveHistory.length - 1]
-	}
-} as GL.Game)
-
 
 type PromotionSelection = {
 	status: 'selecting'
@@ -88,12 +74,36 @@ type PromotionSelection = {
 	status: 'selected'
 	piece: GL.PromotionPiece
 }
-export const [promotionSelection, setPromotionSelection] = createSignal<null | PromotionSelection>(null)
 
+export function buildNewGame(player1: string, player2: string, board?: GL.Board): GL.GameNoGetters {
+	return {
+		winner: null,
+		endReason: undefined,
+		boardHistory: [toBoardHistoryEntry(board || startPos())],
+		moveHistory: [],
+		players: {[player1]: 'white', [player2]: 'black'},
+	} satisfies GL.GameNoGetters
+}
 
-createRoot(() => {
+export let game: GL.Game;
+export let setGame: SetStoreFunction<GL.Game>;
+export let promotionSelection: Accessor<null | PromotionSelection>
+export let setPromotionSelection: (p: null | PromotionSelection) => void
+
+export function setupGame() {
+
+	[game, setGame] = createStore({
+		...buildNewGame('player1', 'player2', undefined),
+		get board() {
+			return this.boardHistory[this.boardHistory.length - 1][1]
+		},
+		get lastMove() {
+			return this.moveHistory[this.moveHistory.length - 1]
+		}
+	} as GL.Game);
+	[promotionSelection, setPromotionSelection] = createSignal<null | PromotionSelection>(null)
+
 	createEffect(() => {
-
 		setGame(produce((s) => {
 			if (GL.checkmated(game)) {
 				s.endReason = 'checkmate'
@@ -106,72 +116,80 @@ createRoot(() => {
 				s.endReason = 'threefold-repetition'
 			}
 		}))
-	})
 
 
-	// handle promotion
-	createEffect(() => {
-		const _promotionSelection = promotionSelection()
-		if (_promotionSelection && _promotionSelection.status === 'selected') {
-			tryMakeMove(_promotionSelection.from, _promotionSelection.to, _promotionSelection.piece)
-			setPromotionSelection(null)
-		}
-	})
+		// handle promotion
+		createEffect(() => {
+			const _promotionSelection = promotionSelection()
+			if (_promotionSelection && _promotionSelection.status === 'selected') {
+				tryMakeMove(_promotionSelection.from, _promotionSelection.to, _promotionSelection.piece)
+				setPromotionSelection(null)
+			}
+		})
 
 
-	// handle new actions
-	R.observeActions((actions) => {
-		console.log('new actions')
-		console.table(actions)
-		let latestNewGameIdx = actions.findIndex(a => a.type === 'new-game');
-		const startIdx = latestNewGameIdx === -1 ? 0 : latestNewGameIdx
+// handle new actions
+		function actionsListener(actions: R.PlayerAction[]) {
+			let latestNewGameIdx = actions.findIndex(a => a.type === 'new-game');
+			const startIdx = latestNewGameIdx === -1 ? 0 : latestNewGameIdx
 
-		// we don't care about previous games
-		batch(() => {
-			// skip any actions that happened before the latest new game, as they're not relevant
-			for (let i = startIdx; i < actions.length; i++) {
-				const action = actions[i];
-				console.log({action})
-				switch (action.type) {
-					case 'new-game': {
-						console.log('creating new game')
-						let board = startPos();
-						setGame(buildNewGame(action.players[0], action.players[1], board))
-						break;
-					}
-					case 'move': {
-						let board: GL.Board;
-						// check if we've already computed this move on a peer
-						let cachedMoveIndex = R.room.cache.get('board')?.moveIndex
-						if (cachedMoveIndex && cachedMoveIndex === game.boardHistory.length) {
-							board = R.room.cache.get('board')!.board
-						} else {
-							// we should have already validated this move before submitting the action, so no need to do it again
-							[board] = GL.applyMoveToBoard(action.move, game.board)
-							R.room.cache.set('board', {moveIndex: game.boardHistory.length, board})
+			const _room = R.room() as R.Room
+			// we don't care about previous games
+			batch(() => {
+				// skip any actions that happened before the latest new game, as they're not relevant
+				for (let i = startIdx; i < actions.length; i++) {
+					const action = actions[i];
+					console.log({action})
+					switch (action.type) {
+						case 'new-game': {
+							console.log('creating new game')
+							let board = startPos();
+							setGame(buildNewGame(action.players[0], action.players[1], board))
+							break;
 						}
-						setGame('boardHistory', [...game.boardHistory, toBoardHistoryEntry(board)])
-						setGame('moveHistory', [...game.moveHistory, action.move])
-						break;
-					}
-					case 'resign': {
-						setGame('endReason', 'resigned')
-						setGame('winner', game.players[action.playerId])
-						break;
+						case 'move': {
+							let board: GL.Board;
+							// check if we've already computed this move on a peer
+							let cachedMoveIndex = _room.cache.get('board')?.moveIndex
+							if (cachedMoveIndex && cachedMoveIndex === game.boardHistory.length) {
+								board = _room.cache.get('board')!.board
+							} else {
+								// we should have already validated this move before submitting the action, so no need to do it again
+								[board] = GL.applyMoveToBoard(action.move, game.board)
+								_room.cache.set('board', {moveIndex: game.boardHistory.length, board})
+							}
+							setGame(produce((game) => {
+								game.boardHistory.push(toBoardHistoryEntry(board))
+								game.moveHistory.push(action.move)
+							}))
+							break;
+						}
+						case 'resign': {
+							setGame(produce(game => {
+								game.endReason = 'resigned'
+								game.winner = Object.entries(game.players).find(([k]) => k !== action.playerId)![1]
+							}))
+							break;
+						}
 					}
 				}
-			}
+			})
+		}
 
-		})
+		R.observeActions(actionsListener)
 	})
-})
+}
 
 export function tryMakeMove(from: string, to: string, promotionPiece?: GL.PromotionPiece) {
 	console.log(`attempting move ${from} -> ${to}`)
 	if (!isPlayerTurn() || !game.board.pieces[from]) return
 	let result = GL.validateAndPlayMove(from, to, game, promotionPiece)
 	let _promotionSelection = promotionSelection();
-	if (!result || _promotionSelection != null && _promotionSelection.status === 'selecting') return
+	if (!result) {
+		console.log('invalid move')
+		return;
+	}
+	if (_promotionSelection != null && _promotionSelection.status === 'selecting') return
 
 	if (result.promoted && !_promotionSelection && !promotionPiece) {
 		setPromotionSelection({status: 'selecting', from, to})
@@ -187,8 +205,8 @@ export function toBoardHistoryEntry(board: GL.Board) {
 }
 
 export const playForBothSides = false;
-export const playerColor = () => game.players[P.player().id]
-export const isPlayerTurn = () => (game.board.toMove === playerColor() || playForBothSides) && isPlaying()
+export const playerColor = (id: string) => game.players[id]
+export const isPlayerTurn = () => (game.board.toMove === playerColor(P.player().id) || playForBothSides) && isPlaying()
 
 
 export function isPlaying() {

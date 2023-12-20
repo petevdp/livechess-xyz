@@ -1,4 +1,4 @@
-import {createStore} from "solid-js/store";
+import {createStore, produce} from "solid-js/store";
 import {createSignal, onCleanup, onMount} from "solid-js";
 import * as Y from 'yjs'
 
@@ -11,7 +11,6 @@ export function getEntity<T>(collection: EntityCollection<T>, id: string): T | u
 export function yMapToStore<T>(map: Y.Map<T>): readonly[EntityCollection<T>, (key: string, v: T) => void] {
     const [store, setStore] = createStore([...map.entries()])
     const observer = (e: Y.YMapEvent<T>) => {
-        console.log([...e.changes.keys.entries()])
         for (const [key, {action}] of e.changes.keys.entries()) {
             if (action === 'add') {
                 setStore(store.length, [key, map.get(key)])
@@ -37,12 +36,17 @@ export function yMapToStore<T>(map: Y.Map<T>): readonly[EntityCollection<T>, (ke
 
 
 export function yArrayToStore<T>(array: Y.Array<T>) {
-	const [store] = createStore([...array])
+	const [store, setStore] = createStore([...array])
 	const observer = (e: Y.YArrayEvent<T>) => {
-		console.log([...e.changes.keys.entries()])
-		for (let item of e.changes.added) {
-			console.log({added: item})
-		}
+		setStore(produce((store) => {
+			for (let d of e.changes.delta) {
+				if (d.insert) {
+					for (let elt of d.insert) {
+						store.push(elt)
+					}
+				}
+			}
+		}))
 	}
 	onMount(() => {
 		array.observe(observer)
@@ -55,21 +59,24 @@ export function yArrayToStore<T>(array: Y.Array<T>) {
 }
 
 
-export function yMapToSignal<T>(map: Y.Map<T>, key: string) {
-    const [accessor, setAccessor] = createSignal<T | undefined>(map.get(key))
+export function yMapToSignal<T>(map: Y.Map<T>, key: string, defaultValue: T) {
+	const [accessor, setAccessor] = createSignal<T>(map.get(key) || defaultValue)
     const observer = (e: Y.YMapEvent<T>) => {
         if (e.keysChanged.has(key)) {
-            setAccessor(() => map.get(key))
+					setAccessor(() => map.get(key) || defaultValue)
         }
     }
     onMount(() => {
         map.observe(observer)
     })
     onCleanup(() => {
-        map.unobserve(observer)
-    })
-    const set = (value: T) => {
-        map.set(key, value)
-    }
-    return [accessor, set] as const
+			try {
+				map.unobserve(observer)
+			} catch (e) {
+				console.warn(e)
+			}
+		})
+
+	// setting the value from here would probably be a bad pattern that makes it hard to track down mutations
+	return [accessor] as const
 }

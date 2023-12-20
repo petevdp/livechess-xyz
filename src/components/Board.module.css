@@ -1,0 +1,35 @@
+.boardContainer {
+	display: grid;
+	grid-template-columns: repeat(3, max-content);
+	grid-template-rows: repeat(3, max-content);
+	gap: .5rem;
+
+	grid-template-areas:
+	 	". opponent ."
+		"left-panel board right-panel"
+		". player .";
+}
+
+.board {
+	grid-area: board;
+}
+
+.opponent {
+	justify-self: center;
+	grid-area: opponent;
+}
+
+.player {
+	justify-self: center;
+	grid-area: player;
+}
+
+.leftPanel {
+	grid-area: left-panel;
+}
+
+.rightPanel {
+	grid-area: right-panel;
+	display: flex;
+	flex-direction: column;
+}
