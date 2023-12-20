@@ -2,12 +2,12 @@
 	display: grid;
 	grid-template-columns: repeat(3, max-content);
 	grid-template-rows: repeat(3, max-content);
-	gap: .5rem;
+	gap: 0.5rem;
 
 	grid-template-areas:
-	 	". opponent ."
-		"left-panel board right-panel"
-		". player .";
+		'. opponent .'
+		'left-panel board right-panel'
+		'. player .';
 }
 
 .board {

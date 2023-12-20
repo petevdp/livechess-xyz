@@ -1,6 +1,5 @@
-export const WS_CONNECTION = "ws://localhost:1234";
+export const WS_CONNECTION = 'ws://localhost:1234'
 // check if we're in browser
-
 
 export let HEADLESS_TEST = false
 if (typeof window !== 'undefined') {

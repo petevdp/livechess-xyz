@@ -1,5 +1,15 @@
-import {Accessor, batch, createSignal, getOwner, JSXElement, onCleanup, Owner, runWithOwner, Show,} from 'solid-js'
-import {Button} from "./Button.tsx";
+import {
+	Accessor,
+	batch,
+	createSignal,
+	getOwner,
+	JSXElement,
+	onCleanup,
+	Owner,
+	runWithOwner,
+	Show,
+} from 'solid-js'
+import { Button } from './Button.tsx'
 
 let modalContainer: HTMLDivElement | null = null
 // for some reason checking for reference equality on the JSXElement itself isn't working, so we're wrap it in an object as a workaround
@@ -32,8 +42,7 @@ export function ModalContainer() {
 				class="pointer-events-none relative flex min-h-[calc(100%-1rem)] w-auto translate-y-[-50px] items-center duration-300 ease-in-out min-[576px]:mx-auto min-[576px]:mt-7 min-[576px]:min-h-[calc(100%-3.5rem)] min-[576px]:max-w-[500px]"
 				onclick={(e) => e.stopPropagation()}
 			>
-				<div
-					class="min-[576px]:shadow-[0_0.5rem_1rem_rgba(#000, 0.15)] pointer-events-auto relative flex w-full flex-col rounded-md border-none bg-white  text-current shadow-lg outline-none dark:bg-neutral-600">
+				<div class="min-[576px]:shadow-[0_0.5rem_1rem_rgba(#000, 0.15)] pointer-events-auto relative flex w-full flex-col rounded-md border-none bg-white  text-current shadow-lg outline-none dark:bg-neutral-600">
 					<Show when={title()}>
 						<div
 							class={
@@ -47,10 +56,7 @@ export function ModalContainer() {
 							>
 								{title()}
 							</h5>
-							<Button
-								kind={'secondary'}
-								onclick={() => setActiveElement(null)}
-							>
+							<Button kind={'secondary'} onclick={() => setActiveElement(null)}>
 								<svg
 									xmlns="http://www.w3.org/2000/svg"
 									fill="none"
@@ -103,7 +109,7 @@ export function addModal(
 			if (!isActive() && _active) {
 				const inner = props.render(isActive, setVisible)
 				const element = (<span>{inner}</span>) as HTMLSpanElement
-				current = {elt: element}
+				current = { elt: element }
 				element.addEventListener('keydown', (e) => {
 					if (e.key === 'Escape') {
 						setActiveElement(null)
@@ -121,7 +127,7 @@ export function addModal(
 		})
 	}
 
-	return {visible: isActive, setVisible}
+	return { visible: isActive, setVisible }
 }
 
 export type CanPrompt<T> = { onCompleted: (result: T) => void }
@@ -133,7 +139,7 @@ export async function prompt<T>(
 	defaultValue: T
 ) {
 	return new Promise<T>((resolve) => {
-		const {setVisible} = addModal(
+		const { setVisible } = addModal(
 			{
 				title: title || null,
 				render: (_, setVisible) => {

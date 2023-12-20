@@ -1,5 +1,5 @@
 .button {
-	@apply text-white font-bold p-[.5rem] rounded;
+	@apply rounded p-[.5rem] font-bold text-white;
 }
 
 .button.primary {

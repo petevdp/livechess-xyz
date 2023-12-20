@@ -2,11 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-
-
 #root {
 	@apply bg-gray-800;
-  margin: auto;
+	margin: auto;
 }
-
-

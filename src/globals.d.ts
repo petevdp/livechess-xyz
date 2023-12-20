@@ -1,1 +1,1 @@
-module "y-websocket";
+module 'y-websocket'
