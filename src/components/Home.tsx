@@ -1,15 +1,13 @@
-import { getOwner } from 'solid-js'
 import { AppContainer } from './AppContainer.tsx'
 import * as R from '../systems/room.ts'
 import { useNavigate } from '@solidjs/router'
 import { Button } from './Button.tsx'
 
 export function Home() {
-	const owner = getOwner()!
 	const navigate = useNavigate()
 
 	async function createRoom() {
-		await R.createRoom(owner)
+		await R.connectToRoom(null)
 		navigate(`/room/${R.room()!.roomId}`)
 	}
 

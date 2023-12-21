@@ -1,15 +1,14 @@
 import {
 	Accessor,
-	batch,
+	createEffect,
+	createRoot,
 	createSignal,
-	getOwner,
 	JSXElement,
 	onCleanup,
-	Owner,
-	runWithOwner,
 	Show,
 } from 'solid-js'
 import { Button } from './Button.tsx'
+import { until } from '@solid-primitives/promise'
 
 let modalContainer: HTMLDivElement | null = null
 // for some reason checking for reference equality on the JSXElement itself isn't working, so we're wrap it in an object as a workaround
@@ -84,12 +83,14 @@ export function ModalContainer() {
 	)
 }
 
+type ModalRenderProps = {
+	visible: boolean
+	setVisible: (isActive: boolean) => void
+}
+
 type ModalProps = {
 	title: string | null
-	render: (
-		modalState: Accessor<boolean>,
-		setActive: (isActive: boolean) => void
-	) => JSXElement
+	render: (props: ModalRenderProps) => JSXElement
 }
 
 export type ModalState = {
@@ -97,79 +98,68 @@ export type ModalState = {
 	setVisible: (visible: boolean) => void
 }
 
-export function addModal(
-	props: ModalProps,
-	owner: Owner | undefined
-): ModalState {
+function addModal(props: ModalProps) {
 	let current: { elt: HTMLSpanElement } | null = null
-	const _owner = owner || getOwner()
-	const isActive = () => activeElement() !== null && current === activeElement()
-	const setVisible = (_active: boolean) => {
-		runWithOwner(_owner, () => {
-			if (!isActive() && _active) {
-				const inner = props.render(isActive, setVisible)
-				const element = (<span>{inner}</span>) as HTMLSpanElement
-				current = { elt: element }
-				element.addEventListener('keydown', (e) => {
-					if (e.key === 'Escape') {
-						setActiveElement(null)
-						element.remove()
-					}
-				})
-				batch(() => {
-					props.title && setTitle(props.title)
-					setActiveElement(current)
-				})
-			} else if (isActive() && !_active) {
-				setActiveElement(null)
-				current?.elt.remove()
-			}
-		})
-	}
+	const [isVisible, setVisible] = createSignal(false)
 
-	return { visible: isActive, setVisible }
+	createEffect(() => {
+		if (!isVisible() && current) {
+			current?.elt?.remove()
+			current = null
+		} else if (isVisible() && !current) {
+			current = {
+				elt: (
+					<span>
+						<props.render visible={isVisible()} setVisible={setVisible} />
+					</span>
+				) as HTMLSpanElement,
+			}
+		}
+	})
+
+	return { visible: isVisible, setVisible }
 }
 
 export type CanPrompt<T> = { onCompleted: (result: T) => void }
 
 export async function prompt<T>(
-	owner: Owner,
 	title: string | null,
 	component: (props: CanPrompt<T>) => JSXElement,
 	defaultValue: T
 ) {
-	return new Promise<T>((resolve) => {
-		const { setVisible } = addModal(
-			{
-				title: title || null,
-				render: (_, setVisible) => {
-					const onCompleted = (result: T) => {
-						setVisible(false)
-						resolve(result)
-					}
-					const rendered = component({
-						onCompleted,
-					})
+	const [output, setOutput] = createSignal<T | null>(null)
 
-					if (typeof rendered === 'string') {
-						return (
-							<div class="flex flex-row justify-between">
-								<p>{rendered}</p>
-								<Button
-									kind="primary"
-									onclick={() => onCompleted(defaultValue)}
-								>
-									OK
-								</Button>
-							</div>
-						)
-					} else {
-						return rendered
-					}
-				},
-			},
-			owner
-		)
-		setVisible(true)
+	let disposeOwner: () => void
+
+	function render(props: ModalRenderProps) {
+		setTitle(title || '')
+		const onCompleted = (result: T) => {
+			// @ts-ignore
+			setOutput(result)
+			props.setVisible(false)
+			disposeOwner()
+		}
+
+		const rendered = component({ onCompleted })
+		if (typeof rendered === 'string') {
+			return (
+				<div class="flex flex-row justify-between">
+					<p>{rendered}</p>
+					<Button kind="primary" onclick={() => onCompleted(defaultValue)}>
+						OK
+					</Button>
+				</div>
+			)
+		} else {
+			return rendered
+		}
+	}
+
+	createRoot((dispose) => {
+		disposeOwner = dispose
+		addModal({ title, render })
 	})
+
+	await until(() => output() !== null)
+	return output
 }

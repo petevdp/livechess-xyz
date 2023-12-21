@@ -7,14 +7,9 @@ import { YArrayEvent } from 'yjs'
 import * as P from './player.ts'
 import * as Modal from '../components/Modal.tsx'
 import { WS_CONNECTION } from '../config.ts'
-import {
-	createEffect,
-	createSignal,
-	getOwner,
-	onCleanup,
-	Owner,
-	untrack,
-} from 'solid-js'
+import { Accessor, createEffect, createSignal, onCleanup } from 'solid-js'
+import { until } from '@solid-primitives/promise'
+import { sleep } from '../utils/time.ts'
 
 export const ROOM_STATES = ['pregame', 'in-progress', 'postgame'] as const
 export type RoomStatus = (typeof ROOM_STATES)[number]
@@ -39,65 +34,24 @@ export type PlayerAction = { playerId: string } & PlayerActionArgs
 export type ChatMessage = {
 	sender: string | null
 	text: string
+	ts: number
 }
 
 export type RoomParticipant = P.Player & { spectator: boolean }
 
-export type Room = ReturnType<typeof initRoom>
+export type Room = ReturnType<typeof buildRoom>
 
 export const [room, setRoom] = createSignal<Room | null>(null)
+export const [wsProvider, setWsProvider] = createSignal<any | null>(null)
+const [connectionStatus, setConnectionStatus] =
+	createSignal<ConnectionStatus>('disconnected')
 
-// should be run with owner
-export function setupRoom(roomId: string) {
-	let _room = room() as Room
-	if (_room) {
-		_room.doc.destroy()
-		_room.wsProvider.destroy()
-	}
-	_room = initRoom(roomId)
-	if (_room.details.get('host') === P.player().id) {
-		// if we're the host, we need to send messages on behalf of the room
-		observeActions((actions) => {
-			_room.doc.transact(() => {
-				let msg = ''
-				for (let action of actions) {
-					switch (action.type) {
-						case 'resign':
-							msg = `${P.player().name} has resigned`
-							break
-						case 'new-game': {
-							const player = _room.players.get(action.playerId)
-							if (!player) {
-								console.warn(
-									`player not found when attempting to log message (${action.type}):`,
-									action.playerId
-								)
-								return
-							}
-							msg = `${player.name} has started a new game`
-							break
-						}
-					}
-				}
-				sendMessage(msg, true)
-			})
-		})
-	}
-
-	createEffect(() => {
-		if (!_room.wsProvider) return
-		_room.awareness.setLocalStateField('playerId', P.player().id)
-	})
-
-	setRoom(_room)
-}
-
-// reference room().wsProvider instead of this
-const [wsProvider, setWsProvider] = createSignal<any | null>(null)
-
-function initRoom(roomId: string) {
+function buildRoom(
+	roomId: string,
+	wsProvider: any,
+	connectionStatus: Accessor<ConnectionStatus>
+) {
 	const doc = new Y.Doc()
-
 	return {
 		roomId: roomId,
 		doc,
@@ -131,7 +85,49 @@ function initRoom(roomId: string) {
 		get awareness() {
 			return this.wsProvider?.awareness
 		},
+		get connectionStatus() {
+			return connectionStatus()
+		},
 	}
+}
+
+function setupRoom(roomId: string) {
+	let _room = room() as Room
+	if (_room) {
+		_room.doc.destroy()
+		_room.wsProvider.destroy()
+	}
+	_room = buildRoom(roomId, wsProvider, connectionStatus)
+
+	if (_room.details.get('host') === P.player().id) {
+		// if we're the host, we need to send messages on behalf of the room
+		observeActions((actions) => {
+			_room.doc.transact(() => {
+				let msg = ''
+				for (let action of actions) {
+					switch (action.type) {
+						case 'resign':
+							msg = `${P.player().name} has resigned`
+							break
+						case 'new-game': {
+							const player = _room.players.get(action.playerId)
+							if (!player) {
+								console.warn(
+									`player not found when attempting to log message (${action.type}):`,
+									action.playerId
+								)
+								return
+							}
+							msg = `${player.name} has started a new game`
+							break
+						}
+					}
+				}
+				sendMessage(msg, true)
+			})
+		})
+	}
+	setRoom(_room)
 }
 
 export function dispatchAction(action: PlayerActionArgs) {
@@ -150,7 +146,11 @@ export function setRoomState(state: RoomStatus) {
 
 export function sendMessage(message: string, isSystem: boolean) {
 	room()!.chat.push([
-		{ sender: isSystem ? null : P.player().name, text: message },
+		{
+			sender: isSystem ? null : P.player().name,
+			text: message,
+			ts: Date.now(),
+		},
 	])
 }
 
@@ -182,91 +182,79 @@ export function observeActions(callback: (actions: PlayerAction[]) => void) {
 	})
 }
 
-// not the room's "owner", this is a solidjs thing
-export async function createRoom(owner: Owner, id?: string) {
-	const roomId = id || (await createId(6))
-	await connectToRoom(roomId, owner)
-	room()!.details.set('host', P.player().id)
-	room()!.doc.transact(() => {
-		for (let [k, v] of Object.entries(G.defaultGameConfig)) {
-			room()!.gameConfig.set(k, v)
-		}
-		room()!.details.set('status', 'pregame')
-	})
-}
-
-export function connectToRoom(roomId: string, owner: Owner) {
+export async function connectToRoom(roomId: string | null, isNewRoom = false) {
+	if (
+		!!room()?.roomId &&
+		roomId === room()?.roomId &&
+		connectionStatus() !== 'disconnected'
+	) {
+		throw new Error('already connected')
+	}
+	await until(() => P.player().name)
+	if (!roomId) {
+		roomId = await createId(6)
+	}
 	setupRoom(roomId)
 	const _room = room() as Room
-
-	setWsProvider(new WebsocketProvider(WS_CONNECTION, roomId, _room.doc))
-	return new Promise<boolean>((resolve) => {
-		const listener = (e: any) => {
-			if (e.status === 'connecting') {
-				console.log('connecting...')
-				return
-			}
-			if (e.status === 'connected') {
-				console.log('connected to ' + roomId)
-				sendMessage(
-					P.player().name + ` has connected ${_room.isHost ? '(Host)' : ''}`,
-					true
-				)
-				_room.players.set(P.player().id, {
-					id: P.player().id,
-					name: P.player().name,
-					spectator:
-						_room.players.get(P.player().id)?.spectator ??
-						_room.players.size < 2,
-				})
-				resolve(true)
-			} else if (e.status() === 'disconnected') {
-				console.log('disconnected from ' + roomId)
-				resolve(false)
-			}
-			_room.wsProvider.off(listener)
-		}
-		_room.wsProvider.on('status', listener)
-		_room.wsProvider.on('connection-error', (e: any) => {
-			console.log('connection error', e)
-			Modal.prompt(
-				owner,
-				'Connection Error',
-				() =>
-					'There was an error connecting to the room. Please try again later.',
-				true
-			)
+	setWsProvider(
+		new WebsocketProvider(WS_CONNECTION, _room.roomId, _room.doc, {
+			connect: false,
 		})
-	})
-}
-
-export function useRoomConnection(roomId: string) {
-	const [connect, _setConnect] = createSignal(false)
-
-	const [status, setStatus] = createSignal<ConnectionStatus>(
-		room()?.wsProvider.status || 'disconnected'
 	)
+	_room.awareness.setLocalStateField('playerId', P.player().id)
 
-	function statusListener(e: any) {
-		setStatus(e.status)
+	const connectionListener = async (e: any) => {
+		setConnectionStatus(e.status)
+		if (e.status === 'connected') {
+			await sleep(200)
+		}
 	}
 
-	createEffect(() => {
-		if (!connect()) return
-		untrack(() => {
-			connectToRoom(roomId, getOwner()!)
-			room()!.wsProvider.on('status', statusListener)
+	_room.wsProvider.on('status', connectionListener)
+	_room.wsProvider.on('connection-error', (e: any) => {
+		console.log('connection error', e)
+		Modal.prompt(
+			'Connection Error',
+			() =>
+				'There was an error connecting to the room. Please try again later.',
+			true
+		)
+	})
+
+	let docSynced: Promise<void>
+
+	if (isNewRoom) {
+		room()!.doc.transact(() => {
+			for (let [k, v] of Object.entries(G.defaultGameConfig)) {
+				room()!.gameConfig.set(k, v)
+			}
+			room()!.details.set('status', 'pregame')
 		})
-	})
-
-	onCleanup(() => {
-		room()?.wsProvider.off('status', statusListener)
-	})
-
-	function setConnect() {
-		if (status() === 'connected') return
-		_setConnect(true)
+		docSynced = Promise.resolve()
+	} else {
+		docSynced = new Promise<void>((resolve) => {
+			_room.doc.once('update', () => {
+				resolve()
+			})
+		})
 	}
 
-	return [status, setConnect] as const
+	_room.wsProvider.connect()
+	setConnectionStatus('connecting')
+	await until(() => _room.connectionStatus === 'connected')
+	await docSynced
+	console.log('connected to ' + _room.roomId)
+
+	_room.players.set(P.player().id, {
+		id: P.player().id,
+		name: P.player().name,
+		spectator: false,
+	})
+	if (_room.players.size === 1) {
+		_room.details.set('host', P.player().id)
+	}
+	sendMessage(
+		P.player().name + ` has connected ${_room.isHost ? '(Host)' : ''}`,
+		true
+	)
 }

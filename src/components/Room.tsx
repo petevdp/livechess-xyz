@@ -13,14 +13,14 @@ import { Button } from './Button.tsx'
 
 export function RoomGuard() {
 	const params = useParams()
-	const [connectionStatus, connect] = R.useRoomConnection(params.id)
-	const [roomStatus, setRoomStatus] = createSignal<R.RoomStatus>('pregame')
-
-	createEffect(() => {
-		if (P.player().name) {
-			connect()
-		}
-	})
+	const _room = R.room()
+	if (
+		!_room ||
+		_room.roomId !== params.id ||
+		_room.connectionStatus === 'disconnected'
+	) {
+		R.connectToRoom(params.id)
+	}
 
 	return (
 		<AppContainer>
@@ -30,10 +30,12 @@ export function RoomGuard() {
 						<Match when={!P.player().name}>
 							<NickForm />
 						</Match>
-						<Match when={connectionStatus() === 'connecting'}>
+						<Match
+							when={!R.room() || R.room()?.connectionStatus === 'connecting'}
+						>
 							<div>loading...</div>
 						</Match>
-						<Match when={connectionStatus() === 'disconnected'}>
+						<Match when={R.room()?.connectionStatus === 'disconnected'}>
 							<div>disconnected</div>
 						</Match>
 						<Match when={R.room()}>
@@ -97,10 +99,10 @@ function Lobby() {
 					<Button
 						kind="primary"
 						disabled={!canStart()}
-						class="w-1/2 rounded"
+						class="w-full rounded"
 						onClick={R.startGame}
 					>
-						Start
+						{!canStart() ? '(Waiting for opponent to connect...)' : 'Start'}
 					</Button>
 				</div>
 			</Show>

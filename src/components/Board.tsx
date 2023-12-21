@@ -227,12 +227,12 @@ export function Board() {
 
 	// @ts-ignore
 	const setPromotion = (piece: GL.PromotionPiece) =>
-		G.setPromotionSelection((s) => ({
+		G.setPromotionSelection({
 			status: 'selected',
 			piece,
-			from: s!.from as string,
-			to: s!.to as string,
-		}))
+			from: G.promotionSelection()!.from,
+			to: G.promotionSelection()!.to,
+		})
 
 	const opponent = () => players.find(([_, p]) => p.id !== P.player().id)![1]
 	const player = () => players.find(([_, p]) => p.id === P.player().id)![1]
