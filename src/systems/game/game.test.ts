@@ -23,7 +23,7 @@ async function startGame(
 
 	await player1Page.evaluate(async () => {
 		const app = (window as any).App as AppConsole
-		app.Room.startGame()
+		// app.Room.room()?.dispatchRoomAction({ type: 'new-game', gameConfig })
 	})
 }
 
@@ -36,7 +36,7 @@ async function makeMove(
 	await page.evaluate(
 		async (move) => {
 			const app = (window as any).App as AppConsole
-			app.Game.tryMakeMove(move.from, move.to, move.promotion)
+			app.G.tryMakeMove(move.from, move.to, move.promotion)
 		},
 		{ from, to, promotion }
 	)
@@ -47,7 +47,7 @@ async function getGameState(page: Page) {
 		const app = (window as any).App as AppConsole
 
 		// unwrap from proxy obj
-		return app.Game.game
+		return app.G.game
 	})
 }
 
@@ -57,9 +57,9 @@ describe('game', async () => {
 	let whitePage: Page
 	let blackPage: Page
 
-	beforeEach(async () => {
-		const res1 = await getPage()
-		const res2 = await getPage()
+	beforeEach(async (test) => {
+		const res1 = await getPage(`[${test.task.name}]:white`)
+		const res2 = await getPage(`[${test.task.name}]:black`)
 		whitePage = res1.page
 		blackPage = res2.page
 		await startGame(white, black, whitePage, blackPage)
@@ -90,7 +90,7 @@ describe('game', async () => {
 	test('resign', async () => {
 		await whitePage.evaluate(async () => {
 			const app = (window as any).App as AppConsole
-			app.Room.dispatchAction({ type: 'resign' })
+			app.R.dispatchAction({ type: 'resign' })
 		})
 
 		await sleep(100)

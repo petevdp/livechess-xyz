@@ -1,260 +1,343 @@
 import { WebsocketProvider } from 'y-websocket'
 import { createId } from '../utils/ids.ts'
-import * as G from './game/game.ts'
 import * as GL from './game/gameLogic.ts'
 import * as Y from 'yjs'
-import { YArrayEvent } from 'yjs'
 import * as P from './player.ts'
-import * as Modal from '../components/Modal.tsx'
 import { WS_CONNECTION } from '../config.ts'
-import { Accessor, createEffect, createSignal, onCleanup } from 'solid-js'
+import { createSignal } from 'solid-js'
 import { until } from '@solid-primitives/promise'
-import { sleep } from '../utils/time.ts'
+import {
+	combineLatest,
+	concatAll,
+	firstValueFrom,
+	mergeAll,
+	Subscription,
+} from 'rxjs'
+import * as YU from '../utils/yjs.ts'
+import { filter, map } from 'rxjs/operators'
 
 export const ROOM_STATES = ['pregame', 'in-progress', 'postgame'] as const
 export type RoomStatus = (typeof ROOM_STATES)[number]
-export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected'
+export const GAME_ENDED_ACTION_TYPES = [
+	'resign',
+	'offer-draw',
+	'accept-draw',
+	'reject-draw',
+] as const
+export type GameEndedActionType = (typeof GAME_ENDED_ACTION_TYPES)[number]
 
-export type PlayerActionArgs =
+export type RoomActionArgs =
 	| {
 			type: 'move'
 			move: GL.Move
 	  }
 	| {
-			type: 'resign' | 'offer-draw' | 'accept-draw' | 'reject-draw'
+			type: GameEndedActionType | 'play-again'
 	  }
 	| {
 			type: 'new-game'
-			config: G.GameConfig
-			players: [string, string]
+			gameConfig: GL.GameConfig
+			playerColors: GL.GameState['players']
 	  }
 
-export type PlayerAction = { playerId: string } & PlayerActionArgs
+// actions are events that need to be replicated, though chat messages are handled separately
+export type RoomAction = {
+	playerId: string
+} & RoomActionArgs
 
+// can be sent by either players or the room(on host)
 export type ChatMessage = {
+	type: 'player' | 'system'
 	sender: string | null
 	text: string
-	ts: number
 }
 
-export type RoomParticipant = P.Player & { spectator: boolean }
+export type RoomParticipant = P.Player & { spectator: boolean; joinTs: number }
 
-export type Room = ReturnType<typeof buildRoom>
+const roomYWrapperDef = {
+	entities: {
+		player: {
+			key: (p: RoomParticipant) => p.id,
+			startingValues: [] as RoomParticipant[],
+		} satisfies YU.EntityStoreDef<RoomParticipant>,
+		processedRoomActions: {
+			key: (index: number) => index.toString(),
+			startingValues: [] as number[],
+		},
+	},
+	events: {
+		roomAction: {
+			example: { type: 'move', move: { from: 'a1', to: 'a2' } } as RoomAction,
+		},
+		chatMessage: {
+			example: {} as unknown as ChatMessage,
+		},
+	},
+	values: {
+		status: {
+			default: 'pregame' as RoomStatus,
+		},
+		cachedBoard: {
+			default: [-1, GL.startPos()] as [number, ReturnType<typeof GL.startPos>],
+		},
+		gameConfig: {
+			default: GL.defaultGameConfig,
+		},
+		creator: {
+			default: null as string | null,
+		},
+	},
+	awareness: {
+		playerId: 'empty',
+	},
+} satisfies YU.DataConfig
+type RoomStateDef = typeof roomYWrapperDef
 
 export const [room, setRoom] = createSignal<Room | null>(null)
-export const [wsProvider, setWsProvider] = createSignal<any | null>(null)
-const [connectionStatus, setConnectionStatus] =
-	createSignal<ConnectionStatus>('disconnected')
 
-function buildRoom(
-	roomId: string,
-	wsProvider: any,
-	connectionStatus: Accessor<ConnectionStatus>
-) {
-	const doc = new Y.Doc()
-	return {
-		roomId: roomId,
-		doc,
-		gameConfig: doc.getMap<string>('gameConfig'),
-		details: doc.getMap<any>('details'),
-		actions: doc.getArray<PlayerAction>('actions'),
-		// for anything that both clients can figure out themselves, but we can save some time by caching it
-		cache: doc.getMap<any>('cache'),
-		chat: doc.getArray<ChatMessage>('chat'),
-		players: doc.getMap<RoomParticipant>('players'),
-		getPlayerByName(name: string) {
-			return [...this.players.values()].find((p) => p.name === name)
-		},
-		get wsProvider() {
-			return wsProvider()
-		},
-		get connectedPlayers() {
-			return [
-				...new Set([...this.awareness.states.values()].map((s) => s.playerId)),
-			]
-		},
-		get host() {
-			return this.details.get('host') as string
-		},
-		get isHost() {
-			return this.host === P.player().id
-		},
-		get guest() {
-			return this.connectedPlayers.find((p) => p !== this.host)
-		},
-		get awareness() {
-			return this.wsProvider?.awareness
-		},
-		get connectionStatus() {
-			return connectionStatus()
-		},
-	}
-}
+export class Room {
+	public yClient: YU.YState<RoomStateDef>
+	private subscription: Subscription
+	private wsProvider: any
 
-function setupRoom(roomId: string) {
-	let _room = room() as Room
-	if (_room) {
-		_room.doc.destroy()
-		_room.wsProvider.destroy()
-	}
-	_room = buildRoom(roomId, wsProvider, connectionStatus)
+	constructor(
+		public readonly roomId: string,
+		private playerId: string,
+		isNewRoom: boolean
+	) {
+		const doc = new Y.Doc()
+		this.wsProvider = new WebsocketProvider(WS_CONNECTION, roomId, doc, {
+			connect: false,
+		})
 
-	if (_room.details.get('host') === P.player().id) {
-		// if we're the host, we need to send messages on behalf of the room
-		observeActions((actions) => {
-			_room.doc.transact(() => {
-				let msg = ''
-				for (let action of actions) {
-					switch (action.type) {
-						case 'resign':
-							msg = `${P.player().name} has resigned`
-							break
-						case 'new-game': {
-							const player = _room.players.get(action.playerId)
-							if (!player) {
-								console.warn(
-									`player not found when attempting to log message (${action.type}):`,
-									action.playerId
-								)
-								return
-							}
-							msg = `${player.name} has started a new game`
-							break
-						}
-					}
-				}
-				sendMessage(msg, true)
+		this.yClient = new YU.YState(
+			doc,
+			this.wsProvider,
+			roomYWrapperDef,
+			this.wsProvider.awareness,
+			isNewRoom
+		)
+
+		this.subscription = new Subscription()
+
+		this.setupListeners().then(async () => {
+			this.wsProvider.connect()
+			const playerName = await until(() => P.player()?.name)
+			await this.yClient.dispatchEvent('chatMessage', {
+				type: 'system',
+				sender: null,
+				text: `${playerName} has connected`,
 			})
 		})
 	}
-	setRoom(_room)
-}
 
-export function dispatchAction(action: PlayerActionArgs) {
-	console.log(`dispatching action of type '${action.type}'`)
-	room()!.actions.push([
-		{
-			playerId: P.player().id,
-			...action,
-		} as PlayerAction,
-	])
-}
-
-export function setRoomState(state: RoomStatus) {
-	room()!.details.set('status', state)
-}
-
-export function sendMessage(message: string, isSystem: boolean) {
-	room()!.chat.push([
-		{
-			sender: isSystem ? null : P.player().name,
-			text: message,
-			ts: Date.now(),
-		},
-	])
-}
-
-export function startGame() {
-	dispatchAction({
-		type: 'new-game',
-		config: room()!.gameConfig.toJSON() as G.GameConfig,
-		players: [room()!.host, room()!.guest],
-	})
-	setRoomState('in-progress')
-}
-
-export function observeActions(callback: (actions: PlayerAction[]) => void) {
-	function listener(e: YArrayEvent<PlayerAction>) {
-		const actions = e.changes.delta
-			.filter((c) => c.insert)
-			.map((c) => c.insert)
-			.flat() as PlayerAction[]
-		if (actions.length == 0) return
-		callback(actions)
+	get players() {
+		return this.yClient.getAllEntities('player')
 	}
 
-	createEffect(() => {
-		room()?.actions.observe(listener)
-	})
+	async connectedPlayers() {
+		return await Promise.all(
+			(await this.yClient.getAllEntities('player')).filter(async (p) => {
+				const playerIds = Object.values(
+					await this.yClient.getAwarenessState()
+				).map((s) => s.playerId)
+				return playerIds.includes(p.id)
+			})
+		)
+	}
 
-	onCleanup(() => {
-		room()?.actions.unobserve(listener)
-	})
+	async host() {
+		let players = await this.players
+		return players.sort((a, b) => a.joinTs - b.joinTs)[0]
+	}
+
+	async roomStatus() {
+		return await this.yClient.getValue('status')
+	}
+
+	observeRoomStatus() {
+		return this.yClient.observeValue('status', true)
+	}
+
+	canStart() {}
+
+	observeHost() {
+		return this.yClient.observeEntity('player', true).pipe(
+			map(() => this.host()),
+			concatAll()
+		)
+	}
+
+	observeCanStart() {
+		const player$ = this.yClient.observeEntity('player', true).pipe(
+			map(() => this.players),
+			concatAll()
+		)
+		const status$ = this.yClient.observeValue('status', true).pipe(
+			map(() => this.yClient.getValue('status')),
+			concatAll()
+		)
+		return combineLatest([player$, status$]).pipe(
+			map(([players, status]) => {
+				return status === 'pregame' && players.length > 1
+			})
+		)
+	}
+
+	async guest() {
+		return (await this.players).sort((a, b) => a.joinTs - b.joinTs)[1]
+	}
+
+	async sendMessage(message: string, isSystem: boolean) {
+		await this.yClient.dispatchEvent('chatMessage', {
+			type: isSystem ? 'system' : 'player',
+			sender: await until(() => P.player()?.name),
+			text: message,
+		})
+	}
+
+	async gameConfig() {
+		return await this.yClient.getValue('gameConfig')
+	}
+
+	async setRoomState(state: RoomStatus) {
+		await this.yClient.setValue('status', state)
+	}
+
+	async startGame() {
+		await this.yClient.dispatchEvent('roomAction', {
+			type: 'new-game',
+			gameConfig: GL.defaultGameConfig,
+			playerColors: [(await this.host()).id, (await this.guest()).id],
+			playerId: (await this.host()).id,
+		})
+	}
+
+	async dispatchRoomAction(action: RoomActionArgs) {
+		await this.yClient.dispatchEvent('roomAction', {
+			playerId: this.playerId,
+			...action,
+		})
+	}
+
+	async destroy() {
+		this.subscription.unsubscribe()
+		await this.yClient.destroy()
+	}
+
+	private async setupListeners() {
+		//#region handle actions as host
+		this.subscription.add(
+			this.yClient
+				.observeEvent('roomAction', true)
+				.pipe(
+					// do this separately so we ensure that we process actions in order
+					map(async (a) => {
+						if ((await this.host()).id !== (await until(() => P.player()?.id)))
+							return []
+						return [a]
+					}),
+					mergeAll(), // merge promise
+					mergeAll() // merge arrays
+				)
+				.subscribe(async (action) => {
+					await this.yClient.setEntity(
+						'processedRoomActions',
+						action.index.toString(),
+						action.index
+					)
+					let roomStatus = await this.roomStatus()
+
+					if (
+						GAME_ENDED_ACTION_TYPES.includes(
+							action.type as GameEndedActionType
+						) &&
+						roomStatus === 'in-progress'
+					) {
+						await this.yClient.setValue('status', 'postgame')
+						await this.sendMessage(`Game Ended`, true)
+						return
+					}
+
+					if (action.type === 'new-game' && roomStatus === 'pregame') {
+						const player = await this.yClient.getEntity(
+							'player',
+							action.playerId
+						)
+						if (!player) {
+							console.warn(
+								`player not found when attempting to log message (${action.type}):`,
+								action.playerId
+							)
+							return
+						}
+						await this.yClient.setValue('status', 'in-progress')
+						await this.sendMessage(
+							`${player.name!} has started a new game`,
+							true
+						)
+						return
+					}
+					if (action.type === 'play-again' && roomStatus === 'postgame') {
+						await this.yClient.setValue('status', 'pregame')
+						return
+					}
+				})
+		)
+		//#endregion
+
+		//#region check if any players have DCed
+		this.subscription.add(
+			this.yClient
+				.observeAwareness(true)
+				.pipe(
+					map(async (a) => {
+						const host = await this.host()
+						let playerId = until(() => P.player()?.id)
+						if (!host || host.id !== (await playerId)) return []
+						return [a]
+					}),
+					mergeAll(), // merge promise
+					mergeAll() // merge arrays
+				)
+				.subscribe(async () => {
+					for (let player of await this.players) {
+						if (
+							(await this.connectedPlayers())
+								.map((p) => p.id)
+								.includes(player.id)
+						)
+							continue
+						await this.sendMessage(`${player.name} has disconnected`, true)
+					}
+				})
+		)
+		//#endregion
+
+		this.wsProvider.once('connection-error', (e: any) => {
+			console.error('connection error: ', e)
+		})
+	}
 }
 
 export async function connectToRoom(roomId: string | null, isNewRoom = false) {
-	if (
-		!!room()?.roomId &&
-		roomId === room()?.roomId &&
-		connectionStatus() !== 'disconnected'
-	) {
-		throw new Error('already connected')
+	let _room = room()
+	if (_room && roomId && _room.roomId === roomId) {
+		throw new Error(`already in room ${roomId}`)
 	}
-	await until(() => P.player().name)
 	if (!roomId) {
 		roomId = await createId(6)
 	}
-	setupRoom(roomId)
-	const _room = room() as Room
-	setWsProvider(
-		new WebsocketProvider(WS_CONNECTION, _room.roomId, _room.doc, {
-			connect: false,
-		})
+
+	_room && (await _room.destroy())
+
+	_room = new Room(roomId, await until(() => P.player()?.id), isNewRoom)
+	setRoom(_room)
+
+	const status = await firstValueFrom(
+		_room.yClient.connectionStatus$.pipe(filter((s) => s === 'connected'))
 	)
-	_room.awareness.setLocalStateField('playerId', P.player().id)
+	console.log({ status })
 
-	const connectionListener = async (e: any) => {
-		setConnectionStatus(e.status)
-		if (e.status === 'connected') {
-			await sleep(200)
-		}
-	}
-
-	_room.wsProvider.on('status', connectionListener)
-	_room.wsProvider.on('connection-error', (e: any) => {
-		console.log('connection error', e)
-		Modal.prompt(
-			'Connection Error',
-			() =>
-				'There was an error connecting to the room. Please try again later.',
-			true
-		)
-	})
-
-	let docSynced: Promise<void>
-
-	if (isNewRoom) {
-		room()!.doc.transact(() => {
-			for (let [k, v] of Object.entries(G.defaultGameConfig)) {
-				room()!.gameConfig.set(k, v)
-			}
-			room()!.details.set('status', 'pregame')
-		})
-		docSynced = Promise.resolve()
-	} else {
-		docSynced = new Promise<void>((resolve) => {
-			_room.doc.once('update', () => {
-				resolve()
-			})
-		})
-	}
-
-	_room.wsProvider.connect()
-	setConnectionStatus('connecting')
-	await until(() => _room.connectionStatus === 'connected')
-	await docSynced
-	console.log('connected to ' + _room.roomId)
-
-	_room.players.set(P.player().id, {
-		id: P.player().id,
-		name: P.player().name,
-		spectator: false,
-	})
-	if (_room.players.size === 1) {
-		_room.details.set('host', P.player().id)
-	}
-	sendMessage(
-		P.player().name + ` has connected ${_room.isHost ? '(Host)' : ''}`,
-		true
-	)
+	return status
 }

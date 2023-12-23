@@ -1,44 +1,70 @@
-import { createEffect, createSignal, For, Match, Show, Switch } from 'solid-js'
-import * as Y from 'yjs'
+import {
+	createEffect,
+	createSignal,
+	For,
+	from,
+	Match,
+	on,
+	onMount,
+	Show,
+	Switch,
+} from 'solid-js'
 import * as P from '../systems/player.ts'
 import { useParams } from '@solidjs/router'
 import * as R from '../systems/room.ts'
-import { yArrayToStore, yMapToSignal, yMapToStore } from '../utils/yjs.ts'
+import { ConnectionStatus } from '../utils/yjs.ts'
 import { Board } from './Board.tsx'
 import { AppContainer } from './AppContainer.tsx'
 import { Choice, MultiChoiceButton } from '../MultiChoiceButton.tsx'
 import * as G from '../systems/game/game.ts'
-import { unwrap } from 'solid-js/store'
+import * as GL from '../systems/game/gameLogic.ts'
+import { Increment } from '../systems/game/gameLogic.ts'
 import { Button } from './Button.tsx'
+import { scan, Subscription } from 'rxjs'
+import { until } from '@solid-primitives/promise'
 
 export function RoomGuard() {
 	const params = useParams()
-	const _room = R.room()
-	if (
-		!_room ||
-		_room.roomId !== params.id ||
-		_room.connectionStatus === 'disconnected'
-	) {
-		R.connectToRoom(params.id)
-	}
+
+	const [connectionStatus, setConnectionStatus] =
+		createSignal<ConnectionStatus>('disconnected')
+	let sub = new Subscription()
+	createEffect(() => {
+		if (!R.room() || R.room()!.roomId !== params.id) {
+			R.connectToRoom(params.id).then((status) => {
+				if (status === 'disconnected') {
+					alert('Failed to connect to room')
+					return
+				}
+			})
+		}
+
+		if (R.room()) {
+			sub.add(
+				R.room()!.yClient.connectionStatus$.subscribe(setConnectionStatus)
+			)
+			setConnectionStatus(R.room()!.yClient.connectionStatus)
+		} else {
+			sub.unsubscribe()
+			sub = new Subscription()
+		}
+	})
 
 	return (
 		<AppContainer>
 			<div class="grid h-[calc(100vh_-_4rem)] place-items-center">
 				<div class="rounded bg-gray-900 p-2">
 					<Switch>
-						<Match when={!P.player().name}>
+						<Match when={!P.player()?.name}>
 							<NickForm />
 						</Match>
-						<Match
-							when={!R.room() || R.room()?.connectionStatus === 'connecting'}
-						>
+						<Match when={!R.room() || connectionStatus() === 'connecting'}>
 							<div>loading...</div>
 						</Match>
-						<Match when={R.room()?.connectionStatus === 'disconnected'}>
+						<Match when={connectionStatus() === 'disconnected'}>
 							<div>disconnected</div>
 						</Match>
-						<Match when={R.room()}>
+						<Match when={connectionStatus() === 'connected' && R.room()!}>
 							<Room />
 						</Match>
 					</Switch>
@@ -49,22 +75,24 @@ export function RoomGuard() {
 }
 
 function Room() {
-	G.setupGame()
-	const [roomStatus] = yMapToSignal<R.RoomStatus>(
-		R.room()!.details,
-		'status',
-		'pregame'
-	)
+	const roomStatus = from(R.room()!.observeRoomStatus())
+
 	return (
 		<Switch>
-			<Match when={roomStatus() === 'pregame' && P.player().name != null}>
+			<Match when={roomStatus() === 'pregame' && P.player()!.name != null}>
 				<Lobby />
 			</Match>
-			<Match when={roomStatus() === 'in-progress'}>
-				<Board />
+			<Match when={!G.game() && roomStatus() === 'in-progress'}>
+				// TODO: fix whatever this is
+				<div>IDK</div>
 			</Match>
-			<Match when={roomStatus() === 'postgame'}>
-				<div>Game over</div>
+			<Match
+				when={
+					G.game() &&
+					(roomStatus() === 'in-progress' || roomStatus() === 'postgame')
+				}
+			>
+				<Board game={G.game()!} />
 			</Match>
 			<Match when={true}>
 				<div>idk</div>
@@ -77,57 +105,60 @@ function Lobby() {
 	const copyInviteLink = () => {
 		navigator.clipboard.writeText(window.location.href)
 	}
-	const [host] = yMapToSignal<string>(R.room()!.details, 'host', P.player().id)
-	const [players] = yMapToStore(R.room()!.players)
-	createEffect(() => {
-		console.table(unwrap(players.map((e) => e[1])))
-	})
-	const canStart = () => players.length >= 2
+
+	const host = from(R.room()!.observeHost())
+	const canStart = from(R.room()!.observeCanStart())
 	return (
 		<div class="grid grid-cols-[60%_auto] gap-2">
-			<div class="col-span-full grid place-items-center">
-				<Button kind="primary" onclick={copyInviteLink}>
-					Copy Invite Link
-				</Button>
-			</div>
 			<GameConfigForm />
 			<div class="row-span-2">
 				<ChatBox />
 			</div>
-			<Show when={host() === P.player().id}>
-				<div class="col-span-1 flex w-full justify-center">
+			<div class="col-span-1 flex w-full justify-center">
+				<Button
+					kind="primary"
+					class="whitespace-nowrap"
+					onclick={copyInviteLink}
+				>
+					Copy Invite Link
+				</Button>
+				<Show when={P.player() && host() && host()!.id === P.player()!.id}>
 					<Button
 						kind="primary"
 						disabled={!canStart()}
-						class="w-full rounded"
-						onClick={R.startGame}
+						class="ml-1 w-full rounded"
+						onClick={async () => {
+							const players = await R.room()!.players
+
+							const playerColors = {
+								[players[0].id]: 'white',
+								[players[1].id]: 'black',
+							} as const
+
+							await R.room()!.dispatchRoomAction({
+								type: 'new-game',
+								playerColors,
+								gameConfig: await R.room()!.gameConfig(),
+							})
+						}}
 					>
 						{!canStart() ? '(Waiting for opponent to connect...)' : 'Start'}
 					</Button>
-				</div>
-			</Show>
+				</Show>
+			</div>
 		</div>
 	)
 }
 
 function GameConfigForm() {
-	const [variant] = yMapToSignal<G.Variant>(
-		R.room()!.gameConfig as Y.Map<G.Variant>,
-		'variant',
-		'regular'
-	)
-	const [timeControl] = yMapToSignal<G.TimeControl>(
-		R.room()!.gameConfig as Y.Map<G.TimeControl>,
-		'timeControl',
-		'5m'
-	)
-	const [increment] = yMapToSignal<G.Increment>(
-		R.room()!.gameConfig as Y.Map<G.Increment>,
-		'increment',
-		'0'
-	)
-	const setConfigValue = (key: string) => (value: string) => {
-		R.room()!.gameConfig!.set(key, value)
+	const gameConfig = from(R.room()!.yClient.observeValue('gameConfig', true))
+
+	const variant = () => gameConfig()?.variant || 'regular'
+	const timeControl = () => gameConfig()?.timeControl || '5m'
+	const increment = () => gameConfig()?.increment || '0'
+
+	const updateGameConfig = (config: Partial<GL.GameConfig>) => {
+		R.room()!.yClient.setValue('gameConfig', { ...gameConfig()!, ...config })
 	}
 
 	return (
@@ -142,11 +173,11 @@ function GameConfigForm() {
 						'col-span-full': true,
 						'grid-rows-[min-content_5em]': true,
 					}}
-					choices={G.VARIANTS.map(
-						(c) => ({ label: c, id: c }) satisfies Choice<G.Variant>
+					choices={GL.VARIANTS.map(
+						(c) => ({ label: c, id: c }) satisfies Choice<GL.Variant>
 					)}
 					selected={variant() || 'regular'}
-					onChange={setConfigValue('variant')}
+					onChange={(v) => updateGameConfig({ variant: v })}
 				/>
 				<MultiChoiceButton
 					classList={{
@@ -157,11 +188,11 @@ function GameConfigForm() {
 						'text-sm': true,
 					}}
 					label="Time Control"
-					choices={G.TIME_CONTROLS.map(
-						(tc) => ({ label: tc, id: tc }) satisfies Choice<G.TimeControl>
+					choices={GL.TIME_CONTROLS.map(
+						(tc) => ({ label: tc, id: tc }) satisfies Choice<GL.TimeControl>
 					)}
 					selected={timeControl()}
-					onChange={setConfigValue('timeControl')}
+					onChange={(v) => updateGameConfig({ timeControl: v })}
 				/>
 				<MultiChoiceButton
 					label="Increment"
@@ -171,11 +202,11 @@ function GameConfigForm() {
 						'grid-cols-4': true,
 						'text-sm': true,
 					}}
-					choices={G.INCREMENTS.map(
-						(i) => ({ label: `${i}s`, id: i }) satisfies Choice<G.Increment>
+					choices={GL.INCREMENTS.map(
+						(i) => ({ label: `${i}s`, id: i }) satisfies Choice<Increment>
 					)}
 					selected={increment()}
-					onChange={setConfigValue('increment')}
+					onChange={(v) => updateGameConfig({ increment: v })}
 				/>
 			</div>
 		</div>
@@ -183,21 +214,28 @@ function GameConfigForm() {
 }
 
 function ChatBox() {
-	const messages = yArrayToStore<R.ChatMessage>(R.room()!.chat)
+	// individual messages are not mutated
+	const messages = from(
+		R.room()!
+			.yClient.observeEvent('chatMessage', true)
+			.pipe(scan((acc, m) => [...acc, m], [] as R.ChatMessage[]))
+	)
 	const [message, setMessage] = createSignal('')
 	const sendMessage = (e: SubmitEvent) => {
 		e.preventDefault()
-		R.sendMessage(message(), false)
+		const _message = message().trim()
+		if (!_message) return
+		R.room()!.sendMessage(_message.trim(), false)
 		setMessage('')
 	}
-	let messagesRendered = 0
+
 	let chatFeed: HTMLDivElement = null as unknown as HTMLDivElement
-	createEffect(() => {
-		if (messages.length > messagesRendered) {
+	createEffect(
+		on(messages, (messages) => {
+			console.log({ messages })
 			chatFeed.scrollTop = chatFeed.scrollHeight
-			messagesRendered = message.length
-		}
-	})
+		})
+	)
 
 	return (
 		<div class="flex h-full flex-col">
@@ -205,7 +243,7 @@ function ChatBox() {
 				ref={chatFeed}
 				class="mb-2 flex h-48 grow flex-col overflow-y-scroll"
 			>
-				<For each={messages}>
+				<For each={messages()}>
 					{(message) => <ChatMessage message={message} />}
 				</For>
 			</div>
@@ -227,12 +265,12 @@ function ChatBox() {
 function ChatMessage(props: { message: R.ChatMessage }) {
 	return (
 		<div>
-			<Show when={props.message.sender}>
+			<Show when={props.message.sender && props.message.type === 'player'}>
 				<b>{props.message.sender}:</b>{' '}
 			</Show>
 			<Switch>
 				<Match when={props.message.sender}>{props.message.text}</Match>
-				<Match when={!props.message.sender}>
+				<Match when={props.message.type === 'system'}>
 					<i>{props.message.text}</i>
 				</Match>
 			</Switch>
@@ -241,13 +279,18 @@ function ChatMessage(props: { message: R.ChatMessage }) {
 }
 
 function NickForm() {
-	const [displayName, setDisplayName] = createSignal<string>(
-		P.player().name || ''
-	)
+	const [displayName, setDisplayName] = createSignal<string>('')
+	const [initialized, setInitialized] = createSignal(false)
+	onMount(async () => {
+		await until(() => P.player() != null)
+		setDisplayName(P.player()!.name || '')
+		setInitialized(true)
+	})
 	const onSubmit = (e: SubmitEvent) => {
 		e.preventDefault()
-		P.setPlayer({ ...P.player(), name: displayName() })
+		P.setPlayerName(displayName())
 	}
+
 	return (
 		<form onSubmit={onSubmit}>
 			<div>Set your Display Name</div>
@@ -255,6 +298,7 @@ function NickForm() {
 				type="text"
 				class="bg-gray-800 p-1 text-white"
 				value={displayName()}
+				disabled={!initialized()}
 				required={true}
 				pattern={'[a-zA-Z0-9]+'}
 				onInput={(e) => setDisplayName(e.target.value.trim())}

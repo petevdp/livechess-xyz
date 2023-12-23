@@ -1,72 +1,13 @@
 import { createStore, produce, SetStoreFunction } from 'solid-js/store'
-import { Accessor, batch, createEffect, createSignal } from 'solid-js'
+import { Accessor, createEffect, createRoot, createSignal, on } from 'solid-js'
 import * as GL from './gameLogic.ts'
+import { GameConfig, GameStateNoGetters, startPos } from './gameLogic.ts'
 import * as R from '../room.ts'
 import * as P from '../player.ts'
-
-export const VARIANTS = [
-	'regular',
-	'fog-of-war',
-	'duck',
-	'fischer-random',
-] as const
-export type Variant = (typeof VARIANTS)[number]
-export const TIME_CONTROLS = ['15m', '10m', '5m', '3m', '1m'] as const
-export type TimeControl = (typeof TIME_CONTROLS)[number]
-export const INCREMENTS = ['0', '1', '2', '5'] as const
-export type Increment = (typeof INCREMENTS)[number]
-
-export type GameConfig = {
-	variant: Variant
-	timeControl: TimeControl
-	increment: Increment
-}
-
-const startPos = () =>
-	({
-		pieces: {
-			a1: { color: 'white', type: 'rook' },
-			b1: { color: 'white', type: 'knight' },
-			c1: { color: 'white', type: 'bishop' },
-			d1: { color: 'white', type: 'queen' },
-			e1: { color: 'white', type: 'king' },
-			f1: { color: 'white', type: 'bishop' },
-			g1: { color: 'white', type: 'knight' },
-			h1: { color: 'white', type: 'rook' },
-			a2: { color: 'white', type: 'pawn' },
-			b2: { color: 'white', type: 'pawn' },
-			c2: { color: 'white', type: 'pawn' },
-			d2: { color: 'white', type: 'pawn' },
-			e2: { color: 'white', type: 'pawn' },
-			f2: { color: 'white', type: 'pawn' },
-			g2: { color: 'white', type: 'pawn' },
-			h2: { color: 'white', type: 'pawn' },
-
-			a8: { color: 'black', type: 'rook' },
-			b8: { color: 'black', type: 'knight' },
-			c8: { color: 'black', type: 'bishop' },
-			d8: { color: 'black', type: 'queen' },
-			e8: { color: 'black', type: 'king' },
-			f8: { color: 'black', type: 'bishop' },
-			g8: { color: 'black', type: 'knight' },
-			h8: { color: 'black', type: 'rook' },
-			a7: { color: 'black', type: 'pawn' },
-			b7: { color: 'black', type: 'pawn' },
-			c7: { color: 'black', type: 'pawn' },
-			d7: { color: 'black', type: 'pawn' },
-			e7: { color: 'black', type: 'pawn' },
-			f7: { color: 'black', type: 'pawn' },
-			g7: { color: 'black', type: 'pawn' },
-			h7: { color: 'black', type: 'pawn' },
-		},
-		toMove: 'white',
-	}) as GL.Board
-
-export const defaultGameConfig: GameConfig = {
-	variant: 'regular',
-	timeControl: '5m',
-	increment: '0',
-}
+import { concatAll, Subscription } from 'rxjs'
+import { filter, map } from 'rxjs/operators'
+import { HasTimestampAndIndex } from '../../utils/yjs.ts'
+import { until } from '@solid-primitives/promise'
 
 type PromotionSelection =
 	| {
@@ -82,153 +23,257 @@ type PromotionSelection =
 	  }
 
 export function buildNewGame(
-	player1: string,
-	player2: string,
+	players: GL.GameState['players'],
 	board?: GL.Board
-): GL.GameNoGetters {
+): GL.GameStateNoGetters {
 	return {
 		winner: null,
 		endReason: undefined,
 		boardHistory: [toBoardHistoryEntry(board || startPos())],
 		moveHistory: [],
-		players: { [player1]: 'white', [player2]: 'black' },
-	} satisfies GL.GameNoGetters
+		players: players,
+	} satisfies GL.GameStateNoGetters
 }
 
-export let game: GL.Game
-export let setGame: SetStoreFunction<GL.Game>
-export let promotionSelection: Accessor<null | PromotionSelection>
-export let setPromotionSelection: (p: null | PromotionSelection) => void
+export const [game, setGame] = createSignal(null as Game | null)
 
-export function setupGame() {
-	;[game, setGame] = createStore({
-		...buildNewGame('player1', 'player2', undefined),
-		get board() {
-			return this.boardHistory[this.boardHistory.length - 1][1]
-		},
-		get lastMove() {
-			return this.moveHistory[this.moveHistory.length - 1]
-		},
-	} as GL.Game)
-	;[promotionSelection, setPromotionSelection] =
-		createSignal<null | PromotionSelection>(null)
-
+createRoot(() => {
+	let subscription = new Subscription()
 	createEffect(() => {
-		setGame(
-			produce((s) => {
-				if (GL.checkmated(game)) {
-					s.endReason = 'checkmate'
-					s.winner = game.board.toMove === 'white' ? 'black' : 'white'
-				} else if (GL.stalemated(game)) {
-					s.endReason = 'stalemate'
-				} else if (GL.insufficientMaterial(game)) {
-					s.endReason = 'insufficient-material'
-				} else if (GL.threefoldRepetition(game)) {
-					s.endReason = 'threefold-repetition'
-				}
-			})
-		)
-
-		// handle promotion
-		createEffect(() => {
-			const _promotionSelection = promotionSelection()
-			if (_promotionSelection && _promotionSelection.status === 'selected') {
-				tryMakeMove(
-					_promotionSelection.from,
-					_promotionSelection.to,
-					_promotionSelection.piece
-				)
-				setPromotionSelection(null)
-			}
-		})
-
-		// handle new actions
-		function actionsListener(actions: R.PlayerAction[]) {
-			let latestNewGameIdx = actions.findIndex((a) => a.type === 'new-game')
-			const startIdx = latestNewGameIdx === -1 ? 0 : latestNewGameIdx
-
-			const _room = R.room() as R.Room
-			// we don't care about previous games
-			batch(() => {
-				// skip any actions that happened before the latest new game, as they're not relevant
-				for (let i = startIdx; i < actions.length; i++) {
-					const action = actions[i]
-					console.log({ action })
-					switch (action.type) {
-						case 'new-game': {
-							console.log('creating new game')
-							let board = startPos()
-							setGame(buildNewGame(action.players[0], action.players[1], board))
-							break
-						}
-						case 'move': {
-							let board: GL.Board
-							// check if we've already computed this move on a peer
-							let cachedMoveIndex = _room.cache.get('board')?.moveIndex
-							if (
-								cachedMoveIndex &&
-								cachedMoveIndex === game.boardHistory.length
-							) {
-								board = _room.cache.get('board')!.board
-							} else {
-								// we should have already validated this move before submitting the action, so no need to do it again
-								;[board] = GL.applyMoveToBoard(action.move, game.board)
-								_room.cache.set('board', {
-									moveIndex: game.boardHistory.length,
-									board,
-								})
-							}
-							setGame(
-								produce((game) => {
-									game.boardHistory.push(toBoardHistoryEntry(board))
-									game.moveHistory.push(action.move)
-								})
-							)
-							break
-						}
-						case 'resign': {
-							setGame(
-								produce((game) => {
-									game.endReason = 'resigned'
-									game.winner = Object.entries(game.players).find(
-										([k]) => k !== action.playerId
-									)![1]
-								})
-							)
-							break
-						}
-					}
-				}
-			})
+		const _room = R.room()
+		if (!_room) {
+			subscription.unsubscribe()
+			subscription = new Subscription()
+			return
 		}
 
-		R.observeActions(actionsListener)
+		;(async () => {
+			subscription.add(
+				_room.yClient.observeEvent('roomAction', true).subscribe(async (a) => {
+					if (a.type === 'new-game') {
+						game()?.destroy()
+						setGame(
+							new Game(
+								_room,
+								a.gameConfig,
+								a.playerColors,
+								await until(() => P.player()?.id)
+							)
+						)
+					}
+				})
+			)
+		})()
 	})
+})
+
+function getCurrentGameActions(
+	actions: (R.RoomAction & HasTimestampAndIndex)[]
+) {
+	return actions.reverse().find((a) => a.type === 'new-game')
 }
 
-export function tryMakeMove(
-	from: string,
-	to: string,
-	promotionPiece?: GL.PromotionPiece
-) {
-	console.log(`attempting move ${from} -> ${to}`)
-	if (!isPlayerTurn() || !game.board.pieces[from]) return
-	let result = GL.validateAndPlayMove(from, to, game, promotionPiece)
-	let _promotionSelection = promotionSelection()
-	if (!result) {
-		console.log('invalid move')
-		return
-	}
-	if (_promotionSelection != null && _promotionSelection.status === 'selecting')
-		return
+export type PlayerWithColor = R.RoomParticipant & { color: GL.Color }
 
-	if (result.promoted && !_promotionSelection && !promotionPiece) {
-		setPromotionSelection({ status: 'selecting', from, to })
-		return
+export class Game {
+	state: GL.GameState
+	setState: SetStoreFunction<GL.GameState>
+	promotion: Accessor<PromotionSelection | null>
+	setPromotion: (p: PromotionSelection | null) => void
+	subcription: Subscription
+	disposeReactiveRoot: () => void
+
+	constructor(
+		private room: R.Room,
+		private gameConfig: GameConfig,
+		private playerColors: GL.GameState['players'],
+		private playerId: string
+	) {
+		this.subcription = new Subscription()
+		const [_state, _setState] = createStore({
+			get board() {
+				return this.boardHistory[this.boardHistory.length - 1][1]
+			},
+			get lastMove() {
+				return this.moveHistory[this.moveHistory.length - 1]
+			},
+			...buildNewGame(this.playerColors),
+		} as GL.GameState)
+		this.state = _state
+		this.setState = _setState
+
+		const [_promotion, _setPromotion] = createSignal<null | PromotionSelection>(
+			null
+		)
+		this.promotion = _promotion
+		this.setPromotion = _setPromotion
+
+		this.disposeReactiveRoot = () => {}
+		this.setupListeners()
 	}
 
-	console.log(`committing move ${from} -> ${to}`)
-	R.dispatchAction({ type: 'move', move: result.move })
+	get moveIndex() {
+		return this.state.boardHistory.length - 1
+	}
+
+	async players() {
+		const players = await this.room.yClient.getAllEntities('player')
+
+		return players.map(
+			(p) => ({ ...p, color: this.playerColor(p.id) }) as PlayerWithColor
+		)
+	}
+
+	async getCurrentGameActions() {
+		const lastNewGameAction = getCurrentGameActions(
+			await this.room.yClient.getAllevents('roomAction')
+		)
+		const lastNewGameIndex = lastNewGameAction?.index || 0
+		return this.room.yClient
+			.observeEvent('roomAction', true)
+			.pipe(filter((a) => a.index >= lastNewGameIndex!))
+	}
+
+	playerColor(id: string) {
+		return this.state.players[id]
+	}
+
+	isPlayerTurn() {
+		return this.state.board.toMove === this.playerColor(this.playerId)
+	}
+
+	isEnded() {
+		return !!this.state.endReason
+	}
+
+	async tryMakeMove(
+		from: string,
+		to: string,
+		promotionPiece?: GL.PromotionPiece
+	) {
+		if (!this.isPlayerTurn() || !this.state.board.pieces[from]) return
+		let result = GL.validateAndPlayMove(from, to, this.state, promotionPiece)
+		if (!result) {
+			console.error('invalid move: ', result)
+			return
+		}
+
+		if (!!this.promotion() && this.promotion()?.status === 'selecting') return
+
+		if (result.promoted && !this.promotion() && !promotionPiece) {
+			this.setPromotion({ status: 'selecting', from, to })
+			return
+		}
+
+		await this.room.yClient.dispatchEvent('roomAction', {
+			move: result.move,
+			type: 'move',
+			playerId: this.playerId,
+		})
+	}
+
+	destroy() {
+		this.subcription.unsubscribe()
+		this.disposeReactiveRoot()
+	}
+
+	private async setupListeners() {
+		this.subcription.add(
+			//#region build board state from moves
+			(await this.getCurrentGameActions())
+				.pipe(
+					map(async (action): Promise<Partial<GameStateNoGetters | null>> => {
+						switch (action.type) {
+							case 'move': {
+								let board: GL.Board
+								// check if we've already computed this move on a peer
+								const [cachedMoveIndex, cachedBoard] =
+									await this.room.yClient.getValue('cachedBoard')
+								if (cachedMoveIndex === this.moveIndex) {
+									board = cachedBoard[1]
+								} else {
+									// we should have already validated this move before submitting the action, so no need to do it again
+									;[board] = GL.applyMoveToBoard(action.move, this.state.board)
+									if (!board) {
+										console.error('invalid move: ', action.move)
+										return null
+									}
+									// as this value is just cached, we don't have to worry about incongruencies between board state and move state
+									this.room.yClient.setValue('cachedBoard', [
+										this.moveIndex,
+										board,
+									])
+								}
+								return {
+									boardHistory: [
+										...this.state.boardHistory,
+										toBoardHistoryEntry(board),
+									],
+									moveHistory: [...this.state.moveHistory, action.move],
+								} satisfies Partial<GameStateNoGetters>
+							}
+							case 'resign': {
+								return {
+									endReason: 'resigned',
+									winner: action.playerId === this.playerId ? 'black' : 'white',
+								} satisfies Partial<GameStateNoGetters>
+							}
+							default:
+								return null
+						}
+					}),
+					// make sure we process state mutations in order
+					concatAll()
+				)
+				.subscribe((update) => {
+					if (update) {
+						this.setState(update)
+					}
+				})
+			//#endregion
+		)
+
+		createRoot((dispose) => {
+			this.disposeReactiveRoot = dispose
+			//#region listen for checkmate board positions
+			createEffect(
+				on(
+					() => this.state.board,
+					() => {
+						this.setState(
+							produce((s) => {
+								if (GL.checkmated(this.state)) {
+									s.endReason = 'checkmate'
+									s.winner = s.board.toMove === 'white' ? 'black' : 'white'
+								} else if (GL.stalemated(this.state)) {
+									s.endReason = 'stalemate'
+								} else if (GL.insufficientMaterial(this.state)) {
+									s.endReason = 'insufficient-material'
+								} else if (GL.threefoldRepetition(this.state)) {
+									s.endReason = 'threefold-repetition'
+								}
+							})
+						)
+					}
+				)
+			)
+			//#endregion
+
+			//#region handle promotion
+			createEffect(() => {
+				const _promotionSelection = this.promotion()
+				if (_promotionSelection && _promotionSelection.status === 'selected') {
+					this.setPromotion(null)
+					this.tryMakeMove(
+						_promotionSelection.from,
+						_promotionSelection.to,
+						_promotionSelection.piece
+					)
+				}
+			})
+			//#endregion
+		})
+	}
 }
 
 export function toBoardHistoryEntry(board: GL.Board) {
@@ -236,11 +281,3 @@ export function toBoardHistoryEntry(board: GL.Board) {
 }
 
 export const playForBothSides = false
-export const playerColor = (id: string) => game.players[id]
-export const isPlayerTurn = () =>
-	(game.board.toMove === playerColor(P.player().id) || playForBothSides) &&
-	isPlaying()
-
-export function isPlaying() {
-	return !game.endReason
-}

@@ -29,7 +29,7 @@ export type Move = {
 //#endregion
 
 //#region organization
-export type GameNoGetters = {
+export type GameStateNoGetters = {
 	endReason?: GameEndedReason
 	winner: Color | null
 	players: { [id: string]: Color }
@@ -37,7 +37,29 @@ export type GameNoGetters = {
 	moveHistory: MoveHistory
 }
 
-export type Game = GameNoGetters & {
+export const VARIANTS = [
+	'regular',
+	'fog-of-war',
+	'duck',
+	'fischer-random',
+] as const
+export type Variant = (typeof VARIANTS)[number]
+export const TIME_CONTROLS = ['15m', '10m', '5m', '3m', '1m'] as const
+export type TimeControl = (typeof TIME_CONTROLS)[number]
+export const INCREMENTS = ['0', '1', '2', '5'] as const
+export type Increment = (typeof INCREMENTS)[number]
+export type GameConfig = {
+	variant: Variant
+	timeControl: TimeControl
+	increment: Increment
+}
+export const defaultGameConfig: GameConfig = {
+	variant: 'regular',
+	timeControl: '5m',
+	increment: '0',
+}
+
+export type GameState = GameStateNoGetters & {
 	board: Board
 	lastMove: Move
 }
@@ -110,19 +132,19 @@ export const GAME_ENDED_REASONS = [
 ] as const
 export type GameEndedReason = (typeof GAME_ENDED_REASONS)[number]
 
-export function inCheck(game: Game) {
+export function inCheck(game: GameState) {
 	return _inCheck(game.board)
 }
 
-export function checkmated(game: Game) {
+export function checkmated(game: GameState) {
 	return inCheck(game) && noMoves(game)
 }
 
-export function stalemated(game: Game) {
+export function stalemated(game: GameState) {
 	return !inCheck(game) && noMoves(game)
 }
 
-export function threefoldRepetition(game: Game) {
+export function threefoldRepetition(game: GameState) {
 	if (game.boardHistory.length === 0) return false
 	const currentHash = game.boardHistory[game.boardHistory.length - 1][0]
 	const dupeCount = game.boardHistory.filter(
@@ -131,7 +153,7 @@ export function threefoldRepetition(game: Game) {
 	return dupeCount == 3
 }
 
-export function insufficientMaterial(game: Game) {
+export function insufficientMaterial(game: GameState) {
 	for (let piece of Object.values(game.board.pieces)) {
 		if (
 			piece.type === 'pawn' ||
@@ -152,7 +174,7 @@ export function insufficientMaterial(game: Game) {
 export function validateAndPlayMove(
 	from: string,
 	to: string,
-	game: Game,
+	game: GameState,
 	promotionPiece?: PromotionPiece
 ) {
 	if (game.board.pieces[from].color !== game.board.toMove) {
@@ -243,7 +265,7 @@ export type CandidateMoveOptions = {
 
 export function getLegalMoves(
 	piecePositions: Coords[],
-	game: Game
+	game: GameState
 ): CandidateMove[] {
 	let candidateMoves: CandidateMove[] = []
 
@@ -663,7 +685,7 @@ function squareAttacked(square: Coords, board: Board) {
 	return false
 }
 
-function noMoves(game: Game) {
+function noMoves(game: GameState) {
 	let legalMoves = getLegalMoves(
 		Object.keys(game.board.pieces).map((n) => coordsFromNotation(n)),
 		game
@@ -672,3 +694,42 @@ function noMoves(game: Game) {
 }
 
 //#endregion
+export const startPos = () =>
+	({
+		pieces: {
+			a1: { color: 'white', type: 'rook' },
+			b1: { color: 'white', type: 'knight' },
+			c1: { color: 'white', type: 'bishop' },
+			d1: { color: 'white', type: 'queen' },
+			e1: { color: 'white', type: 'king' },
+			f1: { color: 'white', type: 'bishop' },
+			g1: { color: 'white', type: 'knight' },
+			h1: { color: 'white', type: 'rook' },
+			a2: { color: 'white', type: 'pawn' },
+			b2: { color: 'white', type: 'pawn' },
+			c2: { color: 'white', type: 'pawn' },
+			d2: { color: 'white', type: 'pawn' },
+			e2: { color: 'white', type: 'pawn' },
+			f2: { color: 'white', type: 'pawn' },
+			g2: { color: 'white', type: 'pawn' },
+			h2: { color: 'white', type: 'pawn' },
+
+			a8: { color: 'black', type: 'rook' },
+			b8: { color: 'black', type: 'knight' },
+			c8: { color: 'black', type: 'bishop' },
+			d8: { color: 'black', type: 'queen' },
+			e8: { color: 'black', type: 'king' },
+			f8: { color: 'black', type: 'bishop' },
+			g8: { color: 'black', type: 'knight' },
+			h8: { color: 'black', type: 'rook' },
+			a7: { color: 'black', type: 'pawn' },
+			b7: { color: 'black', type: 'pawn' },
+			c7: { color: 'black', type: 'pawn' },
+			d7: { color: 'black', type: 'pawn' },
+			e7: { color: 'black', type: 'pawn' },
+			f7: { color: 'black', type: 'pawn' },
+			g7: { color: 'black', type: 'pawn' },
+			h7: { color: 'black', type: 'pawn' },
+		},
+		toMove: 'white',
+	}) as GL.Board

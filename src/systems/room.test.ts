@@ -1,57 +1,55 @@
 import { describe, expect, test } from 'vitest'
 import { AppConsole, UtilsConsole } from '../console.ts'
 import * as T from '../utils/testUtils.ts'
+import * as R from './room.ts'
+import { firstValueFrom } from 'rxjs'
+import { filter } from 'rxjs/operators'
 
 describe('Room', async () => {
-	test('Create a room, have a second player connect', async () => {
-		const { page: page1 } = await T.getPage()
-		const { page: page2 } = await T.getPage()
+	test('Create a room, have a second player connect', async (test) => {
+		const { page: page1 } = await T.getPage(`[${test.task.name}]:p1`)
+		const { page: page2 } = await T.getPage(`[${test.task.name}]:p2`)
+		console.log('p1')
 		const roomId = await page1.evaluate(async () => {
 			const app = (window as any).App as AppConsole
-			const U = (window as any).Utils as UtilsConsole
-			await app.Player.setupPlayer()
-
-			await U.createRoot(async () => {
-				await app.Room.createRoom(U.getOwner()!)
-			})
-
-			return app.Room.room()?.roomId
+			await app.P.setupPlayer()
+			app.P.setPlayer({ ...app.P.player(), name: 'player1' })
+			await app.R.connectToRoom(null, true)
+			return app.R.room()?.roomId
 		})
+		console.log('p2')
 		expect(roomId).toBeDefined()
 
 		const roomId2 = await page2.evaluate(async (roomId: string) => {
 			const app = (window as any).App as AppConsole
 			const U = (window as any).Utils as UtilsConsole
-			await app.Player.setupPlayer()
+			await app.P.setupPlayer()
+			app.P.setPlayer({ ...app.P.player(), name: 'player1' })
 
 			await U.createRoot(async () => {
-				await app.Room.connectToRoom(roomId, U.getOwner()!)
+				await app.R.connectToRoom(roomId)
 			})
 
-			return app.Room.room()?.roomId
+			return app.R.room()?.roomId
 		}, roomId!)
 
 		expect(roomId).toEqual(roomId2)
 	})
 
-	test('send messages', async () => {
+	test('send messages', async (test) => {
 		const originalMessage = 'Hello World!'
-		const { page: sender } = await T.getPage()
-		const { page: receiver } = await T.getPage()
-		const roomId = await T.createId(6)
+		const { page: sender } = await T.getPage(`[${test.task.name}]:sender`)
+		const { page: receiver } = await T.getPage(`[${test.task.name}]:receiver`)
+		const roomId = T.createId(6)
 
 		const receiverPromise = receiver.evaluate(async (roomId) => {
 			const app = (window as any).App as AppConsole
-			const U = (window as any).Utils as UtilsConsole
-			await app.Player.setupPlayer()
-			app.Player.setPlayer({ ...app.Player.player(), name: 'receiver' })
+			await app.P.setupPlayer()
+			app.P.setPlayer({ ...app.P.player(), name: 'receiver' })
+			await app.R.connectToRoom(roomId, true)
 
-			await U.createRoot(async () => {
-				await app.Room.createRoom(U.getOwner()!, roomId)
-			})
-
-			return await new Promise<string>((resolve) => {
-				app.Room.room()!.chat.observe((e) => {
+			return await new Promise<R.ChatMessage>((resolve) => {
+				app.R.room()!.chat.observe((e) => {
 					if (e.changes.delta.length == 0) return
 					const messages = e.changes.delta
 						.filter((c) => c.insert)
@@ -67,62 +65,83 @@ describe('Room', async () => {
 		await sender.evaluate(
 			async ({ roomId, originalMessage }: any) => {
 				const app = (window as any).App as AppConsole
-				const U = (window as any).Utils as UtilsConsole
-				await app.Player.setupPlayer()
-				app.Player.setPlayer({ ...app.Player.player(), name: 'sender' })
+				await app.P.setupPlayer()
+				app.P.setPlayer({ ...app.P.player(), name: 'sender' })
 
-				await U.createRoot(async () => {
-					await app.Room.connectToRoom(roomId, U.getOwner()!)
-				})
+				await app.R.connectToRoom(roomId)
 
-				app.Room.sendMessage(originalMessage, false)
+				app.R.sendMessage(originalMessage, false)
 			},
 			{ roomId, originalMessage }
 		)
 
-		expect(await receiverPromise).toEqual({
-			sender: 'sender',
-			text: originalMessage,
-		})
+		const receiverMessage = await receiverPromise
+		expect(receiverMessage.text).toEqual(originalMessage)
+		expect(receiverMessage.sender).toEqual('sender')
 	})
 
-	test('start game', async () => {
-		const { page: host } = await T.getPage()
-		const { page: guest } = await T.getPage()
+	test('player disconnects', async (test) => {
+		const { page: host } = await T.getPage(`[${test.task.name}]:host`)
+		const { page: guest } = await T.getPage(`[${test.task.name}]:guest`)
+		const roomId = await T.createId(6)
+
+		const hostPromise = host.evaluate(async (roomId) => {
+			const app = (window as any).App as AppConsole
+			const U = (window as any).Utils as UtilsConsole
+			await app.P.setupPlayer()
+			app.P.setPlayer({ ...app.P.player(), name: 'host' })
+
+			await app.R.connectToRoom(roomId, true)
+			await U.until(
+				() => app.R.room()?.players && app.R.room()!.players.size > 1
+			)
+			await U.until(
+				() => app.R.room()?.players && app.R.room()!.players.size === 1
+			)
+
+			return app.R.room()!.chat.toArray()
+		}, roomId)
+
+		await guest.evaluate(async (roomId) => {
+			const app = (window as any).App as AppConsole
+			await app.P.setupPlayer()
+			app.P.setPlayerName('guest')
+			await app.R.connectToRoom(roomId)
+		}, roomId)
+
+		await guest.close()
+		const messages = await hostPromise
+		expect(messages).toEqual('guest')
+	})
+
+	test('start game', async (test) => {
+		const { page: host } = await T.getPage(`[${test.task.name}]:host`)
+		const { page: guest } = await T.getPage(`[${test.task.name}]:guest`)
 		const roomId = await T.createId(6)
 
 		const actionPromise = host.evaluate(async (roomId) => {
 			const app = (window as any).App as AppConsole
-			const U = (window as any).Utils as UtilsConsole
-			await app.Player.setupPlayer()
-			app.Player.setPlayer({ ...app.Player.player(), name: 'host' })
+			await app.P.setupPlayer()
+			app.P.setPlayer({ ...app.P.player(), name: 'host' })
 
-			await U.createRoot(async () => {
-				await app.Room.createRoom(U.getOwner()!, roomId)
-			})
+			await app.R.connectToRoom(roomId, true)
 
-			return new Promise((resolve) => {
-				app.Room.observeActions((actions) => {
-					for (let a of actions) {
-						if (a.type === 'new-game') {
-							resolve(a)
-						}
-					}
-				})
-			})
+			return await firstValueFrom(
+				app.R.observeActions().pipe(filter((a) => a.type === 'new-game'))
+			)
 		}, roomId)
 
 		await guest.evaluate(async (roomId) => {
 			const app = (window as any).App as AppConsole
 			const U = (window as any).Utils as UtilsConsole
-			await app.Player.setupPlayer()
-			app.Player.setPlayer({ ...app.Player.player(), name: 'guest' })
+			await app.P.setupPlayer()
+			app.P.setPlayer({ ...app.P.player(), name: 'guest' })
 
 			await U.createRoot(async () => {
-				await app.Room.connectToRoom(roomId, U.getOwner()!)
+				await app.R.connectToRoom(roomId)
 			})
 
-			app.Room.startGame()
+			app.R.startGame()
 		}, roomId)
 
 		const action = await actionPromise

@@ -7,7 +7,11 @@ export function Home() {
 	const navigate = useNavigate()
 
 	async function createRoom() {
-		await R.connectToRoom(null)
+		const status = await R.connectToRoom(null, true)
+		if (status !== 'connected') {
+			alert('Failed to create room')
+			return
+		}
 		navigate(`/room/${R.room()!.roomId}`)
 	}
 

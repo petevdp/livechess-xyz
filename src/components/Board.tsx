@@ -1,14 +1,18 @@
-import { batch, createEffect, createSignal, For, onMount, Show } from 'solid-js'
+import {batch, createEffect, createSignal, For, from, onCleanup, onMount, Show,} from 'solid-js'
+import {filter} from 'rxjs/operators'
 import * as G from '../systems/game/game.ts'
+import {PlayerWithColor} from '../systems/game/game.ts'
 import * as GL from '../systems/game/gameLogic.ts'
-import { ColoredPiece } from '../systems/game/gameLogic.ts'
+import {ColoredPiece} from '../systems/game/gameLogic.ts'
 import * as R from '../systems/room.ts'
 import * as P from '../systems/player.ts'
-import { yMapToStore } from '../utils/yjs.ts'
+import * as Modal from './Modal.tsx'
 import styles from './Board.module.css'
-import { Button } from './Button.tsx'
+import {Button} from './Button.tsx'
+import {firstValueFrom, from as rxFrom} from 'rxjs'
+import {until} from '@solid-primitives/promise'
 
-export function Board() {
+export function Board(props: { game: G.Game }) {
 	const [boardFlipped, setBoardFlipped] = createSignal(false)
 
 	const canvas = (
@@ -23,6 +27,8 @@ export function Board() {
 	)
 
 	let imageCache: Record<string, HTMLImageElement> = {}
+
+	const gameState = () => props.game.state
 
 	function render() {
 		const ctx = canvas.getContext('2d')!
@@ -42,10 +48,11 @@ export function Board() {
 			}
 		}
 
-		if (G.game.lastMove) {
+		let gameState = props.game.state
+		if (gameState.lastMove) {
 			const highlightedSquares =
-				G.game.moveHistory.length > 0
-					? [G.game.lastMove.from, G.game.lastMove.to]
+				gameState.moveHistory.length > 0
+					? [gameState.lastMove.from, gameState.lastMove.to]
 					: []
 			for (let square of highlightedSquares) {
 				if (!square) continue
@@ -60,11 +67,11 @@ export function Board() {
 			}
 		}
 
-		for (let [square, piece] of Object.entries(G.game.board.pieces)) {
+		for (let [square, piece] of Object.entries(gameState.board.pieces)) {
 			if (square === grabbedSquare()) {
 				continue
 			}
-			const _promotionSelection = G.promotionSelection()
+			const _promotionSelection = props.game.promotion()
 			if (
 				_promotionSelection &&
 				_promotionSelection.status === 'selecting' &&
@@ -101,7 +108,7 @@ export function Board() {
 			let y = grabbedSquareMousePos()!.y
 			ctx.drawImage(
 				imageCache[
-					resolvePieceImagePath(G.game.board.pieces[grabbedSquare()!]!)
+					resolvePieceImagePath(gameState.board.pieces[grabbedSquare()!]!)
 				],
 				x - squareSize / 2,
 				y - squareSize / 2,
@@ -113,11 +120,10 @@ export function Board() {
 	}
 
 	createEffect(() => {
-		if (G.playerColor(P.player().id) === 'black') {
+		if (props.game.playerColor(P.player()!.id) === 'black') {
 			setBoardFlipped(true)
 		}
 	})
-	const [players] = yMapToStore(R.room()!.players)
 
 	onMount(async () => {
 		function getSquareFromCoords(x: number, y: number) {
@@ -153,14 +159,14 @@ export function Board() {
 					hoveredSquare() &&
 					clickedSquare() !== hoveredSquare()
 				) {
-					G.tryMakeMove(clickedSquare()!, hoveredSquare()!)
+					props.game.tryMakeMove(clickedSquare()!, hoveredSquare()!)
 					setClickedSquare(null)
 				} else if (
 					hoveredSquare() &&
-					G.game.board.pieces[hoveredSquare()!] &&
+					gameState().board.pieces[hoveredSquare()!] &&
 					(G.playForBothSides ||
-						G.game.board.pieces[hoveredSquare()!]!.color ===
-							G.playerColor(P.player().id))
+						gameState().board.pieces[hoveredSquare()!]!.color ===
+						props.game.playerColor(P.player()!.id))
 				) {
 					setGrabbedSquare(hoveredSquare)
 					const rect = canvas.getBoundingClientRect()
@@ -184,14 +190,14 @@ export function Board() {
 					setClickedSquare(square)
 					setGrabbedSquare(null)
 				} else if (_grabbedSquare && _grabbedSquare !== hoveredSquare()) {
-					G.tryMakeMove(_grabbedSquare!, square)
+					props.game.tryMakeMove(_grabbedSquare!, square)
 					setGrabbedSquare(null)
 				}
 			})
 		})
 
 		await Promise.all(
-			Object.values(G.game.board.pieces).map(async (piece) => {
+			Object.values(gameState().board.pieces).map(async (piece) => {
 				const src = resolvePieceImagePath(piece)
 				imageCache[src] = await loadImage(src)
 			})
@@ -206,10 +212,10 @@ export function Board() {
 			canvas.style.cursor = 'grabbing'
 		} else if (
 			hoveredSquare() &&
-			G.game.board.pieces[hoveredSquare()!] &&
+			gameState().board.pieces[hoveredSquare()!] &&
 			(G.playForBothSides ||
-				G.game.board.pieces[hoveredSquare()!]!.color ===
-					G.playerColor(P.player().id))
+				gameState().board.pieces[hoveredSquare()!]!.color ===
+				props.game.playerColor(P.player()!.id))
 		) {
 			canvas.style.cursor = 'grab'
 		} else {
@@ -217,40 +223,88 @@ export function Board() {
 		}
 	})
 
-	// const [_pastedPosition, setPastedPosition] = createSignal(null as null | string)
-	// createEffect(() => {
-	//     if (_pastedPosition()) {
-	//         R.startGame(JSON.parse(_pastedPosition()!))
-	//         setPastedPosition(null)
-	//     }
-	// })
-
 	// @ts-ignore
 	const setPromotion = (piece: GL.PromotionPiece) =>
-		G.setPromotionSelection({
+		props.game.setPromotion({
 			status: 'selected',
 			piece,
-			from: G.promotionSelection()!.from,
-			to: G.promotionSelection()!.to,
+			from: props.game.promotion()!.from,
+			to: props.game.promotion()!.to,
 		})
 
-	const opponent = () => players.find(([_, p]) => p.id !== P.player().id)![1]
-	const player = () => players.find(([_, p]) => p.id === P.player().id)![1]
+	const players = from(rxFrom(props.game.players()))
+	const opponent = () =>
+		players()?.find((p) => p.id !== P.player()!.id && !p.spectator) as
+			| G.PlayerWithColor
+			| undefined
+	const player = () =>
+		players()?.find((p) => p.id === P.player()!.id) as
+			| G.PlayerWithColor
+			| undefined
+
+	const [isGameOverModalDisposed, setIsGameOverModalDisposed] =
+		createSignal(false)
+
+	onCleanup(() => {
+		setIsGameOverModalDisposed(true)
+	})
+
+	// listen for game over, and display modal when completed(async () => {
+	await until(() => props.game.isEnded())
+
+	Modal.prompt(
+		'Game over',
+		(_props) => {
+			return (
+				<div>
+					{props.game.state.winner} wins!
+					<Button
+						kind="primary"
+						onclick={() => {
+							_props.onCompleted(true)
+							R.room()!.dispatchRoomAction({type: 'play-again'})
+						}}
+					>
+						Play Again
+					</Button>
+				</div>
+			)
+		},
+		false,
+		isGameOverModalDisposed
+	)
+
+	// wait for either
+	await firstValueFrom(
+		R.room()!
+			.yClient.observeEvent('roomAction', false)
+			.pipe(filter((a) => a.type === 'play-again'))
+	)
+
+	setIsGameOverModalDisposed(true)
+}
+
+)
+()
 
 	return (
 		<div class={styles.boardContainer}>
-			<PlayerDisplay player={opponent()} class={styles.opponent} />
+			<Show when={opponent()}>
+				<PlayerDisplay player={opponent()!} class={styles.opponent}/>
+			</Show>
 			{canvas}
-			<PlayerDisplay player={player()} class={styles.player} />
+			<Show when={player()}>
+				<PlayerDisplay player={player()!} class={styles.player}/>
+			</Show>
 			<div class={styles.leftPanel}>
 				<span>
-					{G.isPlaying()
-						? `${G.game.board.toMove} to move`
-						: G.game.endReason +
-							(G.game.winner ? `: ${G.game.winner} wins` : '')}
+					{!props.game.isEnded()
+						? `${gameState().board.toMove} to move`
+						: gameState().endReason +
+						(gameState().winner ? `: ${gameState().winner} wins` : '')}
 				</span>
 				<div class="align-center flex flex-col">
-					<For each={G.game.moveHistory}>
+					<For each={gameState().moveHistory}>
 						{(move) => (
 							<pre>
 								<code class="text-neutral-400">
@@ -260,7 +314,7 @@ export function Board() {
 						)}
 					</For>
 				</div>
-				<Show when={GL.inCheck(G.game)}>Check!</Show>
+				<Show when={GL.inCheck(gameState())}>Check!</Show>
 			</div>
 			<div class={styles.rightPanel}>
 				<Button
@@ -272,20 +326,20 @@ export function Board() {
 				</Button>
 				<Button
 					kind="secondary"
-					onclick={() => R.dispatchAction({ type: 'offer-draw' })}
+					onclick={() => R.room()!.dispatchRoomAction({type: 'offer-draw'})}
 					class="mb-1"
 				>
 					offer draw
 				</Button>
 				<Button
 					kind="secondary"
-					onclick={() => R.dispatchAction({ type: 'resign' })}
+					onclick={() => R.room()?.dispatchRoomAction({type: 'resign'})}
 					class="mb-1"
 				>
 					resign
 				</Button>
 			</div>
-			<Show when={G.promotionSelection()?.status === 'selecting'}>
+			<Show when={props.game.promotion()?.status === 'selecting'}>
 				{GL.PROMOTION_PIECES.map((piece) => {
 					return (
 						<Button kind={'secondary'} onclick={() => setPromotion(piece)}>
@@ -298,11 +352,11 @@ export function Board() {
 	)
 }
 
-function PlayerDisplay(props: { player: P.Player; class: string }) {
+function PlayerDisplay(props: { player: PlayerWithColor, class: string }) {
 	return (
 		<div class={props.class}>
 			{props.player.name}{' '}
-			<i class="text-neutral-400">({G.playerColor(props.player.id)})</i>
+			<i class="text-neutral-400">({props.player.color})</i>
 		</div>
 	)
 }
