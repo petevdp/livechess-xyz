@@ -30,9 +30,15 @@ export type RoomActionArgs =
 			move: GL.Move
 	  }
 	| {
+			type: 'offer-draw'
+	  }
+	| {
+			type: 'cancel-draw'
+	  }
+	| {
 			type: 'game-finished'
 			outcome: GL.GameOutcome
-			winnerId: string
+			winnerId: string | null
 	  }
 	| {
 			type: 'new-game'
@@ -87,6 +93,9 @@ const roomYWrapperDef = {
 		gameConfig: {
 			default: GL.defaultGameConfig,
 		},
+		drawOfferedBy: {
+			default: null as string | null, // playerId
+		},
 	},
 	awareness: {
 		playerId: 'empty',
@@ -133,6 +142,7 @@ export class Room {
 	async connectedPlayers() {
 		return await firstValueFrom(this.observeConnectedPlayers()).catch((e) => {
 			console.error('error getting connected players: ', e)
+			return []
 		})
 	}
 
@@ -242,8 +252,8 @@ export class Room {
 
 					if (action.type === 'game-finished' && roomStatus === 'in-progress') {
 						await this.yClient.setValue('status', 'postgame')
-						const winner = await this.yClient.getEntity('player', action.winnerId)
-						await this.sendMessage(`Game Ended: ${action.outcome.reason}: (winner: ${winner!.name})`, true)
+						const winner = action.winnerId && (await this.yClient.getEntity('player', action.winnerId))
+						await this.sendMessage(`Game Ended: ${action.outcome.reason}: (${winner ? winner.name : 'draw'})`, true)
 						return
 					}
 

@@ -1,7 +1,7 @@
 import * as Y from 'yjs'
-import { mergeAll, Observable, share, Subscription } from 'rxjs'
+import { endWith, firstValueFrom, mergeAll, Observable, share, Subscription } from 'rxjs'
 import { Awareness } from 'y-protocols/awareness'
-import { map } from 'rxjs/operators'
+import { filter, map } from 'rxjs/operators'
 
 export type EntityStoreDef<E extends any = any> = {
 	key: (e: E) => string
@@ -204,6 +204,15 @@ export class YState<DC extends DataConfig> {
 				}
 			}
 		})
+	}
+
+	async waitForEvent<EK extends EventKey<DC>>(key: EK, predicate: (e: EventValue<DC, EK>) => boolean) {
+		return await firstValueFrom(this.observeEvent(key, false).pipe(filter(predicate), endWith(null)));
+	}
+
+	async getLatestEvent<EK extends EventKey<DC>>(key: EK) {
+		await this.docReady$
+		return this.eventLedgers[key].get(this.eventLedgers[key].length - 1)
 	}
 
 	async getAllevents<EK extends EventKey<DC>>(key: EK) {

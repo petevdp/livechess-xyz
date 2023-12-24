@@ -72,15 +72,14 @@ export const startPos = () =>
 
 //#region organization
 export type GameOutcome = {
-	winner: 'white' | 'black' | 'draw'
-	reason: 'checkmate' | 'stalemate' | 'insufficient-material' | 'threefold-repetition' | 'resigned'
+	winner: 'white' | 'black' | null
+	reason: 'checkmate' | 'stalemate' | 'insufficient-material' | 'threefold-repetition' | 'resigned' | 'draw-accepted'
 }
 
 export type GameStateNoGetters = {
 	players: { [id: string]: Color }
 	boardHistory: BoardHistoryEntry[]
 	moveHistory: MoveHistory
-	outcome: GameOutcome | null
 }
 
 export const VARIANTS = [
@@ -167,17 +166,6 @@ function moveToCandidateMove(move: Move): CandidateMove {
 
 //#region game status
 
-export const GAME_ENDED_REASONS = [
-	'checkmate',
-	'stalemate',
-	'threefold-repetition',
-	'insufficient-material',
-	'draw-agreed',
-	'timeout',
-	'resigned',
-] as const
-export type GameEndedReason = (typeof GAME_ENDED_REASONS)[number]
-
 export function inCheck(game: GameState) {
 	return _inCheck(game.board)
 }
@@ -213,13 +201,13 @@ export function getGameOutcome(state: GameState) {
 		winner = state.board.toMove === 'white' ? 'black' : 'white'
 		reason = 'checkmate'
 	} else if (stalemated(state)) {
-		winner = 'draw'
+		winner = null
 		reason = 'stalemate'
 	} else if (insufficientMaterial(state)) {
-		winner = 'draw'
+		winner = null
 		reason = 'insufficient-material'
 	} else if (threefoldRepetition(state)) {
-		winner = 'draw'
+		winner = null
 		reason = 'threefold-repetition'
 	} else {
 		return null

@@ -1,9 +1,9 @@
-import { Accessor, createEffect, createRoot, createSignal, from, untrack } from 'solid-js'
+import { Accessor, createEffect, createRoot, createSignal, from, on, untrack } from 'solid-js'
 import * as GL from './gameLogic.ts'
 import { BoardHistoryEntry, GameConfig, startPos } from './gameLogic.ts'
 import * as R from '../room.ts'
 import * as P from '../player.ts'
-import { mergeAll, scan, startWith, Subscription } from 'rxjs'
+import { concat, endWith, firstValueFrom, mergeAll, scan, Subscription } from 'rxjs'
 import { filter, map } from 'rxjs/operators'
 import { HasTimestampAndIndex } from '../../utils/yjs.ts'
 import { until } from '@solid-primitives/promise'
@@ -45,10 +45,11 @@ createRoot(() => {
 						if (currentNewGameActionIndex === -1) return
 						const newGameAction = allActions[currentNewGameActionIndex]
 						await game()?.destroy()
-						//@ts-ignore I quit
 						let _game = new Game(
 							room,
+							//@ts-ignore I quit
 							newGameAction.gameConfig,
+							//@ts-ignore
 							newGameAction.playerColors,
 							await until(() => P.player()?.id)
 						)
@@ -65,7 +66,7 @@ export class Game {
 	state: GL.GameState
 	promotion: Accessor<PromotionSelection | null>
 	setPromotion: (p: PromotionSelection | null) => void
-	subcription: Subscription
+	subscription: Subscription
 	runOnDipose: (() => void)[] = []
 
 	constructor(
@@ -74,13 +75,13 @@ export class Game {
 		private playerColors: GL.GameState['players'],
 		private playerId: string
 	) {
-		this.subcription = new Subscription()
+		console.log(this.gameConfig)
+		this.subscription = new Subscription()
 		const startingBoard: BoardHistoryEntry = {
 			board: startPos(),
 			index: 0,
 			hash: GL.hashBoard(startPos()),
 		}
-		console.log({ gameConfig: this.gameConfig })
 		let state = null as unknown as GL.GameState
 
 		createRoot((dispose) => {
@@ -97,16 +98,6 @@ export class Game {
 				)
 			)
 
-			const resigned = from(
-				observeGameActions(this.room).pipe(
-					map((a) =>
-						a.type === 'game-finished' && a.outcome.reason === 'resigned' ? this.playerColors[a.playerId] : null
-					),
-					filter((p) => !!p),
-					startWith(null)
-				)
-			)
-
 			state = {
 				get boardHistory(): BoardHistoryEntry[] {
 					return boardHistory() || [startingBoard]
@@ -119,16 +110,6 @@ export class Game {
 				},
 				get lastMove() {
 					return this.moveHistory[this.moveHistory.length - 1]
-				},
-				get outcome(): GL.GameOutcome | null {
-					if (resigned()) {
-						const winner = Object.values(this.players).find((color) => color !== resigned())!
-						return {
-							reason: 'resigned',
-							winner,
-						}
-					}
-					return GL.getGameOutcome(this)
 				},
 				players: this.playerColors,
 			}
@@ -160,10 +141,6 @@ export class Game {
 
 	isPlayerTurn() {
 		return this.state.board.toMove === this.playerColor(this.playerId)
-	}
-
-	isEnded() {
-		return !!this.state.outcome
 	}
 
 	async tryMakeMove(from: string, to: string, promotionPiece?: GL.PromotionPiece) {
@@ -208,19 +185,11 @@ export class Game {
 			)
 			await Promise.all(ops)
 		})
-
-		if (this.state.outcome) {
-			await this.room.dispatchRoomAction({
-				type: 'game-finished',
-				outcome: this.state!.outcome,
-				winnerId: this.state!.outcome!.winner,
-			})
-		}
 	}
 
 	async destroy() {
 		await this.room.yClient.clearEntities('boardHistory')
-		this.subcription.unsubscribe()
+		this.subscription.unsubscribe()
 		this.runOnDipose.forEach((f) => f())
 	}
 
@@ -236,11 +205,62 @@ export class Game {
 		})
 	}
 
-	offerDraw() {
-		throw new Error('not implemented')
+	async offerDraw() {
+		await this.room.dispatchRoomAction({
+			type: 'offer-draw',
+		})
+	}
+
+	observeDrawOffered() {
+		return this.room.yClient.observeValue('drawOfferedBy', true)
+	}
+
+	observeLastGameAction() {
+		return concat(this.room.yClient.getLatestEvent('roomAction'), this.room.yClient.observeEvent('roomAction', false))
+	}
+
+	async waitForGameOutcome() {
+		return await firstValueFrom(
+			this.observeLastGameAction().pipe(
+				map((a) => (a.type === 'game-finished' ? a.outcome : null)),
+				filter((a) => !!a),
+				endWith(null)
+			)
+		).then((a) => {
+			if (!a) throw new Error('stopped receving game-finished events, but no game-outcome yet')
+			return a
+		})
 	}
 
 	private async setupListeners() {
+		//#region handle draw offers
+		const drawOfferedBy = from(this.observeDrawOffered())
+		this.subscription.add(
+			this.observeLastGameAction().subscribe((a) => {
+				if (a.playerId !== this.playerId) return
+				// we're checking against offer-draw here instead of a possible draw-accepted event so if they offer at the same time, the draw is automatically made
+				if (a.type === 'offer-draw' && drawOfferedBy() && drawOfferedBy() !== a.playerId) {
+					this.room.yClient.runWithTransaction(async (t) => {
+						await this.room.dispatchRoomAction(
+							{
+								type: 'game-finished',
+								outcome: { reason: 'draw-accepted', winner: null },
+								winnerId: null,
+							},
+							t
+						)
+						await this.room.yClient.setValue('drawOfferedBy', null, t)
+					})
+					return
+				} else if (a.type === 'offer-draw') {
+					this.room.yClient.setValue('drawOfferedBy', a.playerId)
+				} else {
+					this.room.yClient.setValue('drawOfferedBy', null)
+				}
+			})
+		)
+		//#endregion
+
 		createRoot((dispose) => {
 			this.runOnDipose.push(dispose)
 
@@ -252,6 +272,21 @@ export class Game {
 					this.tryMakeMove(_promotionSelection.from, _promotionSelection.to, _promotionSelection.piece)
 				}
 			})
+			//#endregion
+
+			//#region sync gamestate derived outcomes
+			createEffect(() => {
+				if (!this.isPlayerTurn()) return // so we don't trigger this effect on both clients
+				on(
+					() => GL.getGameOutcome(this.state),
+					(gameOutcome) => {
+						if (!gameOutcome) return
+						const winnerId = (gameOutcome.winner && this.playerColor(gameOutcome.winner)) || null
+						this.room.dispatchRoomAction({ type: 'game-finished', outcome: gameOutcome, winnerId })
+					}
+				)
+			})
+
 			//#endregion
 		})
 	}

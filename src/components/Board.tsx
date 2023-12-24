@@ -1,4 +1,16 @@
-import { batch, createEffect, createSignal, For, from, onCleanup, onMount, Show } from 'solid-js'
+import {
+	Accessor,
+	batch,
+	createEffect,
+	createSignal,
+	For,
+	from,
+	Match,
+	onCleanup,
+	onMount,
+	Show,
+	Switch,
+} from 'solid-js'
 import { filter } from 'rxjs/operators'
 import * as G from '../systems/game/game.ts'
 import { PlayerWithColor } from '../systems/game/game.ts'
@@ -10,22 +22,23 @@ import * as Modal from './Modal.tsx'
 import styles from './Board.module.css'
 import { Button } from './Button.tsx'
 import { firstValueFrom, from as rxFrom } from 'rxjs'
-import { until } from '@solid-primitives/promise'
 
 export function Board(props: { game: G.Game }) {
-	const [boardFlipped, setBoardFlipped] = createSignal(false)
+	const gameState = () => props.game.state
+	const players = from(rxFrom(props.game.players()))
+	const opponent = () =>
+		players()?.find((p) => p.id !== P.player()!.id && !p.spectator) as G.PlayerWithColor | undefined
+	const player = () => players()?.find((p) => p.id === P.player()!.id) as G.PlayerWithColor | undefined
 
+	//#region board rendering and mouse events
+	const imageCache: Record<string, HTMLImageElement> = {}
 	const canvas = (<canvas class={styles.board} width={600} height={600} />) as HTMLCanvasElement
 	const squareSize = canvas.width / 8
+	const [boardFlipped, setBoardFlipped] = createSignal(false)
 	const [hoveredSquare, setHoveredSquare] = createSignal(null as null | string)
 	const [grabbedSquare, setGrabbedSquare] = createSignal(null as null | string)
 	const [clickedSquare, setClickedSquare] = createSignal(null as null | string)
 	const [grabbedSquareMousePos, setGrabbedSquareMousePos] = createSignal(null as null | { x: number; y: number })
-
-	let imageCache: Record<string, HTMLImageElement> = {}
-
-	const gameState = () => props.game.state
-
 	function render() {
 		const ctx = canvas.getContext('2d')!
 
@@ -98,7 +111,7 @@ export function Board(props: { game: G.Game }) {
 	}
 
 	createEffect(() => {
-		if (props.game.playerColor(P.player()!.id) === 'black') {
+		if (player() && player()!.color === 'black') {
 			setBoardFlipped(true)
 		}
 	})
@@ -191,6 +204,7 @@ export function Board(props: { game: G.Game }) {
 			canvas.style.cursor = 'default'
 		}
 	})
+	//#endregion
 
 	// @ts-ignore
 	const setPromotion = (piece: GL.PromotionPiece) =>
@@ -201,19 +215,14 @@ export function Board(props: { game: G.Game }) {
 			to: props.game.promotion()!.to,
 		})
 
-	const players = from(rxFrom(props.game.players()))
-	const opponent = () =>
-		players()?.find((p) => p.id !== P.player()!.id && !p.spectator) as G.PlayerWithColor | undefined
-	const player = () => players()?.find((p) => p.id === P.player()!.id) as G.PlayerWithColor | undefined
-
+	//#region game over modal
 	const [isGameOverModalDisposed, setIsGameOverModalDisposed] = createSignal(false)
 
 	onCleanup(() => {
 		setIsGameOverModalDisposed(true)
 	})
 	;(async function handleGameEnd() {
-		const outcome = await until(() => props.game.state.outcome)
-		console.log('game ended')
+		const outcome = await props.game.waitForGameOutcome()
 
 		Modal.prompt(
 			'Game over',
@@ -247,6 +256,9 @@ export function Board(props: { game: G.Game }) {
 
 		setIsGameOverModalDisposed(true)
 	})().catch((err) => console.error(err))
+	//#endregion
+
+	const drawOfferedPlayerId = from(props.game.observeDrawOffered()) as Accessor<string | null>
 
 	return (
 		<div class={styles.boardContainer}>
@@ -287,6 +299,9 @@ export function Board(props: { game: G.Game }) {
 				<Button kind="secondary" onclick={() => props.game.resign()} class="mb-1">
 					resign
 				</Button>
+				<Show when={drawOfferedPlayerId()}>
+					<DrawOffers playerId={drawOfferedPlayerId()!} player={player()!} opponent={opponent()!} />
+				</Show>
 			</div>
 			<Show when={props.game.promotion()?.status === 'selecting'}>
 				{GL.PROMOTION_PIECES.map((piece) => {
@@ -298,6 +313,33 @@ export function Board(props: { game: G.Game }) {
 				})}
 			</Show>
 		</div>
+	)
+}
+
+function DrawOffers(props: { playerId: string; player: G.PlayerWithColor; opponent: G.PlayerWithColor }) {
+	const isPlayer = () => props.playerId === props.player.id
+	const cancelDraw = () => R.room()!.dispatchRoomAction({ type: 'cancel-draw' })
+	const acceptDraw = () => R.room()!.dispatchRoomAction({ type: 'offer-draw' })
+	return (
+		<Switch>
+			<Match when={isPlayer()}>
+				<div>You have Offered a draw</div>
+				<Button onClick={cancelDraw} kind="primary">
+					Cancel
+				</Button>
+			</Match>
+			<Match when={!isPlayer()}>
+				<div>
+					<i>{props.opponent.name}</i> has offered a draw
+				</div>
+				<Button onClick={acceptDraw} kind="primary">
+					Accept
+				</Button>
+				<Button kind={'secondary'} onClick={cancelDraw}>
+					Decline
+				</Button>
+			</Match>
+		</Switch>
 	)
 }
 
