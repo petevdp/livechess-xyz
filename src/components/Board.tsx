@@ -211,7 +211,7 @@ export function Board(props: { game: G.Game }) {
 	onCleanup(() => {
 		setIsGameOverModalDisposed(true)
 	})
-	;(async () => {
+	;(async function handleGameEnd() {
 		const outcome = await until(() => props.game.state.outcome)
 		console.log('game ended')
 
@@ -246,7 +246,7 @@ export function Board(props: { game: G.Game }) {
 		console.log('play again')
 
 		setIsGameOverModalDisposed(true)
-	})()
+	})().catch((err) => console.error(err))
 
 	return (
 		<div class={styles.boardContainer}>

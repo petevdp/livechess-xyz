@@ -1,9 +1,9 @@
-import { Accessor, createEffect, createRoot, createSignal, from } from 'solid-js'
+import { Accessor, createEffect, createRoot, createSignal, from, untrack } from 'solid-js'
 import * as GL from './gameLogic.ts'
 import { BoardHistoryEntry, GameConfig, startPos } from './gameLogic.ts'
 import * as R from '../room.ts'
 import * as P from '../player.ts'
-import { scan, startWith, Subscription, withLatestFrom } from 'rxjs'
+import { mergeAll, scan, startWith, Subscription } from 'rxjs'
 import { filter, map } from 'rxjs/operators'
 import { HasTimestampAndIndex } from '../../utils/yjs.ts'
 import { until } from '@solid-primitives/promise'
@@ -25,24 +25,37 @@ export const [game, setGame] = createSignal(null as Game | null)
 
 createRoot(() => {
 	let subscription = new Subscription()
+	let gameIndex = 0
 	createEffect(() => {
-		const _room = R.room()
-		if (!_room) {
-			subscription.unsubscribe()
-			subscription = new Subscription()
-			return
-		}
-
-		;(async () => {
+		const room = R.room()
+		untrack(() => {
+			if (!room) {
+				subscription.unsubscribe()
+				subscription = new Subscription()
+				return
+			}
 			subscription.add(
-				_room.yClient.observeEvent('roomAction', true).subscribe(async (a) => {
-					if (a.type === 'new-game') {
+				observeGameActions(room)
+					.pipe(filter((a) => a.type === 'new-game'))
+					.subscribe(async (a) => {
+						console.log('initializing game')
+						if (a.index < gameIndex) return
+						const allActions = await room.yClient.getAllevents('roomAction')
+						let currentNewGameActionIndex = getCurrentNewGameActionIndex(allActions)
+						if (currentNewGameActionIndex === -1) return
+						const newGameAction = allActions[currentNewGameActionIndex]
 						await game()?.destroy()
-						setGame(new Game(_room, a.gameConfig, a.playerColors, await until(() => P.player()?.id)))
-					}
-				})
+						//@ts-ignore I quit
+						let _game = new Game(
+							room,
+							newGameAction.gameConfig,
+							newGameAction.playerColors,
+							await until(() => P.player()?.id)
+						)
+						setGame(_game)
+					})
 			)
-		})()
+		})
 	})
 })
 
@@ -67,39 +80,39 @@ export class Game {
 			index: 0,
 			hash: GL.hashBoard(startPos()),
 		}
+		console.log({ gameConfig: this.gameConfig })
 		let state = null as unknown as GL.GameState
 
 		createRoot((dispose) => {
 			this.runOnDipose.push(dispose)
 
-			const boardHistory = from(
-				this.room.yClient.observeEntities('boardHistory', true).pipe(startWith([startingBoard]))
-			) as Accessor<BoardHistoryEntry[]>
+			this.room.yClient.setEntity('boardHistory', '0', startingBoard)
+			const boardHistory = from(this.room.yClient.observeEntities('boardHistory', true))
+
 			let moveHistory = from(
-				this.observeGameActions().pipe(
+				observeGameActions(this.room).pipe(
 					map((a) => (a.type === 'move' ? a.move : null)),
 					filter((m) => !!m),
-					scan((acc, m) => [...acc, m as GL.Move], [] as GL.Move[]),
-					startWith([])
+					scan((acc, m) => [...acc, m as GL.Move], [] as GL.Move[])
 				)
-			) as Accessor<GL.Move[]>
+			)
 
 			const resigned = from(
-				this.observeGameActions().pipe(
+				observeGameActions(this.room).pipe(
 					map((a) =>
 						a.type === 'game-finished' && a.outcome.reason === 'resigned' ? this.playerColors[a.playerId] : null
 					),
 					filter((p) => !!p),
 					startWith(null)
 				)
-			) as unknown as Accessor<GL.Color | null>
+			)
 
 			state = {
 				get boardHistory(): BoardHistoryEntry[] {
-					return boardHistory()
+					return boardHistory() || [startingBoard]
 				},
 				get moveHistory() {
-					return moveHistory()
+					return moveHistory() || []
 				},
 				get board() {
 					return this.boardHistory[this.boardHistory.length - 1].board
@@ -141,20 +154,6 @@ export class Game {
 	}
 
 	// hot observable
-	observeGameActions() {
-		// this is a hot observable due to this
-		const getLastNewGamePromise = this.room.yClient.getAllevents('roomAction').then(getCurrentNewGameAction)
-
-		return this.room.yClient.observeEvent('roomAction', true).pipe(
-			withLatestFrom(getLastNewGamePromise),
-			filter(([a, lastNewGame]) => {
-				if (!lastNewGame) return false
-				return a.index > lastNewGame.index
-			}),
-			map(([a]) => a)
-		)
-	}
-
 	playerColor(id: string) {
 		return this.state.players[id]
 	}
@@ -168,6 +167,7 @@ export class Game {
 	}
 
 	async tryMakeMove(from: string, to: string, promotionPiece?: GL.PromotionPiece) {
+		console.log('tryMakeMove', { from, to, promotionPiece })
 		if (!this.isPlayerTurn() || !this.state.board.pieces[from]) return
 		let result = GL.validateAndPlayMove(from, to, this.state, promotionPiece)
 		if (!result) {
@@ -257,15 +257,29 @@ export class Game {
 	}
 }
 
-function getCurrentNewGameAction(actions: (R.RoomAction & HasTimestampAndIndex)[]) {
+export function observeGameActions(room: R.Room) {
+	// this is a hot observable due to this
+	const getLastNewGamePromise = room.yClient.getAllevents('roomAction').then(getCurrentNewGameActionIndex)
+
+	return room.yClient.observeEvent('roomAction', true).pipe(
+		map(async (a) => {
+			const lastNewGameIndex = (await getLastNewGamePromise) || 0
+			if (a.index < lastNewGameIndex) return null as unknown as typeof a
+			return a
+		}),
+		mergeAll(),
+		filter((a) => a !== null)
+	)
+}
+
+function getCurrentNewGameActionIndex(actions: (R.RoomAction & HasTimestampAndIndex)[]) {
 	let idx = -1
 	for (let action of actions) {
 		if (action.type === 'new-game') {
 			idx = action.index
 		}
 	}
-	if (idx === -1) return null
-	return actions[idx]
+	return idx
 }
 
 export const playForBothSides = false

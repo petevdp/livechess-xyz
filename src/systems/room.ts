@@ -87,9 +87,6 @@ const roomYWrapperDef = {
 		gameConfig: {
 			default: GL.defaultGameConfig,
 		},
-		creator: {
-			default: null as string | null,
-		},
 	},
 	awareness: {
 		playerId: 'empty',
@@ -134,7 +131,9 @@ export class Room {
 	}
 
 	async connectedPlayers() {
-		return firstValueFrom(this.observeConnectedPlayers())
+		return await firstValueFrom(this.observeConnectedPlayers()).catch((e) => {
+			console.error('error getting connected players: ', e)
+		})
 	}
 
 	observeConnectedPlayers() {

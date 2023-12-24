@@ -951,3 +951,7 @@ castle in check
 	"toMove": "white"
 }
 ```
+
+```javascript
+App.R.room().yClient.doc.toJSON()
+```

@@ -1,8 +1,6 @@
+import hash from 'object-hash'
 //#region primitives
 
-import hash from 'object-hash'
-
-console.log(hash)
 
 export const PIECES = [
 	'pawn',
@@ -30,9 +28,54 @@ export type Move = {
 	enPassant: boolean
 	ts: number
 }
+
+export const startPos = () =>
+	({
+		pieces: {
+			a1: { color: 'white', type: 'rook' },
+			b1: { color: 'white', type: 'knight' },
+			c1: { color: 'white', type: 'bishop' },
+			d1: { color: 'white', type: 'queen' },
+			e1: { color: 'white', type: 'king' },
+			f1: { color: 'white', type: 'bishop' },
+			g1: { color: 'white', type: 'knight' },
+			h1: { color: 'white', type: 'rook' },
+			a2: { color: 'white', type: 'pawn' },
+			b2: { color: 'white', type: 'pawn' },
+			c2: { color: 'white', type: 'pawn' },
+			d2: { color: 'white', type: 'pawn' },
+			e2: { color: 'white', type: 'pawn' },
+			f2: { color: 'white', type: 'pawn' },
+			g2: { color: 'white', type: 'pawn' },
+			h2: { color: 'white', type: 'pawn' },
+
+			a8: { color: 'black', type: 'rook' },
+			b8: { color: 'black', type: 'knight' },
+			c8: { color: 'black', type: 'bishop' },
+			d8: { color: 'black', type: 'queen' },
+			e8: { color: 'black', type: 'king' },
+			f8: { color: 'black', type: 'bishop' },
+			g8: { color: 'black', type: 'knight' },
+			h8: { color: 'black', type: 'rook' },
+			a7: { color: 'black', type: 'pawn' },
+			b7: { color: 'black', type: 'pawn' },
+			c7: { color: 'black', type: 'pawn' },
+			d7: { color: 'black', type: 'pawn' },
+			e7: { color: 'black', type: 'pawn' },
+			f7: { color: 'black', type: 'pawn' },
+			g7: { color: 'black', type: 'pawn' },
+			h7: { color: 'black', type: 'pawn' },
+		},
+		toMove: 'white',
+	}) as Board
 //#endregion
 
 //#region organization
+export type GameOutcome = {
+	winner: 'white' | 'black' | 'draw'
+	reason: 'checkmate' | 'stalemate' | 'insufficient-material' | 'threefold-repetition' | 'resigned'
+}
+
 export type GameStateNoGetters = {
 	players: { [id: string]: Color }
 	boardHistory: BoardHistoryEntry[]
@@ -156,15 +199,32 @@ export function threefoldRepetition(game: GameState) {
 
 export function insufficientMaterial(game: GameState) {
 	for (let piece of Object.values(game.board.pieces)) {
-		if (
-			piece.type === 'pawn' ||
-			piece.type === 'rook' ||
-			piece.type === 'queen'
-		) {
+		if (piece.type === 'pawn' || piece.type === 'rook' || piece.type === 'queen') {
 			return false
 		}
 	}
 	return true
+}
+
+export function getGameOutcome(state: GameState) {
+	let winner: GameOutcome['winner']
+	let reason: GameOutcome['reason']
+	if (checkmated(state)) {
+		winner = state.board.toMove === 'white' ? 'black' : 'white'
+		reason = 'checkmate'
+	} else if (stalemated(state)) {
+		winner = 'draw'
+		reason = 'stalemate'
+	} else if (insufficientMaterial(state)) {
+		winner = 'draw'
+		reason = 'insufficient-material'
+	} else if (threefoldRepetition(state)) {
+		winner = 'draw'
+		reason = 'threefold-repetition'
+	} else {
+		return null
+	}
+	return { winner, reason } as GameOutcome
 }
 
 //#endregion
@@ -695,72 +755,11 @@ function noMoves(game: GameState) {
 }
 
 //#endregion
-export const startPos = () =>
-	({
-		pieces: {
-			a1: { color: 'white', type: 'rook' },
-			b1: { color: 'white', type: 'knight' },
-			c1: { color: 'white', type: 'bishop' },
-			d1: { color: 'white', type: 'queen' },
-			e1: { color: 'white', type: 'king' },
-			f1: { color: 'white', type: 'bishop' },
-			g1: { color: 'white', type: 'knight' },
-			h1: { color: 'white', type: 'rook' },
-			a2: { color: 'white', type: 'pawn' },
-			b2: { color: 'white', type: 'pawn' },
-			c2: { color: 'white', type: 'pawn' },
-			d2: { color: 'white', type: 'pawn' },
-			e2: { color: 'white', type: 'pawn' },
-			f2: { color: 'white', type: 'pawn' },
-			g2: { color: 'white', type: 'pawn' },
-			h2: { color: 'white', type: 'pawn' },
 
-			a8: { color: 'black', type: 'rook' },
-			b8: { color: 'black', type: 'knight' },
-			c8: { color: 'black', type: 'bishop' },
-			d8: { color: 'black', type: 'queen' },
-			e8: { color: 'black', type: 'king' },
-			f8: { color: 'black', type: 'bishop' },
-			g8: { color: 'black', type: 'knight' },
-			h8: { color: 'black', type: 'rook' },
-			a7: { color: 'black', type: 'pawn' },
-			b7: { color: 'black', type: 'pawn' },
-			c7: { color: 'black', type: 'pawn' },
-			d7: { color: 'black', type: 'pawn' },
-			e7: { color: 'black', type: 'pawn' },
-			f7: { color: 'black', type: 'pawn' },
-			g7: { color: 'black', type: 'pawn' },
-			h7: { color: 'black', type: 'pawn' },
-		},
-		toMove: 'white',
-	}) as Board
 
+//#region misc
 export function hashBoard(board: Board) {
 	return hash.sha1(board)
 }
 
-export type GameOutcome = {
-	winner: 'white' | 'black' | 'draw'
-	reason: 'checkmate' | 'stalemate' | 'insufficient-material' | 'threefold-repetition' | 'resigned'
-}
-
-export function getGameOutcome(state: GameState) {
-	let winner: GameOutcome['winner']
-	let reason: GameOutcome['reason']
-	if (checkmated(state)) {
-		winner = state.board.toMove === 'white' ? 'black' : 'white'
-		reason = 'checkmate'
-	} else if (stalemated(state)) {
-		winner = 'draw'
-		reason = 'stalemate'
-	} else if (insufficientMaterial(state)) {
-		winner = 'draw'
-		reason = 'insufficient-material'
-	} else if (threefoldRepetition(state)) {
-		winner = 'draw'
-		reason = 'threefold-repetition'
-	} else {
-		return null
-	}
-	return { winner, reason } as GameOutcome
-}
+//#endregion

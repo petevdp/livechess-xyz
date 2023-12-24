@@ -64,17 +64,13 @@ export function RoomGuard() {
 function Room() {
 	const roomStatus = from(R.room()!.observeRoomStatus())
 	createEffect(() => {
-		console.log('room status', roomStatus())
+		console.log('room status', roomStatus(), 'game', G.game())
 	})
 
 	return (
 		<Switch>
 			<Match when={roomStatus() === 'pregame' && P.player()!.name != null}>
 				<Lobby />
-			</Match>
-			<Match when={!G.game() && roomStatus() === 'in-progress'}>
-				// TODO: fix whatever this is
-				<div>IDK</div>
 			</Match>
 			<Match
 				when={
