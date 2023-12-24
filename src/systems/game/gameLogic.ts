@@ -1,5 +1,9 @@
 //#region primitives
 
+import hash from 'object-hash'
+
+console.log(hash)
+
 export const PIECES = [
 	'pawn',
 	'knight',
@@ -30,11 +34,10 @@ export type Move = {
 
 //#region organization
 export type GameStateNoGetters = {
-	endReason?: GameEndedReason
-	winner: Color | null
 	players: { [id: string]: Color }
-	boardHistory: BoardHistory
+	boardHistory: BoardHistoryEntry[]
 	moveHistory: MoveHistory
+	outcome: GameOutcome | null
 }
 
 export const VARIANTS = [
@@ -71,7 +74,7 @@ export type Board = {
 	toMove: Color
 }
 export type MoveHistory = Move[]
-export type BoardHistory = [string, Board][]
+export type BoardHistoryEntry = { hash: string; board: Board; index: number }
 export type Coords = {
 	x: number
 	y: number
@@ -146,10 +149,8 @@ export function stalemated(game: GameState) {
 
 export function threefoldRepetition(game: GameState) {
 	if (game.boardHistory.length === 0) return false
-	const currentHash = game.boardHistory[game.boardHistory.length - 1][0]
-	const dupeCount = game.boardHistory.filter(
-		([hash]) => hash === currentHash
-	).length
+	const currentHash = game.boardHistory[game.boardHistory.length - 1].hash
+	const dupeCount = game.boardHistory.filter(({ hash }) => hash === currentHash).length
 	return dupeCount == 3
 }
 
@@ -732,4 +733,34 @@ export const startPos = () =>
 			h7: { color: 'black', type: 'pawn' },
 		},
 		toMove: 'white',
-	}) as GL.Board
+	}) as Board
+
+export function hashBoard(board: Board) {
+	return hash.sha1(board)
+}
+
+export type GameOutcome = {
+	winner: 'white' | 'black' | 'draw'
+	reason: 'checkmate' | 'stalemate' | 'insufficient-material' | 'threefold-repetition' | 'resigned'
+}
+
+export function getGameOutcome(state: GameState) {
+	let winner: GameOutcome['winner']
+	let reason: GameOutcome['reason']
+	if (checkmated(state)) {
+		winner = state.board.toMove === 'white' ? 'black' : 'white'
+		reason = 'checkmate'
+	} else if (stalemated(state)) {
+		winner = 'draw'
+		reason = 'stalemate'
+	} else if (insufficientMaterial(state)) {
+		winner = 'draw'
+		reason = 'insufficient-material'
+	} else if (threefoldRepetition(state)) {
+		winner = 'draw'
+		reason = 'threefold-repetition'
+	} else {
+		return null
+	}
+	return { winner, reason } as GameOutcome
+}

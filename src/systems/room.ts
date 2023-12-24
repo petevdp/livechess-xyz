@@ -1,6 +1,7 @@
 import { WebsocketProvider } from 'y-websocket'
 import { createId } from '../utils/ids.ts'
 import * as GL from './game/gameLogic.ts'
+import { BoardHistoryEntry } from './game/gameLogic.ts'
 import * as Y from 'yjs'
 import * as P from './player.ts'
 import { WS_CONNECTION } from '../config.ts'
@@ -9,22 +10,19 @@ import { until } from '@solid-primitives/promise'
 import {
 	combineLatest,
 	concatAll,
+	distinctUntilChanged,
+	first,
 	firstValueFrom,
 	mergeAll,
 	Subscription,
+	takeUntil,
 } from 'rxjs'
 import * as YU from '../utils/yjs.ts'
 import { filter, map } from 'rxjs/operators'
+import { isEqual } from 'lodash'
 
 export const ROOM_STATES = ['pregame', 'in-progress', 'postgame'] as const
 export type RoomStatus = (typeof ROOM_STATES)[number]
-export const GAME_ENDED_ACTION_TYPES = [
-	'resign',
-	'offer-draw',
-	'accept-draw',
-	'reject-draw',
-] as const
-export type GameEndedActionType = (typeof GAME_ENDED_ACTION_TYPES)[number]
 
 export type RoomActionArgs =
 	| {
@@ -32,12 +30,17 @@ export type RoomActionArgs =
 			move: GL.Move
 	  }
 	| {
-			type: GameEndedActionType | 'play-again'
+			type: 'game-finished'
+			outcome: GL.GameOutcome
+			winnerId: string
 	  }
 	| {
 			type: 'new-game'
 			gameConfig: GL.GameConfig
 			playerColors: GL.GameState['players']
+	  }
+	| {
+			type: 'play-again'
 	  }
 
 // actions are events that need to be replicated, though chat messages are handled separately
@@ -59,10 +62,14 @@ const roomYWrapperDef = {
 		player: {
 			key: (p: RoomParticipant) => p.id,
 			startingValues: [] as RoomParticipant[],
-		} satisfies YU.EntityStoreDef<RoomParticipant>,
+		},
 		processedRoomActions: {
 			key: (index: number) => index.toString(),
 			startingValues: [] as number[],
+		},
+		boardHistory: {
+			key: (entry: GL.BoardHistoryEntry) => entry.index.toString(),
+			startingValues: [] as BoardHistoryEntry[],
 		},
 	},
 	events: {
@@ -76,9 +83,6 @@ const roomYWrapperDef = {
 	values: {
 		status: {
 			default: 'pregame' as RoomStatus,
-		},
-		cachedBoard: {
-			default: [-1, GL.startPos()] as [number, ReturnType<typeof GL.startPos>],
 		},
 		gameConfig: {
 			default: GL.defaultGameConfig,
@@ -110,13 +114,7 @@ export class Room {
 			connect: false,
 		})
 
-		this.yClient = new YU.YState(
-			doc,
-			this.wsProvider,
-			roomYWrapperDef,
-			this.wsProvider.awareness,
-			isNewRoom
-		)
+		this.yClient = new YU.YState(doc, this.wsProvider, roomYWrapperDef, this.wsProvider.awareness, isNewRoom)
 
 		this.subscription = new Subscription()
 
@@ -136,19 +134,26 @@ export class Room {
 	}
 
 	async connectedPlayers() {
-		return await Promise.all(
-			(await this.yClient.getAllEntities('player')).filter(async (p) => {
-				const playerIds = Object.values(
-					await this.yClient.getAwarenessState()
-				).map((s) => s.playerId)
-				return playerIds.includes(p.id)
-			})
+		return firstValueFrom(this.observeConnectedPlayers())
+	}
+
+	observeConnectedPlayers() {
+		let player$ = this.yClient.observeEntityChanges('player', true).pipe(
+			map(() => this.players),
+			mergeAll()
+		)
+		return combineLatest([player$, this.yClient.observeAwareness(true)]).pipe(
+			map(async ([players, awareness]) => {
+				const connectedPlayerIds = [...awareness.values()].map((s) => s.playerId)
+				return players.filter((p) => connectedPlayerIds.includes(p.id))
+			}),
+			concatAll(),
+			distinctUntilChanged<RoomParticipant[]>(isEqual)
 		)
 	}
 
 	async host() {
-		let players = await this.players
-		return players.sort((a, b) => a.joinTs - b.joinTs)[0]
+		return resolveHost(await this.connectedPlayers())
 	}
 
 	async roomStatus() {
@@ -162,24 +167,18 @@ export class Room {
 	canStart() {}
 
 	observeHost() {
-		return this.yClient.observeEntity('player', true).pipe(
+		return this.yClient.observeEntityChanges('player', true).pipe(
 			map(() => this.host()),
 			concatAll()
 		)
 	}
 
 	observeCanStart() {
-		const player$ = this.yClient.observeEntity('player', true).pipe(
-			map(() => this.players),
-			concatAll()
-		)
-		const status$ = this.yClient.observeValue('status', true).pipe(
-			map(() => this.yClient.getValue('status')),
-			concatAll()
-		)
+		const player$ = this.observeConnectedPlayers()
+		const status$ = this.observeRoomStatus()
 		return combineLatest([player$, status$]).pipe(
 			map(([players, status]) => {
-				return status === 'pregame' && players.length > 1
+				return status === 'pregame' && players.length >= 2
 			})
 		)
 	}
@@ -200,24 +199,15 @@ export class Room {
 		return await this.yClient.getValue('gameConfig')
 	}
 
-	async setRoomState(state: RoomStatus) {
-		await this.yClient.setValue('status', state)
-	}
-
-	async startGame() {
-		await this.yClient.dispatchEvent('roomAction', {
-			type: 'new-game',
-			gameConfig: GL.defaultGameConfig,
-			playerColors: [(await this.host()).id, (await this.guest()).id],
-			playerId: (await this.host()).id,
-		})
-	}
-
-	async dispatchRoomAction(action: RoomActionArgs) {
-		await this.yClient.dispatchEvent('roomAction', {
-			playerId: this.playerId,
-			...action,
-		})
+	async dispatchRoomAction(action: RoomActionArgs, t?: YU.Transaction) {
+		await this.yClient.dispatchEvent(
+			'roomAction',
+			{
+				playerId: this.playerId,
+				...action,
+			},
+			t
+		)
 	}
 
 	async destroy() {
@@ -225,57 +215,47 @@ export class Room {
 		await this.yClient.destroy()
 	}
 
+	observeIsHost() {
+		return this.observeConnectedPlayers().pipe(
+			map(resolveHost),
+			filter((p) => !!p),
+			map((host) => host.id === this.playerId),
+			distinctUntilChanged()
+		)
+	}
+
 	private async setupListeners() {
-		//#region handle actions as host
+		//#region handle actions originating from this client
 		this.subscription.add(
 			this.yClient
 				.observeEvent('roomAction', true)
 				.pipe(
-					// do this separately so we ensure that we process actions in order
-					map(async (a) => {
-						if ((await this.host()).id !== (await until(() => P.player()?.id)))
-							return []
-						return [a]
-					}),
-					mergeAll(), // merge promise
-					mergeAll() // merge arrays
+					// handle events that were created by this client
+					filter((a) => a.playerId !== this.playerId)
 				)
 				.subscribe(async (action) => {
-					await this.yClient.setEntity(
-						'processedRoomActions',
-						action.index.toString(),
-						action.index
-					)
+					let processedActionIdx = await this.yClient.getEntity('processedRoomActions', action.index.toString())
+					if (processedActionIdx !== undefined) return
+					console.log('processing action ', action)
+
+					await this.yClient.setEntity('processedRoomActions', action.index.toString(), action.index)
 					let roomStatus = await this.roomStatus()
 
-					if (
-						GAME_ENDED_ACTION_TYPES.includes(
-							action.type as GameEndedActionType
-						) &&
-						roomStatus === 'in-progress'
-					) {
+					if (action.type === 'game-finished' && roomStatus === 'in-progress') {
 						await this.yClient.setValue('status', 'postgame')
-						await this.sendMessage(`Game Ended`, true)
+						const winner = await this.yClient.getEntity('player', action.winnerId)
+						await this.sendMessage(`Game Ended: ${action.outcome.reason}: (winner: ${winner!.name})`, true)
 						return
 					}
 
 					if (action.type === 'new-game' && roomStatus === 'pregame') {
-						const player = await this.yClient.getEntity(
-							'player',
-							action.playerId
-						)
+						const player = await this.yClient.getEntity('player', action.playerId)
 						if (!player) {
-							console.warn(
-								`player not found when attempting to log message (${action.type}):`,
-								action.playerId
-							)
+							console.warn(`player not found when attempting to log message (${action.type}):`, action.playerId)
 							return
 						}
 						await this.yClient.setValue('status', 'in-progress')
-						await this.sendMessage(
-							`${player.name!} has started a new game`,
-							true
-						)
+						await this.sendMessage(`${player.name!} has started a new game`, true)
 						return
 					}
 					if (action.type === 'play-again' && roomStatus === 'postgame') {
@@ -287,31 +267,50 @@ export class Room {
 		//#endregion
 
 		//#region check if any players have DCed
-		this.subscription.add(
-			this.yClient
-				.observeAwareness(true)
-				.pipe(
-					map(async (a) => {
-						const host = await this.host()
-						let playerId = until(() => P.player()?.id)
-						if (!host || host.id !== (await playerId)) return []
-						return [a]
-					}),
-					mergeAll(), // merge promise
-					mergeAll() // merge arrays
-				)
-				.subscribe(async () => {
-					for (let player of await this.players) {
-						if (
-							(await this.connectedPlayers())
-								.map((p) => p.id)
-								.includes(player.id)
-						)
-							continue
-						await this.sendMessage(`${player.name} has disconnected`, true)
-					}
-				})
+		const host$ = this.observeHost().pipe(
+			map((p) => p.id === this.playerId),
+			distinctUntilChanged()
 		)
+		const clientIsNotHost$ = host$.pipe(
+			filter((isHost) => !isHost),
+			first()
+		)
+
+		host$
+			.pipe(
+				filter((isHost) => isHost),
+				map(() => {
+					return this.yClient.observeAwareness(true).pipe(takeUntil(clientIsNotHost$))
+				}),
+				concatAll()
+			)
+			.subscribe(async (awareness) => {
+				const connectedPlayerIds = [...awareness.values()].map((s) => s.playerId)
+				for (let player of await this.players) {
+					if (connectedPlayerIds.includes(player.id)) continue
+					await this.sendMessage(`${player.name} has disconnected`, true)
+				}
+			})
+		// this.subscription.add(
+		// 	this.yClient
+		// 		.observeAwareness(true)
+		// 		.pipe(
+		// 			map(async (a) => {
+		// 				const host = await this.host()
+		// 				let playerId = until(() => P.player()?.id)
+		// 				if (!host || host.id !== (await playerId)) return []
+		// 				return [a]
+		// 			}),
+		// 			mergeAll(), // merge promise
+		// 			mergeAll() // merge arrays
+		// 		)
+		// 		.subscribe(async () => {
+		// 			for (let player of await this.players) {
+		// 				if ((await this.connectedPlayers()).map((p) => p.id).includes(player.id)) continue
+		// 				await this.sendMessage(`${player.name} has disconnected`, true)
+		// 			}
+		// 		})
+		// )
 		//#endregion
 
 		this.wsProvider.once('connection-error', (e: any) => {
@@ -334,10 +333,13 @@ export async function connectToRoom(roomId: string | null, isNewRoom = false) {
 	_room = new Room(roomId, await until(() => P.player()?.id), isNewRoom)
 	setRoom(_room)
 
-	const status = await firstValueFrom(
-		_room.yClient.connectionStatus$.pipe(filter((s) => s === 'connected'))
-	)
+	const status = await firstValueFrom(_room.yClient.connectionStatus$.pipe(filter((s) => s === 'connected')))
 	console.log({ status })
 
 	return status
+}
+
+// TODO we should realy be resolving host to a client, not to a player, as a player can have multiple clients
+function resolveHost(players: RoomParticipant[]) {
+	return players.sort((a, b) => a.joinTs - b.joinTs)[0]
 }

@@ -1,14 +1,4 @@
-import {
-	createEffect,
-	createSignal,
-	For,
-	from,
-	Match,
-	on,
-	onMount,
-	Show,
-	Switch,
-} from 'solid-js'
+import { createEffect, createSignal, For, from, Match, on, onMount, Show, Switch } from 'solid-js'
 import * as P from '../systems/player.ts'
 import { useParams } from '@solidjs/router'
 import * as R from '../systems/room.ts'
@@ -26,8 +16,7 @@ import { until } from '@solid-primitives/promise'
 export function RoomGuard() {
 	const params = useParams()
 
-	const [connectionStatus, setConnectionStatus] =
-		createSignal<ConnectionStatus>('disconnected')
+	const [connectionStatus, setConnectionStatus] = createSignal<ConnectionStatus>('disconnected')
 	let sub = new Subscription()
 	createEffect(() => {
 		if (!R.room() || R.room()!.roomId !== params.id) {
@@ -40,9 +29,7 @@ export function RoomGuard() {
 		}
 
 		if (R.room()) {
-			sub.add(
-				R.room()!.yClient.connectionStatus$.subscribe(setConnectionStatus)
-			)
+			sub.add(R.room()!.yClient.connectionStatus$.subscribe(setConnectionStatus))
 			setConnectionStatus(R.room()!.yClient.connectionStatus)
 		} else {
 			sub.unsubscribe()
@@ -76,6 +63,9 @@ export function RoomGuard() {
 
 function Room() {
 	const roomStatus = from(R.room()!.observeRoomStatus())
+	createEffect(() => {
+		console.log('room status', roomStatus())
+	})
 
 	return (
 		<Switch>
@@ -108,6 +98,7 @@ function Lobby() {
 
 	const host = from(R.room()!.observeHost())
 	const canStart = from(R.room()!.observeCanStart())
+
 	return (
 		<div class="grid grid-cols-[60%_auto] gap-2">
 			<GameConfigForm />
@@ -115,11 +106,7 @@ function Lobby() {
 				<ChatBox />
 			</div>
 			<div class="col-span-1 flex w-full justify-center">
-				<Button
-					kind="primary"
-					class="whitespace-nowrap"
-					onclick={copyInviteLink}
-				>
+				<Button kind="primary" class="whitespace-nowrap" onclick={copyInviteLink}>
 					Copy Invite Link
 				</Button>
 				<Show when={P.player() && host() && host()!.id === P.player()!.id}>
@@ -231,8 +218,7 @@ function ChatBox() {
 
 	let chatFeed: HTMLDivElement = null as unknown as HTMLDivElement
 	createEffect(
-		on(messages, (messages) => {
-			console.log({ messages })
+		on(messages, () => {
 			chatFeed.scrollTop = chatFeed.scrollHeight
 		})
 	)

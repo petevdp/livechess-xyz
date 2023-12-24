@@ -181,6 +181,6 @@ export async function prompt<T>(
 	})
 
 	await until(() => output() !== null)
-	disposeOwner()
+	!disposedAccessor() && disposeOwner()
 	return output()!.out
 }

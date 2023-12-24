@@ -1,5 +1,6 @@
 import * as R from './systems/room.ts'
 import * as G from './systems/game/game.ts'
+import * as GL from './systems/game/gameLogic.ts'
 import * as P from './systems/player.ts'
 import * as M from './components/Modal.tsx'
 import { createEffect, createRoot, getOwner } from 'solid-js'
@@ -12,6 +13,7 @@ const appConsole = {
 	G,
 	P,
 	M,
+	GL,
 }
 
 const utils = {

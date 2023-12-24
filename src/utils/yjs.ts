@@ -1,6 +1,7 @@
 import * as Y from 'yjs'
-import { Observable, share, Subscription } from 'rxjs'
+import { mergeAll, Observable, share, Subscription } from 'rxjs'
 import { Awareness } from 'y-protocols/awareness'
+import { map } from 'rxjs/operators'
 
 export type EntityStoreDef<E extends any = any> = {
 	key: (e: E) => string
@@ -126,7 +127,7 @@ export class YState<DC extends DataConfig> {
 		}
 	}
 
-	observeEntity<K extends EntityKey<DC>>(key: K, includeExisting: boolean) {
+	observeEntityChanges<K extends EntityKey<DC>>(key: K, includeExisting: boolean) {
 		return new Observable<EntityChange<DC, K>>((sub) => {
 			const observer = (e: Y.YMapEvent<EntityValue<DC, K>>) => {
 				for (const [k, { action }] of e.changes.keys.entries()) {
@@ -161,6 +162,13 @@ export class YState<DC extends DataConfig> {
 				}
 			}
 		})
+	}
+
+	observeEntities<K extends EntityKey<DC>>(key: K, includeExisting: boolean) {
+		return this.observeEntityChanges(key, includeExisting).pipe(
+			map(() => this.getAllEntities(key)),
+			mergeAll()
+		)
 	}
 
 	observeEvent<EK extends EventKey<DC>>(key: EK, includePrevious: boolean) {
@@ -203,23 +211,23 @@ export class YState<DC extends DataConfig> {
 		return this.eventLedgers[key].toArray()
 	}
 
-	async dispatchEvent<EK extends EventKey<DC>>(
-		key: EK,
-		value: EventValue<DC, EK>
-	) {
+	async dispatchEvent<EK extends EventKey<DC>>(key: EK, value: EventValue<DC, EK>, transaction?: Transaction) {
 		await this.docReady$
-		this.eventLedgers[key].push([
-			{ ...value, ts: Date.now(), index: this.eventLedgers[key].length },
-		])
+		const action = () =>
+			this.eventLedgers[key].push([{ ...value, ts: Date.now(), index: this.eventLedgers[key].length }])
+
+		transaction ? transaction.pushAction(action) : action()
 	}
 
 	async setEntity<K extends EntityKey<DC>>(
 		key: K,
 		id: ReturnType<DC['entities'][K]['key']>,
-		value: EntityValue<DC, K>
+		value: EntityValue<DC, K>,
+		transaction?: Transaction
 	) {
 		await this.docReady$
-		this.entities[key].set(id, value)
+		const action = () => this.entities[key].set(id, value)
+		transaction ? transaction.pushAction(action) : action()
 	}
 
 	async getAllEntities<K extends EntityKey<DC>>(key: K) {
@@ -234,10 +242,12 @@ export class YState<DC extends DataConfig> {
 
 	async setValue(
 		key: keyof DC['values'],
-		value: DC['values'][keyof DC['values']]['default']
+		value: DC['values'][keyof DC['values']]['default'],
+		transaction?: Transaction
 	) {
 		await this.docReady$
-		this.valueMap.set(key as string, value)
+		const action = () => this.valueMap.set(key as string, value)
+		transaction ? transaction.pushAction(action) : action()
 	}
 
 	async getValue<K extends keyof DC['values']>(key: K) {
@@ -245,15 +255,22 @@ export class YState<DC extends DataConfig> {
 		return this.valueMap.get(key as string) as DC['values'][K]['default']
 	}
 
+	async clearEntities<K extends EntityKey<DC>>(key: K, transaction?: Transaction) {
+		await this.docReady$
+		const action = () => this.entities[key].clear()
+		transaction ? transaction.pushAction(action) : action()
+	}
+
 	observeAwareness(includeExisting: boolean) {
-		return new Observable<DC['awareness']>((sub) => {
+		type Out = Map<number, DC['awareness']>
+		return new Observable<Out>((sub) => {
 			const listener = () => {
-				sub.next(this.awareness.states as DC['awareness'])
+				sub.next(this.awareness.states as Out)
 			}
 
 			this.docReady$.then(() => {
 				if (includeExisting) {
-					sub.next(this.awareness.states as DC['awareness'])
+					sub.next(this.awareness.states as Out)
 				}
 				this.awareness.on('update', listener)
 			})
@@ -265,22 +282,26 @@ export class YState<DC extends DataConfig> {
 	}
 
 	observeValue<K extends keyof DC['values']>(key: K, includeExisting: boolean) {
-		return new Observable<DC['values'][K]['default']>((sub) => {
+		type Out<DC extends DataConfig, K extends keyof DC['values']> = DC['values'][K]['default']
+
+		return new Observable<Out<DC, K>>((sub) => {
 			const listener = () => {
-				sub.next(this.valueMap.get(key as string) as DC['values'][K]['default'])
+				sub.next(this.valueMap.get(key as string) as Out<DC, K>)
 			}
 
 			this.docReady$.then(() => {
 				if (includeExisting) {
-					sub.next(
-						this.valueMap.get(key as string) as DC['values'][K]['default']
-					)
+					sub.next(this.valueMap.get(key as string) as Out<DC, K>)
 				}
 				this.valueMap.observe(listener)
 			})
 
 			return () => {
-				this.valueMap.unobserve(listener)
+				try {
+					this.valueMap.unobserve(listener)
+				} catch (err) {
+					// ignore
+				}
 			}
 		})
 	}
@@ -290,11 +311,16 @@ export class YState<DC extends DataConfig> {
 		return this.awareness.states
 	}
 
-	setLocalAwarenessState<K extends keyof DC['awareness']>(
-		key: K,
-		state: DC['awareness'][K]
-	) {
+	setLocalAwarenessState<K extends keyof DC['awareness']>(key: K, state: DC['awareness'][K]) {
 		this.awareness.setLocalStateField(key as string, state)
+	}
+
+	// all operations that happen in fn must be performed before the returned promise resolves
+	async runWithTransaction(fn: (t: Transaction) => Promise<void>) {
+		await this.docReady$
+		const t = new Transaction(this.doc)
+		await fn(t)
+		t.commit()
 	}
 
 	async destroy() {
@@ -339,3 +365,22 @@ export class YState<DC extends DataConfig> {
 		}
 	}
 }
+
+export class Transaction {
+	private entries = [] as (() => void)[]
+
+	constructor(private doc: Y.Doc) {}
+
+	pushAction(fn: () => void) {
+		this.entries.push(fn)
+	}
+
+	commit() {
+		this.doc.transact(() => {
+			for (let action of this.entries) {
+				action()
+			}
+		})
+	}
+}
+

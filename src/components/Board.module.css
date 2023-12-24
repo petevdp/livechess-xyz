@@ -26,6 +26,9 @@
 
 .leftPanel {
 	grid-area: left-panel;
+	display: flex;
+	flex-direction: column;
+	align-items: start;
 }
 
 .rightPanel {
