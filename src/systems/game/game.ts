@@ -1,6 +1,6 @@
-import { Accessor, createEffect, createRoot, createSignal, from, on, untrack } from 'solid-js'
+import {Accessor, createEffect, createRoot, createSignal, from, on, untrack} from 'solid-js'
 import * as GL from './gameLogic.ts'
-import { BoardHistoryEntry, GameConfig, startPos, timeControlToMs } from './gameLogic.ts'
+import {BoardHistoryEntry, GameConfig, startPos, timeControlToMs} from './gameLogic.ts'
 import * as R from '../room.ts'
 import * as P from '../player.ts'
 import {
@@ -15,24 +15,24 @@ import {
 	share,
 	startWith,
 	Subscription,
-	switchMap,
+	switchMap, takeUntil,
 } from 'rxjs'
-import { filter, map } from 'rxjs/operators'
-import { HasTimestampAndIndex } from '../../utils/yjs.ts'
-import { until } from '@solid-primitives/promise'
+import {filter, map} from 'rxjs/operators'
+import {HasTimestampAndIndex} from '../../utils/yjs.ts'
+import {until} from '@solid-primitives/promise'
 
 type PromotionSelection =
 	| {
-			status: 'selecting'
-			from: string
-			to: string
-	  }
+	status: 'selecting'
+	from: string
+	to: string
+}
 	| {
-			from: string
-			to: string
-			status: 'selected'
-			piece: GL.PromotionPiece
-	  }
+	from: string
+	to: string
+	status: 'selected'
+	piece: GL.PromotionPiece
+}
 
 export const [game, setGame] = createSignal(null as Game | null)
 
@@ -146,7 +146,7 @@ export class Game {
 	async players() {
 		const players = await this.room.yClient.getAllEntities('player')
 
-		return players.map((p) => ({ ...p, color: this.playerColor(p.id) }) as PlayerWithColor)
+		return players.map((p) => ({...p, color: this.playerColor(p.id)}) as PlayerWithColor)
 	}
 
 	// hot observable
@@ -154,12 +154,27 @@ export class Game {
 		return this.state.players[id]
 	}
 
+	colorPlayer(color: GL.Color) {
+		return Object.entries(this.state.players).find(([_, c]) => c === color)![0]
+	}
+
 	isPlayerTurn(playerId: string) {
 		return this.state.board.toMove === this.playerColor(playerId)
 	}
 
+
+	get moveHistoryAsNotation(): string[] {
+		let moves = []
+		for (let i = 0; i < Math.floor(this.state.moveHistory.length / 2); i++) {
+			const whiteMove = GL.moveToChessNotation(i * 2, this.state)
+			const blackMove = GL.moveToChessNotation(i * 2 + 1, this.state)
+			moves.push(`${i + 1} ${whiteMove} ${blackMove}`)
+		}
+		return moves;
+	}
+
 	async tryMakeMove(from: string, to: string, promotionPiece?: GL.PromotionPiece) {
-		console.log('tryMakeMove', { from, to, promotionPiece })
+		console.log('tryMakeMove', {from, to, promotionPiece})
 		if (!this.isPlayerTurn(this.playerId) || !this.state.board.pieces[from]) return
 		let result = GL.validateAndPlayMove(from, to, this.state, promotionPiece)
 		if (!result) {
@@ -170,7 +185,7 @@ export class Game {
 		if (!!this.promotion() && this.promotion()?.status === 'selecting') return
 
 		if (result.promoted && !this.promotion() && !promotionPiece) {
-			this.setPromotion({ status: 'selecting', from, to })
+			this.setPromotion({status: 'selecting', from, to})
 			return
 		}
 
@@ -237,20 +252,24 @@ export class Game {
 	observeClock() {
 		const moves = observeGameActions(this.room).pipe(
 			filter((a) => a.type === 'move'),
-			map((a) => ({ playerId: a.playerId, ts: a.ts }))
+			map((a) => ({playerId: a.playerId, ts: a.ts}))
 		)
-		const timesElapsed$ = observePlayerTimesElapsed(moves, this.gameConfig, Object.keys(this.state.players))
+		const timesElapsed$ = observePlayerTimesElapsedBeforeMove(moves, this.gameConfig, Object.keys(this.state.players))
 
 		return timesElapsed$.pipe(
+			takeUntil(this.waitForGameOutcome()),
 			switchMap((timesElapsed) => {
-				const clocks = { ...timesElapsed }
-				return interval(1000).pipe(
+				const clocks = {...timesElapsed}
+				const lastMoveTs = this.state.moveHistory.length > 0 ? this.state.lastMove.ts : 0
+				clocks[this.colorPlayer(this.state.board.toMove)] -= Date.now() - lastMoveTs
+				return interval(100).pipe(
 					map(() => {
 						for (let id of Object.keys(clocks)) {
-							if (this.isPlayerTurn(id)) clocks[id] -= 1000
+							if (this.isPlayerTurn(id)) clocks[id] -= 100
+							if (clocks[id] < 0) clocks[id] = 0
 						}
 						return clocks
-					})
+					}),
 				)
 			}),
 			startWith(getStartingClocks(this.gameConfig.timeControl, Object.keys(this.state.players)))
@@ -292,7 +311,7 @@ export class Game {
 							await this.room.dispatchRoomAction(
 								{
 									type: 'game-finished',
-									outcome: { reason: 'draw-accepted', winner: null },
+									outcome: {reason: 'draw-accepted', winner: null},
 									winnerId: null,
 								},
 								t
@@ -327,19 +346,21 @@ export class Game {
 					(gameOutcome) => {
 						if (!gameOutcome) return
 						const winnerId = (gameOutcome.winner && this.playerColor(gameOutcome.winner)) || null
-						this.room.dispatchRoomAction({ type: 'game-finished', outcome: gameOutcome, winnerId })
+						this.room.dispatchRoomAction({type: 'game-finished', outcome: gameOutcome, winnerId})
 					}
 				)
 			})
 
+			const outcome = from(this.observeGameOutcome())
 			//#region handle flagged(clock empty)
 			this.subscription.add(
 				this.clock$.subscribe((clock) => {
+					if (outcome()) return
 					for (let [playerId, timeLeft] of Object.entries(clock)) {
 						if (timeLeft <= 0 && this.isPlayerTurn(playerId)) {
 							this.room.dispatchRoomAction({
 								type: 'game-finished',
-								outcome: { reason: 'flagged', winner: this.playerColor(playerId) },
+								outcome: {reason: 'flagged', winner: this.playerColor(playerId)},
 								winnerId: Object.keys(this.state.players).find((id) => id !== playerId)!,
 							})
 							return
@@ -383,7 +404,7 @@ function getStartingClocks(timeControl: GL.TimeControl, playerIds: string[]) {
 	return clocks
 }
 
-function observePlayerTimesElapsed(
+function observePlayerTimesElapsedBeforeMove(
 	moves: Observable<{
 		playerId: string
 		ts: number
@@ -398,8 +419,11 @@ function observePlayerTimesElapsed(
 		moves.subscribe({
 			next: (a) => {
 				if (!timeLeft[a.playerId]) throw new Error(`player ${a.playerId} not in game`)
+
 				// this means that time before the first move is not counted towards the player's clock
-				if (lastMoveTs !== 0) timeLeft[a.playerId] -= a.ts - lastMoveTs + parseInt(config.increment)
+				if (lastMoveTs !== 0) {
+					timeLeft[a.playerId] -= a.ts - lastMoveTs + parseInt(config.increment)
+				}
 				s.next(timeLeft)
 				lastMoveTs = a.ts
 			},

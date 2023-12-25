@@ -26,6 +26,7 @@ export type Move = {
 	castle: boolean
 	promotion?: PromotionPiece
 	enPassant: boolean
+	capture: boolean
 	ts: number
 }
 
@@ -96,7 +97,7 @@ export const VARIANTS = [
 	'fischer-random',
 ] as const
 export type Variant = (typeof VARIANTS)[number]
-export const TIME_CONTROLS = ['15m', '10m', '5m', '3m', '1m'] as const
+export const TIME_CONTROLS = ['15m', '10m', '5m', '3m', '1m', '0.5m'] as const
 export type TimeControl = (typeof TIME_CONTROLS)[number]
 export const INCREMENTS = ['0', '1', '2', '5'] as const
 export type Increment = (typeof INCREMENTS)[number]
@@ -107,8 +108,8 @@ export type GameConfig = {
 }
 export const defaultGameConfig: GameConfig = {
 	variant: 'regular',
-	timeControl: '1m',
-	increment: '0',
+	timeControl: '5m',
+	increment: '1',
 }
 
 export type GameState = GameStateNoGetters & {
@@ -145,7 +146,8 @@ export function notationFromCoords(coords: Coords) {
 
 export function candidateMoveToMove(
 	candidateMove: CandidateMove,
-	promotion?: PromotionPiece
+	promotion?: PromotionPiece,
+	capture?: boolean
 ): Move {
 	return {
 		from: notationFromCoords(candidateMove.from),
@@ -155,6 +157,7 @@ export function candidateMoveToMove(
 		promotion: promotion,
 		enPassant: candidateMove.enPassant,
 		ts: Date.now(),
+		capture: capture || false
 	} satisfies Move
 }
 
@@ -247,7 +250,8 @@ export function validateAndPlayMove(
 	if (!candidate) {
 		return
 	}
-	const move = candidateMoveToMove(candidate)
+	const isCapture = !!game.board.pieces[to]
+	const move = candidateMoveToMove(candidate, undefined, isCapture)
 	const [newBoard, promoted] = applyMoveToBoard(candidate, game.board)
 
 	return {
@@ -758,8 +762,31 @@ export function hashBoard(board: Board) {
 }
 
 export function timeControlToMs(timeControl: TimeControl) {
-	const minutes = parseInt(timeControl.slice(0, -1))
+	const minutes = parseFloat(timeControl.slice(0, -1))
 	return minutes * 60 * 1000
 }
 
 //#endregion
+
+
+function toShortPieceName(piece: Piece) {
+	if (piece === 'knight') {
+		return 'N'
+	}
+	return piece[0].toUpperCase()
+}
+
+export function moveToChessNotation(moveIndex: number, state: GameState): string {
+	const move = state.moveHistory[moveIndex]
+	const piece = move.piece === 'pawn' ? '' : toShortPieceName(move.piece)
+	const capture = move.capture ? 'x' : ''
+	const to = move.to
+	const promotion = move.promotion ? '=' + move.promotion.toUpperCase() : ''
+	const check = inCheck(state) ? '+' : ''
+	const checkmate = check && checkmated(state) ? '#' : ''
+
+	if (move.castle) {
+		return move.to[0] === 'c' ? 'O-O-O' : 'O-O'
+	}
+	return piece + capture + to + promotion + check + checkmate
+}

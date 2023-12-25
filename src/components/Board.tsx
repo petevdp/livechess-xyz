@@ -11,17 +11,17 @@ import {
 	Show,
 	Switch,
 } from 'solid-js'
-import { filter } from 'rxjs/operators'
+import {filter} from 'rxjs/operators'
 import * as G from '../systems/game/game.ts'
-import { PlayerWithColor } from '../systems/game/game.ts'
+import {PlayerWithColor} from '../systems/game/game.ts'
 import * as GL from '../systems/game/gameLogic.ts'
-import { ColoredPiece } from '../systems/game/gameLogic.ts'
+import {ColoredPiece} from '../systems/game/gameLogic.ts'
 import * as R from '../systems/room.ts'
 import * as P from '../systems/player.ts'
 import * as Modal from './Modal.tsx'
 import styles from './Board.module.css'
-import { Button } from './Button.tsx'
-import { firstValueFrom, from as rxFrom } from 'rxjs'
+import {Button} from './Button.tsx'
+import {firstValueFrom, from as rxFrom} from 'rxjs'
 
 export function Board(props: { game: G.Game }) {
 	const gameState = () => props.game.state
@@ -32,13 +32,14 @@ export function Board(props: { game: G.Game }) {
 
 	//#region board rendering and mouse events
 	const imageCache: Record<string, HTMLImageElement> = {}
-	const canvas = (<canvas class={styles.board} width={600} height={600} />) as HTMLCanvasElement
+	const canvas = (<canvas class={styles.board} width={600} height={600}/>) as HTMLCanvasElement
 	const squareSize = canvas.width / 8
 	const [boardFlipped, setBoardFlipped] = createSignal(false)
 	const [hoveredSquare, setHoveredSquare] = createSignal(null as null | string)
 	const [grabbedSquare, setGrabbedSquare] = createSignal(null as null | string)
 	const [clickedSquare, setClickedSquare] = createSignal(null as null | string)
 	const [grabbedSquareMousePos, setGrabbedSquareMousePos] = createSignal(null as null | { x: number; y: number })
+
 	function render() {
 		const ctx = canvas.getContext('2d')!
 
@@ -138,7 +139,7 @@ export function Board(props: { game: G.Game }) {
 				// check if mouse is over a square with a piece
 				setHoveredSquare(getSquareFromCoords(x, y))
 				if (grabbedSquare()) {
-					setGrabbedSquareMousePos({ x, y })
+					setGrabbedSquareMousePos({x, y})
 				}
 			})
 		})
@@ -224,17 +225,18 @@ export function Board(props: { game: G.Game }) {
 	;(async function handleGameEnd() {
 		const outcome = await props.game.waitForGameOutcome()
 
+		console.log({outcome})
 		Modal.prompt(
-			'Game over',
 			(_props) => {
+				console.log('rendering outocme')
 				return (
 					<div>
-						<GameOutcomeDisplay outcome={outcome} />
+						<GameOutcomeDisplay outcome={outcome}/>
 						<Button
 							kind="primary"
 							onclick={() => {
 								_props.onCompleted(true)
-								R.room()!.dispatchRoomAction({ type: 'play-again' })
+								R.room()!.dispatchRoomAction({type: 'play-again'})
 							}}
 						>
 							Play Again
@@ -265,27 +267,25 @@ export function Board(props: { game: G.Game }) {
 	return (
 		<div class={styles.boardContainer}>
 			<Show when={opponent()}>
-				<PlayerDisplay player={opponent()!} class={styles.opponent} clock={timesElapsed()[opponent()!.id]} />
+				<PlayerDisplay player={opponent()!} class={styles.opponent} clock={timesElapsed()[opponent()!.id]}/>
 			</Show>
 			{canvas}
 			<Show when={player()}>
-				<PlayerDisplay player={player()!} class={styles.player} clock={timesElapsed()[player()!.id]} />
+				<PlayerDisplay player={player()!} class={styles.player} clock={timesElapsed()[player()!.id]}/>
 			</Show>
 			<div class={styles.leftPanel}>
-				<GameStateDisplay state={gameState()} outcome={gameOutcome()} />
+				<GameStateDisplay state={gameState()} outcome={gameOutcome()}/>
 				<Show when={props.game}>
-					<Button kind="primary" onClick={() => R.room()!.dispatchRoomAction({ type: 'play-again' })}>
+					<Button kind="primary" onClick={() => R.room()!.dispatchRoomAction({type: 'play-again'})}>
 						Play Again
 					</Button>
 				</Show>
 				<div class="align-center flex flex-col">
-					<For each={gameState().moveHistory}>
+					<For each={props.game.moveHistoryAsNotation}>
 						{(move) => (
-							<pre>
-								<code class="text-neutral-400">
-									{move.from} {move.to}
-								</code>
-							</pre>
+							<code class="text-neutral-400">
+								{move}
+							</code>
 						)}
 					</For>
 				</div>
@@ -302,7 +302,7 @@ export function Board(props: { game: G.Game }) {
 					resign
 				</Button>
 				<Show when={drawOfferedPlayerId()}>
-					<DrawOffers playerId={drawOfferedPlayerId()!} player={player()!} opponent={opponent()!} />
+					<DrawOffers playerId={drawOfferedPlayerId()!} player={player()!} opponent={opponent()!}/>
 				</Show>
 			</div>
 			<Show when={props.game.promotion()?.status === 'selecting'}>
@@ -320,8 +320,8 @@ export function Board(props: { game: G.Game }) {
 
 function DrawOffers(props: { playerId: string; player: G.PlayerWithColor; opponent: G.PlayerWithColor }) {
 	const isPlayer = () => props.playerId === props.player.id
-	const cancelDraw = () => R.room()!.dispatchRoomAction({ type: 'cancel-draw' })
-	const acceptDraw = () => R.room()!.dispatchRoomAction({ type: 'offer-draw' })
+	const cancelDraw = () => R.room()!.dispatchRoomAction({type: 'cancel-draw'})
+	const acceptDraw = () => R.room()!.dispatchRoomAction({type: 'offer-draw'})
 	return (
 		<Switch>
 			<Match when={isPlayer()}>
@@ -348,7 +348,7 @@ function DrawOffers(props: { playerId: string; player: G.PlayerWithColor; oppone
 function GameStateDisplay(props: { state: GL.GameState; outcome: GL.GameOutcome | null }) {
 	return (
 		<span>
-			{!props.outcome ? `${props.state.board.toMove} to move` : <GameOutcomeDisplay outcome={props.outcome} />}
+			{!props.outcome ? `${props.state.board.toMove} to move` : <GameOutcomeDisplay outcome={props.outcome}/>}
 		</span>
 	)
 }

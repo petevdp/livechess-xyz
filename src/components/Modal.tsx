@@ -5,20 +5,24 @@ import {
 	createSignal,
 	getOwner,
 	JSXElement,
-	onCleanup,
+	onCleanup, onMount,
 	runWithOwner,
 	Show,
 } from 'solid-js'
-import { Button } from './Button.tsx'
-import { until } from '@solid-primitives/promise'
+import {Button} from './Button.tsx'
+import {until} from '@solid-primitives/promise'
+import {sleep} from "../utils/time.ts";
 
 let modalContainer: HTMLDivElement | null = null
 // for some reason checking for reference equality on the JSXElement itself isn't working, so we're wrap it in an object as a workaround
-let [activeElement, setActiveElement] = createSignal<null | {
-	elt: JSXElement
-}>(null)
+type ActiveModal = {
+	title: string | null
+	elt: HTMLElement
+	closeOnEscape: boolean
+	closeOnOutsideClick: boolean
+}
 
-const [title, setTitle] = createSignal<string>('')
+const [activeModal, setActiveModal] = createSignal<ActiveModal | null>(null)
 
 export function ModalContainer() {
 	modalContainer?.remove()
@@ -26,38 +30,40 @@ export function ModalContainer() {
 		modalContainer?.remove()
 		modalContainer = null
 	})
+
 	return (
 		<div
 			ref={modalContainer!}
-			class={
-				'left-0 top-0 z-[1000] h-full w-full overflow-y-auto outline-none ' +
-				(activeElement() ? 'absolute' : 'hidden')
-			}
+			class="left-0 top-0 z-[1000] h-full w-full overflow-y-auto outline-none"
+			classList={{
+				[activeModal() ? 'absolute' : 'hidden']: true
+			}}
 			id="modal-container"
 			tabindex="-1"
 			aria-labelledby="modalLabel"
-			onclick={() => setActiveElement(null)}
-			aria-hidden={!activeElement()}
+			onclick={() => setActiveModal(null)}
+			aria-hidden={!activeModal()}
 		>
 			<div
-				class="pointer-events-none relative flex min-h-[calc(100%-1rem)] w-auto translate-y-[-50px] items-center duration-300 ease-in-out min-[576px]:mx-auto min-[576px]:mt-7 min-[576px]:min-h-[calc(100%-3.5rem)] min-[576px]:max-w-[500px]"
+				class="pointer-events-none relative top-[50%] left-[50%] transform[-translate-x-1/2_-translate-y-1/2] w-max flex items-center"
 				onclick={(e) => e.stopPropagation()}
 			>
-				<div class="min-[576px]:shadow-[0_0.5rem_1rem_rgba(#000, 0.15)] pointer-events-auto relative flex w-full flex-col rounded-md border-none bg-white  text-current shadow-lg outline-none dark:bg-neutral-600">
-					<Show when={title()}>
+				<div
+					class="pointer-events-auto relative flex w-full flex-col rounded-md border-none bg-gray-800 text-current shadow-lg outline-none">
+					<Show when={activeModal()?.title}>
 						<div
-							class={
-								'flex flex-shrink-0 flex-row items-center rounded-t-md border-b-2 border-neutral-100 border-opacity-100 p-4 dark:border-opacity-50 ' +
-								(title() ? 'justify-between' : 'justify-end')
-							}
+							class="flex flex-shrink-0 flex-row items-center rounded-t-md p-2 border-b-2 border-b-gray-500"
+							classList={{
+								[activeModal()!.title ? 'justify-between' : 'justify-end']: true
+							}}
 						>
 							<h5
-								class="text-xl font-medium leading-normal text-neutral-800 dark:text-neutral-200"
+								class="text-lg font-medium leading-normal text-neutral-800 dark:text-neutral-200"
 								id="modalLabel"
 							>
-								{title()}
+								{activeModal()!.title}
 							</h5>
-							<Button kind={'secondary'} onclick={() => setActiveElement(null)}>
+							<Button kind={'secondary'} onclick={() => setActiveModal(null)}>
 								<svg
 									xmlns="http://www.w3.org/2000/svg"
 									fill="none"
@@ -75,9 +81,8 @@ export function ModalContainer() {
 							</Button>
 						</div>
 					</Show>
-
-					<div class="p-4">
-						<Show when={activeElement() !== null}>{activeElement()?.elt}</Show>
+					<div class="p-3">
+						{activeModal()?.elt}
 					</div>
 				</div>
 			</div>
@@ -89,17 +94,14 @@ type ModalProps = {
 	title: string | null
 	render: () => JSXElement
 	visible: Accessor<boolean>
-	setVisible: (visible: boolean) => void
-}
-
-export type ModalState = {
-	visible: Accessor<boolean>
-	setVisible: (visible: boolean) => void
+	setVisible: (visible: boolean) => void,
+	closeOnEscape?: boolean
+	closeOnOutsideClick?: boolean
 }
 
 function addModal(props: ModalProps) {
 	// this closure owns the modal's element
-	let current: { elt: HTMLSpanElement } | null = null
+	let current: ActiveModal | null = null
 
 	let owner = getOwner()
 	if (!owner) throw new Error('addModal must be called with an owner')
@@ -112,12 +114,15 @@ function addModal(props: ModalProps) {
 				current = {
 					elt: (
 						<span>
-							<props.render />
+							<props.render/>
 						</span>
 					) as HTMLSpanElement,
+					title: props.title,
+					closeOnEscape: props.closeOnEscape ?? true,
+					closeOnOutsideClick: props.closeOnOutsideClick ?? true,
 				}
 			})
-			setActiveElement(current)
+			setActiveModal(current)
 		} else if (props.visible() && current) {
 			current.elt.style.display = 'block'
 		}
@@ -125,7 +130,7 @@ function addModal(props: ModalProps) {
 
 	onCleanup(() => {
 		if (current) {
-			if (activeElement() === current) setActiveElement(null)
+			if (activeModal() === current) setActiveModal(null)
 			current.elt.remove()
 		}
 	})
@@ -134,7 +139,6 @@ function addModal(props: ModalProps) {
 export type CanPrompt<T> = { onCompleted: (result: T) => void }
 
 export async function prompt<T>(
-	title: string | null,
 	component: (props: CanPrompt<T>) => JSXElement,
 	defaultValue: T,
 	disposed?: Accessor<boolean>
@@ -146,18 +150,33 @@ export async function prompt<T>(
 	let disposedAccessor = disposed || (() => false)
 
 	function render() {
-		setTitle(title || '')
 		const onCompleted = (result: T) => {
-			setOutput(() => ({ out: result }))
+			setOutput(() => ({out: result}))
 		}
 
-		const rendered = component({ onCompleted })
+		const rendered = component({onCompleted})
 
 		if (typeof rendered === 'string') {
+			let buttonRef: HTMLButtonElement | null = null
+
+			function keyListener(e: KeyboardEvent) {
+				if (e.key === 'Enter') {
+					onCompleted(defaultValue)
+				}
+			}
+
+			onMount(() => {
+				document.addEventListener('keydown', keyListener)
+			})
+
+			onCleanup(() => {
+				document.removeEventListener('keydown', keyListener)
+			})
+
 			return (
-				<div class="flex flex-row justify-between">
-					<p>{rendered}</p>
-					<Button kind="primary" onclick={() => onCompleted(defaultValue)}>
+				<div class="flex items-center">
+					<p class="mr-2 text-lg">{rendered}</p>
+					<Button tabindex={1} ref={buttonRef!} kind="primary" onclick={() => onCompleted(defaultValue)}>
 						OK
 					</Button>
 				</div>
@@ -170,10 +189,13 @@ export async function prompt<T>(
 	createRoot((dispose) => {
 		disposeOwner = dispose
 		addModal({
-			title,
+			title: null,
 			render,
 			visible: () => true,
-			setVisible: () => {},
+			setVisible: () => {
+			},
+			closeOnOutsideClick: false,
+			closeOnEscape: false,
 		})
 		createEffect(() => {
 			if (disposedAccessor()) dispose()

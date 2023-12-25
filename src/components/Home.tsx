@@ -1,7 +1,7 @@
-import { AppContainer } from './AppContainer.tsx'
+import {AppContainer} from './AppContainer.tsx'
 import * as R from '../systems/room.ts'
-import { useNavigate } from '@solidjs/router'
-import { Button } from './Button.tsx'
+import {useNavigate} from '@solidjs/router'
+import {Button} from './Button.tsx'
 
 export function Home() {
 	const navigate = useNavigate()
