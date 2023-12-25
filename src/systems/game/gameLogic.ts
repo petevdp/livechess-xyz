@@ -73,7 +73,14 @@ export const startPos = () =>
 //#region organization
 export type GameOutcome = {
 	winner: 'white' | 'black' | null
-	reason: 'checkmate' | 'stalemate' | 'insufficient-material' | 'threefold-repetition' | 'resigned' | 'draw-accepted'
+	reason:
+		| 'checkmate'
+		| 'stalemate'
+		| 'insufficient-material'
+		| 'threefold-repetition'
+		| 'resigned'
+		| 'draw-accepted'
+		| 'flagged'
 }
 
 export type GameStateNoGetters = {
@@ -100,7 +107,7 @@ export type GameConfig = {
 }
 export const defaultGameConfig: GameConfig = {
 	variant: 'regular',
-	timeControl: '5m',
+	timeControl: '1m',
 	increment: '0',
 }
 
@@ -748,6 +755,11 @@ function noMoves(game: GameState) {
 //#region misc
 export function hashBoard(board: Board) {
 	return hash.sha1(board)
+}
+
+export function timeControlToMs(timeControl: TimeControl) {
+	const minutes = parseInt(timeControl.slice(0, -1))
+	return minutes * 60 * 1000
 }
 
 //#endregion

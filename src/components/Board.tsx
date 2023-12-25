@@ -258,20 +258,22 @@ export function Board(props: { game: G.Game }) {
 	})().catch((err) => console.error(err))
 	//#endregion
 
+	const gameOutcome = from(props.game.observeGameOutcome()) as Accessor<GL.GameOutcome | null>
 	const drawOfferedPlayerId = from(props.game.observeDrawOffered()) as Accessor<string | null>
+	const timesElapsed = from(props.game.observeClock()) as Accessor<{ [playerId: string]: number }>
 
 	return (
 		<div class={styles.boardContainer}>
 			<Show when={opponent()}>
-				<PlayerDisplay player={opponent()!} class={styles.opponent} />
+				<PlayerDisplay player={opponent()!} class={styles.opponent} clock={timesElapsed()[opponent()!.id]} />
 			</Show>
 			{canvas}
 			<Show when={player()}>
-				<PlayerDisplay player={player()!} class={styles.player} />
+				<PlayerDisplay player={player()!} class={styles.player} clock={timesElapsed()[player()!.id]} />
 			</Show>
 			<div class={styles.leftPanel}>
-				<GameStateDisplay state={gameState()} />
-				<Show when={gameState().outcome}>
+				<GameStateDisplay state={gameState()} outcome={gameOutcome()} />
+				<Show when={props.game}>
 					<Button kind="primary" onClick={() => R.room()!.dispatchRoomAction({ type: 'play-again' })}>
 						Play Again
 					</Button>
@@ -343,14 +345,10 @@ function DrawOffers(props: { playerId: string; player: G.PlayerWithColor; oppone
 	)
 }
 
-function GameStateDisplay(props: { state: GL.GameState }) {
+function GameStateDisplay(props: { state: GL.GameState; outcome: GL.GameOutcome | null }) {
 	return (
 		<span>
-			{!props.state.outcome ? (
-				`${props.state.board.toMove} to move`
-			) : (
-				<GameOutcomeDisplay outcome={props.state.outcome} />
-			)}
+			{!props.outcome ? `${props.state.board.toMove} to move` : <GameOutcomeDisplay outcome={props.outcome} />}
 		</span>
 	)
 }
@@ -364,10 +362,21 @@ function GameOutcomeDisplay(props: { outcome: GL.GameOutcome }) {
 	)
 }
 
-function PlayerDisplay(props: { player: PlayerWithColor; class: string }) {
+function PlayerDisplay(props: { player: PlayerWithColor; class: string; clock: number }) {
+	const formattedClock = () => {
+		// clock is in ms
+		const minutes = Math.floor(props.clock / 1000 / 60)
+		const seconds = Math.floor((props.clock / 1000) % 60)
+		if (minutes === 0) {
+			const tenths = Math.floor((props.clock / 100) % 10)
+			const hundredths = Math.floor((props.clock / 10) % 10)
+			return `${seconds}.${tenths}${hundredths}`
+		}
+		return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`
+	}
 	return (
 		<div class={props.class}>
-			{props.player.name} <i class="text-neutral-400">({props.player.color})</i>
+			{props.player.name} <i class="text-neutral-400">({props.player.color})</i> {formattedClock()}
 		</div>
 	)
 }

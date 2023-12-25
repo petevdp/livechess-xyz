@@ -1,9 +1,22 @@
 import { Accessor, createEffect, createRoot, createSignal, from, on, untrack } from 'solid-js'
 import * as GL from './gameLogic.ts'
-import { BoardHistoryEntry, GameConfig, startPos } from './gameLogic.ts'
+import { BoardHistoryEntry, GameConfig, startPos, timeControlToMs } from './gameLogic.ts'
 import * as R from '../room.ts'
 import * as P from '../player.ts'
-import { concat, endWith, firstValueFrom, mergeAll, scan, Subscription } from 'rxjs'
+import {
+	concat,
+	distinctUntilChanged,
+	endWith,
+	firstValueFrom,
+	interval,
+	mergeAll,
+	Observable,
+	scan,
+	share,
+	startWith,
+	Subscription,
+	switchMap,
+} from 'rxjs'
 import { filter, map } from 'rxjs/operators'
 import { HasTimestampAndIndex } from '../../utils/yjs.ts'
 import { until } from '@solid-primitives/promise'
@@ -68,6 +81,7 @@ export class Game {
 	setPromotion: (p: PromotionSelection | null) => void
 	subscription: Subscription
 	runOnDipose: (() => void)[] = []
+	clock$: Observable<Record<string, number>>
 
 	constructor(
 		private room: R.Room,
@@ -116,6 +130,7 @@ export class Game {
 		})
 
 		this.state = state
+		this.clock$ = this.observeClock().pipe(share())
 
 		const [_promotion, _setPromotion] = createSignal<null | PromotionSelection>(null)
 		this.promotion = _promotion
@@ -139,13 +154,13 @@ export class Game {
 		return this.state.players[id]
 	}
 
-	isPlayerTurn() {
-		return this.state.board.toMove === this.playerColor(this.playerId)
+	isPlayerTurn(playerId: string) {
+		return this.state.board.toMove === this.playerColor(playerId)
 	}
 
 	async tryMakeMove(from: string, to: string, promotionPiece?: GL.PromotionPiece) {
 		console.log('tryMakeMove', { from, to, promotionPiece })
-		if (!this.isPlayerTurn() || !this.state.board.pieces[from]) return
+		if (!this.isPlayerTurn(this.playerId) || !this.state.board.pieces[from]) return
 		let result = GL.validateAndPlayMove(from, to, this.state, promotionPiece)
 		if (!result) {
 			console.error('invalid move: ', result)
@@ -219,50 +234,80 @@ export class Game {
 		return concat(this.room.yClient.getLatestEvent('roomAction'), this.room.yClient.observeEvent('roomAction', false))
 	}
 
+	observeClock() {
+		const moves = observeGameActions(this.room).pipe(
+			filter((a) => a.type === 'move'),
+			map((a) => ({ playerId: a.playerId, ts: a.ts }))
+		)
+		const timesElapsed$ = observePlayerTimesElapsed(moves, this.gameConfig, Object.keys(this.state.players))
+
+		return timesElapsed$.pipe(
+			switchMap((timesElapsed) => {
+				const clocks = { ...timesElapsed }
+				return interval(1000).pipe(
+					map(() => {
+						for (let id of Object.keys(clocks)) {
+							if (this.isPlayerTurn(id)) clocks[id] -= 1000
+						}
+						return clocks
+					})
+				)
+			}),
+			startWith(getStartingClocks(this.gameConfig.timeControl, Object.keys(this.state.players)))
+		)
+	}
+
+	observeGameOutcome() {
+		return this.observeLastGameAction().pipe(
+			map((a) => (a.type === 'game-finished' ? a.outcome : null)),
+			startWith(null),
+			distinctUntilChanged()
+		)
+	}
+
 	async waitForGameOutcome() {
 		return await firstValueFrom(
-			this.observeLastGameAction().pipe(
-				map((a) => (a.type === 'game-finished' ? a.outcome : null)),
+			this.observeGameOutcome().pipe(
 				filter((a) => !!a),
 				endWith(null)
 			)
 		).then((a) => {
-			if (!a) throw new Error('stopped receving game-finished events, but no game-outcome yet')
+			if (!a) throw new Error('stopped receiving game-finished events, but no game-outcome yet')
 			return a
 		})
 	}
 
 	private async setupListeners() {
-		//#region handle draw offers
-		const drawOfferedBy = from(this.observeDrawOffered())
-		this.subscription.add(
-			this.observeLastGameAction().subscribe((a) => {
-				if (a.playerId !== this.playerId) return
-				// we're checking against offer-draw here instead of a possible draw-accepted event so if they offer at the same time, the draw is automatically made
-				if (a.type === 'offer-draw' && drawOfferedBy() && drawOfferedBy() !== a.playerId) {
-					this.room.yClient.runWithTransaction(async (t) => {
-						await this.room.dispatchRoomAction(
-							{
-								type: 'game-finished',
-								outcome: { reason: 'draw-accepted', winner: null },
-								winnerId: null,
-							},
-							t
-						)
-						await this.room.yClient.setValue('drawOfferedBy', null, t)
-					})
-					return
-				} else if (a.type === 'offer-draw') {
-					this.room.yClient.setValue('drawOfferedBy', a.playerId)
-				} else {
-					this.room.yClient.setValue('drawOfferedBy', null)
-				}
-			})
-		)
-		//#endregion
-
 		createRoot((dispose) => {
 			this.runOnDipose.push(dispose)
+
+			//#region handle draw offers
+			const drawOfferedBy = from(this.observeDrawOffered())
+			this.subscription.add(
+				this.observeLastGameAction().subscribe((a) => {
+					if (a.playerId !== this.playerId) return
+					// we're checking against offer-draw here instead of a possible draw-accepted event so if they offer at the same time, the draw is automatically made
+					if (a.type === 'offer-draw' && drawOfferedBy() && drawOfferedBy() !== a.playerId) {
+						this.room.yClient.runWithTransaction(async (t) => {
+							await this.room.dispatchRoomAction(
+								{
+									type: 'game-finished',
+									outcome: { reason: 'draw-accepted', winner: null },
+									winnerId: null,
+								},
+								t
+							)
+							await this.room.yClient.setValue('drawOfferedBy', null, t)
+						})
+						return
+					} else if (a.type === 'offer-draw') {
+						this.room.yClient.setValue('drawOfferedBy', a.playerId)
+					} else {
+						this.room.yClient.setValue('drawOfferedBy', null)
+					}
+				})
+			)
+			//#endregion
 
 			//#region handle promotion
 			createEffect(() => {
@@ -276,7 +321,7 @@ export class Game {
 
 			//#region sync gamestate derived outcomes
 			createEffect(() => {
-				if (!this.isPlayerTurn()) return // so we don't trigger this effect on both clients
+				if (!this.isPlayerTurn(this.playerId)) return // so we don't trigger this effect on both clients
 				on(
 					() => GL.getGameOutcome(this.state),
 					(gameOutcome) => {
@@ -287,12 +332,27 @@ export class Game {
 				)
 			})
 
+			//#region handle flagged(clock empty)
+			this.subscription.add(
+				this.clock$.subscribe((clock) => {
+					for (let [playerId, timeLeft] of Object.entries(clock)) {
+						if (timeLeft <= 0 && this.isPlayerTurn(playerId)) {
+							this.room.dispatchRoomAction({
+								type: 'game-finished',
+								outcome: { reason: 'flagged', winner: this.playerColor(playerId) },
+								winnerId: Object.keys(this.state.players).find((id) => id !== playerId)!,
+							})
+							return
+						}
+					}
+				})
+			)
 			//#endregion
 		})
 	}
 }
 
-export function observeGameActions(room: R.Room) {
+function observeGameActions(room: R.Room) {
 	// this is a hot observable due to this
 	const getLastNewGamePromise = room.yClient.getAllevents('roomAction').then(getCurrentNewGameActionIndex)
 
@@ -315,6 +375,38 @@ function getCurrentNewGameActionIndex(actions: (R.RoomAction & HasTimestampAndIn
 		}
 	}
 	return idx
+}
+
+function getStartingClocks(timeControl: GL.TimeControl, playerIds: string[]) {
+	let clocks = {} as Record<string, number>
+	for (let id of playerIds) clocks[id] = timeControlToMs(timeControl)
+	return clocks
+}
+
+function observePlayerTimesElapsed(
+	moves: Observable<{
+		playerId: string
+		ts: number
+	}>,
+	config: GL.GameConfig,
+	playerIds: string[]
+) {
+	return new Observable<Record<string, number>>((s) => {
+		const timeLeft = getStartingClocks(config.timeControl, playerIds)
+		let lastMoveTs = 0
+
+		moves.subscribe({
+			next: (a) => {
+				if (!timeLeft[a.playerId]) throw new Error(`player ${a.playerId} not in game`)
+				// this means that time before the first move is not counted towards the player's clock
+				if (lastMoveTs !== 0) timeLeft[a.playerId] -= a.ts - lastMoveTs + parseInt(config.increment)
+				s.next(timeLeft)
+				lastMoveTs = a.ts
+			},
+			complete: () => s.complete(),
+			error: (e) => s.error(e),
+		})
+	})
 }
 
 export const playForBothSides = false
