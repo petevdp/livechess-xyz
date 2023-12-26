@@ -1,38 +1,39 @@
-import {Accessor, createEffect, createRoot, createSignal, from, on, untrack} from 'solid-js'
+import { Accessor, createEffect, createRoot, createSignal, from, on, untrack } from 'solid-js'
 import * as GL from './gameLogic.ts'
-import {BoardHistoryEntry, GameConfig, startPos, timeControlToMs} from './gameLogic.ts'
+import { BoardHistoryEntry, GameConfig, startPos, timeControlToMs } from './gameLogic.ts'
 import * as R from '../room.ts'
 import * as P from '../player.ts'
 import {
 	concat,
+	concatMap,
 	distinctUntilChanged,
 	endWith,
 	firstValueFrom,
 	interval,
-	mergeAll,
 	Observable,
 	scan,
 	share,
 	startWith,
 	Subscription,
-	switchMap, takeUntil,
+	switchMap,
+	takeUntil,
 } from 'rxjs'
-import {filter, map} from 'rxjs/operators'
-import {HasTimestampAndIndex} from '../../utils/yjs.ts'
-import {until} from '@solid-primitives/promise'
+import { filter, map } from 'rxjs/operators'
+import { HasTimestampAndIndex } from '../../utils/yjs.ts'
+import { until } from '@solid-primitives/promise'
 
 type PromotionSelection =
 	| {
-	status: 'selecting'
-	from: string
-	to: string
-}
+			status: 'selecting'
+			from: string
+			to: string
+	  }
 	| {
-	from: string
-	to: string
-	status: 'selected'
-	piece: GL.PromotionPiece
-}
+			from: string
+			to: string
+			status: 'selected'
+			piece: GL.PromotionPiece
+	  }
 
 export const [game, setGame] = createSignal(null as Game | null)
 
@@ -143,10 +144,18 @@ export class Game {
 		return this.state.boardHistory.length - 1
 	}
 
-	async players() {
-		const players = await this.room.yClient.getAllEntities('player')
-
-		return players.map((p) => ({...p, color: this.playerColor(p.id)}) as PlayerWithColor)
+	get moveHistoryAsNotation(): string[] {
+		let moves = []
+		for (let i = 0; i < Math.ceil(this.state.moveHistory.length / 2); i++) {
+			const whiteMove = GL.moveToChessNotation(i * 2, this.state)
+			if (i * 2 + 1 >= this.state.moveHistory.length) {
+				moves.push(`${i + 1} ${whiteMove}`)
+				break
+			}
+			const blackMove = GL.moveToChessNotation(i * 2 + 1, this.state)
+			moves.push(`${i + 1} ${whiteMove} ${blackMove}`)
+		}
+		return moves
 	}
 
 	// hot observable
@@ -162,19 +171,14 @@ export class Game {
 		return this.state.board.toMove === this.playerColor(playerId)
 	}
 
+	async players() {
+		const players = await this.room.yClient.getAllEntities('player')
 
-	get moveHistoryAsNotation(): string[] {
-		let moves = []
-		for (let i = 0; i < Math.floor(this.state.moveHistory.length / 2); i++) {
-			const whiteMove = GL.moveToChessNotation(i * 2, this.state)
-			const blackMove = GL.moveToChessNotation(i * 2 + 1, this.state)
-			moves.push(`${i + 1} ${whiteMove} ${blackMove}`)
-		}
-		return moves;
+		return players.map((p) => ({ ...p, color: this.playerColor(p.id) }) as PlayerWithColor)
 	}
 
 	async tryMakeMove(from: string, to: string, promotionPiece?: GL.PromotionPiece) {
-		console.log('tryMakeMove', {from, to, promotionPiece})
+		console.log('tryMakeMove', { from, to, promotionPiece })
 		if (!this.isPlayerTurn(this.playerId) || !this.state.board.pieces[from]) return
 		let result = GL.validateAndPlayMove(from, to, this.state, promotionPiece)
 		if (!result) {
@@ -185,7 +189,7 @@ export class Game {
 		if (!!this.promotion() && this.promotion()?.status === 'selecting') return
 
 		if (result.promoted && !this.promotion() && !promotionPiece) {
-			this.setPromotion({status: 'selecting', from, to})
+			this.setPromotion({ status: 'selecting', from, to })
 			return
 		}
 
@@ -252,14 +256,14 @@ export class Game {
 	observeClock() {
 		const moves = observeGameActions(this.room).pipe(
 			filter((a) => a.type === 'move'),
-			map((a) => ({playerId: a.playerId, ts: a.ts}))
+			map((a) => ({ playerId: a.playerId, ts: a.ts }))
 		)
 		const timesElapsed$ = observePlayerTimesElapsedBeforeMove(moves, this.gameConfig, Object.keys(this.state.players))
 
 		return timesElapsed$.pipe(
 			takeUntil(this.waitForGameOutcome()),
 			switchMap((timesElapsed) => {
-				const clocks = {...timesElapsed}
+				const clocks = { ...timesElapsed }
 				const lastMoveTs = this.state.moveHistory.length > 0 ? this.state.lastMove.ts : 0
 				clocks[this.colorPlayer(this.state.board.toMove)] -= Date.now() - lastMoveTs
 				return interval(100).pipe(
@@ -269,7 +273,7 @@ export class Game {
 							if (clocks[id] < 0) clocks[id] = 0
 						}
 						return clocks
-					}),
+					})
 				)
 			}),
 			startWith(getStartingClocks(this.gameConfig.timeControl, Object.keys(this.state.players)))
@@ -311,7 +315,7 @@ export class Game {
 							await this.room.dispatchRoomAction(
 								{
 									type: 'game-finished',
-									outcome: {reason: 'draw-accepted', winner: null},
+									outcome: { reason: 'draw-accepted', winner: null },
 									winnerId: null,
 								},
 								t
@@ -346,7 +350,7 @@ export class Game {
 					(gameOutcome) => {
 						if (!gameOutcome) return
 						const winnerId = (gameOutcome.winner && this.playerColor(gameOutcome.winner)) || null
-						this.room.dispatchRoomAction({type: 'game-finished', outcome: gameOutcome, winnerId})
+						this.room.dispatchRoomAction({ type: 'game-finished', outcome: gameOutcome, winnerId })
 					}
 				)
 			})
@@ -360,7 +364,7 @@ export class Game {
 						if (timeLeft <= 0 && this.isPlayerTurn(playerId)) {
 							this.room.dispatchRoomAction({
 								type: 'game-finished',
-								outcome: {reason: 'flagged', winner: this.playerColor(playerId)},
+								outcome: { reason: 'flagged', winner: this.playerColor(playerId) },
 								winnerId: Object.keys(this.state.players).find((id) => id !== playerId)!,
 							})
 							return
@@ -378,12 +382,11 @@ function observeGameActions(room: R.Room) {
 	const getLastNewGamePromise = room.yClient.getAllevents('roomAction').then(getCurrentNewGameActionIndex)
 
 	return room.yClient.observeEvent('roomAction', true).pipe(
-		map(async (a) => {
+		concatMap(async (a) => {
 			const lastNewGameIndex = (await getLastNewGamePromise) || 0
 			if (a.index < lastNewGameIndex) return null as unknown as typeof a
 			return a
 		}),
-		mergeAll(),
 		filter((a) => a !== null)
 	)
 }
