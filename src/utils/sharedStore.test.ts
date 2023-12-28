@@ -1,5 +1,5 @@
 import {describe, expect, it, test} from 'vitest'
-import {createSharedStore, newNetwork, runOnTransaction, SharedStoreProvider} from './sharedStore.ts'
+import {buildTransaction, createSharedStore, newNetwork, SharedStore, SharedStoreProvider} from './sharedStore.ts'
 import {until} from '@solid-primitives/promise'
 import {createRoot} from 'solid-js'
 import {sleep} from './time.ts'
@@ -37,12 +37,12 @@ describe('network provider/shared store', () => {
 			dispose = () => {
 				d()
 			}
-			leaderStore = createSharedStore(provider1)
+			leaderStore = createSharedStore<T>(provider1, {}, { ayy: 'ayy' })
 			followerStore = createSharedStore<T>(provider2)
 		})
 
 		await until(() => followerStore.initialized() && leaderStore.initialized())
-		await followerStore.setStore({ path: ['ayy'], value: 'ayy' })
+
 		expect(leaderStore.lockstepStore.ayy).toBe('ayy')
 		expect(leaderStore.rollbackStore.ayy).toBe('ayy')
 		expect(followerStore.lockstepStore.ayy).toBe('ayy')
@@ -92,18 +92,16 @@ describe('network provider/shared store', () => {
 
 	test('clients can join late and be updated', async () => {
 		const network = await newNetwork(SERVER_HOST)
-		let leaderStore = null as unknown as ReturnType<typeof createSharedStore>
-		let followerStore = null as unknown as ReturnType<typeof createSharedStore>
+		let leaderStore = null as unknown as SharedStore<{ ayy: string }>
+		let followerStore = null as unknown as SharedStore<{ ayy: string }>
 		let toDispose: Function[] = []
 
 		createRoot((d) => {
 			const provider1 = new SharedStoreProvider(SERVER_HOST, network.networkId)
 			toDispose.push(d)
 
-			leaderStore = createSharedStore(provider1)
+			leaderStore = createSharedStore(provider1, {}, { ayy: 'lmao' })
 		})
-
-		leaderStore.setStore({ path: ['ayy'], value: 'lmao' })
 
 		await sleep(200)
 
@@ -158,7 +156,7 @@ describe('network provider/shared store', () => {
 		})
 		await until(() => followerStore.initialized() && leaderStore.initialized())
 
-		await runOnTransaction(async (t) => {
+		await buildTransaction(async (t) => {
 			followerStore.setStore({ path: ['lmao'], value: 'ayy' }, t)
 			followerStore.setStore({ path: ['whew'], value: 'lad' }, t)
 			followerStore.setStore({ path: ['ayy'], value: undefined }, t)

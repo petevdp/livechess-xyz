@@ -7,7 +7,7 @@ import { until } from '@solid-primitives/promise'
 //#region types
 
 // TODO: strong typing for paths and values like in solid's setStore
-type StoreMutation = {
+export type StoreMutation = {
 	path: (string | number)[]
 	value: any
 }
@@ -17,7 +17,7 @@ type NewSharedStoreTransaction = {
 	mutations: StoreMutation[]
 }
 
-type SharedStoreTransaction = NewSharedStoreTransaction & { mutationId: string }
+export type SharedStoreTransaction = NewSharedStoreTransaction & { mutationId: string }
 
 export type NewNetworkResponse = {
 	networkId: string
@@ -25,7 +25,7 @@ export type NewNetworkResponse = {
 
 export type Base64String = string
 
-type ClientControlledState = { [key: string]: string | null } | null
+type ClientControlledState = { [key: string]: any | null } | null
 export type ClientControlledStates<T extends ClientControlledState> = { [key: string]: T }
 
 export type ClientConfig<T> = {
@@ -73,9 +73,20 @@ export type SharedStoreMessage =
 
 //#endregion
 
-export function createSharedStore<S extends object, CCS extends ClientControlledState>(
+export type SharedStore<T extends object, CCS extends ClientControlledState = ClientControlledState> = ReturnType<
+	typeof createSharedStore<T, CCS>
+>
+
+/**
+ * Create a shared store that can be used to synchronize state between multiple clients, and can rollback any conflicting changes.
+ * @param provider
+ * @param startingState only used if we're the first client in the room
+ * @param startingClientState only used if we're the first client in the room
+ */
+export function createSharedStore<S extends object, CCS extends ClientControlledState = ClientControlledState>(
 	provider: SharedStoreProvider,
-	startingClientState = {} as CCS
+	startingClientState = {} as CCS,
+	startingState: S = {} as S
 ) {
 	const [initialized, setInitialized] = createSignal(false)
 	const appliedAtoms = [] as SharedStoreTransaction[]
@@ -150,13 +161,14 @@ export function createSharedStore<S extends object, CCS extends ClientControlled
 		}
 	}
 
-	const setStoreWithRetries = async (fn: (s: S) => StoreMutation[], numRetries = 3) => {
+	const setStoreWithRetries = async (fn: (s: S) => StoreMutation[], numRetries = 5) => {
 		await until(initialized)
 		for (let i = 0; i < numRetries; i++) {
 			const transaction: NewSharedStoreTransaction = {
 				mutations: fn(rollbackStore),
 				index: appliedAtoms.length,
 			}
+			if (transaction.mutations.length === 0) return true
 			const success = await applyTransaction(transaction)
 			if (success) {
 				return true
@@ -166,10 +178,10 @@ export function createSharedStore<S extends object, CCS extends ClientControlled
 	}
 
 	//#region handle incoming mutations
-	const applyAtomToStore = (atom: SharedStoreTransaction, store: (...args: any[]) => any) => {
+	const applyAtomToStore = (atom: SharedStoreTransaction, setStore: (...args: any[]) => any) => {
 		for (let mutation of atom.mutations) {
 			//@ts-ignore
-			store(...mutation.path, mutation.value)
+			setStore(...mutation.path, mutation.value)
 		}
 	}
 
@@ -313,8 +325,13 @@ export function createSharedStore<S extends object, CCS extends ClientControlled
 		provider.clientId = clientConfig.clientId
 		setIsLeader(clientConfig.leader)
 		batch(() => {
-			setRollbackStore(clientConfig.initialState as S)
-			setLockstepStore(clientConfig.initialState as S)
+			if (isLeader()) {
+				setRollbackStore(startingState)
+				setLockstepStore(startingState)
+			} else {
+				setRollbackStore(clientConfig.initialState as S)
+				setLockstepStore(clientConfig.initialState as S)
+			}
 		})
 		console.log(provider.clientId + ' initialized')
 		setInitialized(true)
@@ -556,7 +573,7 @@ class SharedStoreTransactionBuilder {
 	}
 }
 
-export async function runOnTransaction(fn: (t: SharedStoreTransactionBuilder) => Promise<void>) {
+export async function buildTransaction(fn: (t: SharedStoreTransactionBuilder) => Promise<void>) {
 	const transaction = new SharedStoreTransactionBuilder()
 	try {
 		await fn(transaction)
