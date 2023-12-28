@@ -1,6 +1,6 @@
-import { createStore, unwrap } from 'solid-js/store'
-import { concatMap, firstValueFrom, Observable, share, Subject, Subscription, tap } from 'rxjs'
-import * as _ from 'lodash'
+import { createStore, produce, unwrap } from 'solid-js/store'
+import { concatMap, endWith, firstValueFrom, Observable, share, Subject, Subscription, tap } from 'rxjs'
+import _ from 'lodash'
 import { batch, createSignal, onCleanup } from 'solid-js'
 import { until } from '@solid-primitives/promise'
 
@@ -12,24 +12,28 @@ type StoreMutation = {
 	value: any
 }
 
-type StoreMutationAtom = {
+type NewSharedStoreTransaction = {
 	index: number
 	mutations: StoreMutation[]
 }
+
+type SharedStoreTransaction = NewSharedStoreTransaction & { mutationId: string }
+
 export type NewNetworkResponse = {
 	networkId: string
 }
 
-type Base64String = string
+export type Base64String = string
 
-export type NetworkClientConfig<T> = {
-	networkId: string
+type ClientControlledState = { [key: string]: string | null } | null
+export type ClientControlledStates<T extends ClientControlledState> = { [key: string]: T }
+
+export type ClientConfig<T> = {
+	clientId: string
 	leader: boolean
-	state: T
+	initialState: T
 	lastMutationIndex: number
 }
-
-export type NetworkDetailsResponse = NetworkClientConfig<Base64String>
 
 export type SharedStoreMessage =
 	| {
@@ -38,11 +42,8 @@ export type SharedStoreMessage =
 			mutation: Base64String
 	  }
 	| {
-			type: 'network-details'
-			details: NetworkDetailsResponse
-	  }
-	| {
-			type: 'request-network-details'
+			type: 'client-config'
+			config: ClientConfig<Base64String>
 	  }
 	| {
 			type: 'request-state'
@@ -58,64 +59,77 @@ export type SharedStoreMessage =
 	| {
 			type: 'ack-promote-to-leader'
 	  }
+	| {
+			// request that the client sends its controlled state
+			type: 'request-client-controlled-states'
+			// in case we're being asked to update a particular client's state
+			forClient?: string
+	  }
+	| {
+			type: 'client-controlled-states'
+			forClient?: string
+			states: Base64String
+	  }
 
 //#endregion
 
-export function createSharedStore<T extends object>(provider: SharedStoreProvider, config?: NetworkClientConfig<T>) {
-	if (config) {
-		if (!config.leader) {
-			throw new Error('Cannot initialize shared store with non-leader config')
-		}
-		// clone details so we don't mutate the original(we won't mutate config.state, I promise
-		config = { ...config }
-	}
+export function createSharedStore<S extends object, CCS extends ClientControlledState>(
+	provider: SharedStoreProvider,
+	startingClientState = {} as CCS
+) {
 	const [initialized, setInitialized] = createSignal(false)
-	const appliedAtoms = [] as StoreMutationAtom[]
+	const appliedAtoms = [] as SharedStoreTransaction[]
 
-	const [rollbackStore, setRollbackStore] = createStore<T>({} as T)
+	const [rollbackStore, setRollbackStore] = createStore<S>({} as S)
 	// mutations currently applied to the rollback store
 	const previousValues = new Map<number, any[]>()
-	const [lockstepStore, setLockstepStore] = createStore<T>({} as T)
-	const [isLeader, setIsLeader] = createSignal(config?.leader || false)
+	const [lockstepStore, setLockstepStore] = createStore<S>({} as S)
+	const [isLeader, setIsLeader] = createSignal(false)
 
-	const trackedTransactions = new Set<SharedStoreTransaction>()
+	const [clientControlledStates, setClientControlledStates] = createStore<ClientControlledStates<CCS>>({
+		[provider.clientId!]: { ...startingClientState },
+	})
 
-	const setStore = async (mutationArgs: StoreMutation, transaction?: SharedStoreTransaction) => {
+	const setClientControlledState = async (state: CCS) => {
 		await until(initialized)
-		let mutation = getStoreMutation(mutationArgs, rollbackStore)
-		if (transaction) {
-			transaction.push(mutation)
-			if (trackedTransactions.has(transaction)) {
+		setClientControlledStates(produce(updateLocalClientControlledState(provider.clientId!, state)))
+		provider.broadcastClientControlledState(state)
+	}
+
+	const transactionsBeingBuilt = new Set<SharedStoreTransactionBuilder>()
+
+	// if you set a transaction, you can't await this function or it will lock up
+	const setStore = async (mutation: StoreMutation, transactionBuilder?: SharedStoreTransactionBuilder) => {
+		await until(initialized)
+		let transaction: NewSharedStoreTransaction
+		if (transactionBuilder) {
+			transactionBuilder.push(mutation)
+			if (transactionsBeingBuilt.has(transactionBuilder)) {
+				return
+			}
+			transactionsBeingBuilt.add(transactionBuilder)
+
+			const completed = await transactionBuilder.completed()
+			transactionsBeingBuilt.delete(transactionBuilder)
+			if (!completed) {
 				return
 			}
 
-			firstValueFrom(transaction.commit$).then((commit) => {
-				trackedTransactions.delete(transaction)
-				if (!commit) {
-					return
-				}
-				const atom: StoreMutationAtom = {
-					index: appliedAtoms.length,
-					mutations: transaction.mutations,
-				}
-				applyLocallyCreatedAtom(atom)
-			})
-
-			trackedTransactions.add(transaction)
-			return
+			transaction = transactionBuilder.build(appliedAtoms.length)
+		} else {
+			transaction = {
+				index: appliedAtoms.length,
+				mutations: [mutation],
+			}
 		}
 
-		const atom: StoreMutationAtom = {
-			index: appliedAtoms.length,
-			mutations: [mutation],
-		}
-		applyLocallyCreatedAtom(atom)
+		await applyTransaction(transaction)
 	}
 
-	const applyLocallyCreatedAtom = (atom: StoreMutationAtom) => {
+	const applyTransaction = async (transaction: NewSharedStoreTransaction): Promise<boolean> => {
 		let previous: any[] = []
 		batch(() => {
-			for (let mutation of atom.mutations) {
+			for (let mutation of transaction.mutations) {
 				previous.push(resolvePath(mutation.path, rollbackStore))
 				//@ts-ignore
 				setRollbackStore(...mutation.path, mutation.value)
@@ -126,17 +140,33 @@ export function createSharedStore<T extends object>(provider: SharedStoreProvide
 			}
 		})
 
-		previousValues.set(atom.index, previous)
+		previousValues.set(transaction.index, previous)
 
 		if (isLeader()) {
-			provider.broadcastAsCommitted(atom)
+			provider.broadcastAsCommitted(transaction)
+			return true
 		} else {
-			provider.sendToLeader(atom)
+			return await provider.tryCommit(transaction)
 		}
 	}
 
+	const setStoreWithRetries = async (fn: (s: S) => StoreMutation[], numRetries = 3) => {
+		await until(initialized)
+		for (let i = 0; i < numRetries; i++) {
+			const transaction: NewSharedStoreTransaction = {
+				mutations: fn(rollbackStore),
+				index: appliedAtoms.length,
+			}
+			const success = await applyTransaction(transaction)
+			if (success) {
+				return true
+			}
+		}
+		return false
+	}
+
 	//#region handle incoming mutations
-	const applyAtomToStore = (atom: StoreMutationAtom, store: (...args: any[]) => any) => {
+	const applyAtomToStore = (atom: SharedStoreTransaction, store: (...args: any[]) => any) => {
 		for (let mutation of atom.mutations) {
 			//@ts-ignore
 			store(...mutation.path, mutation.value)
@@ -148,7 +178,7 @@ export function createSharedStore<T extends object>(provider: SharedStoreProvide
 		provider.observeComittedMutations().subscribe(async (receivedAtom) => {
 			await until(initialized)
 			batch(() => {
-				console.debug(`processing atom (${provider.id})`, receivedAtom, appliedAtoms.length)
+				console.log(`processing atom (${provider.clientId})`, receivedAtom, appliedAtoms.length)
 				if (isLeader()) {
 					//#region we're a leader, listening to mutations from followers
 
@@ -235,42 +265,75 @@ export function createSharedStore<T extends object>(provider: SharedStoreProvide
 	)
 	//#endregion
 
-	//#region initialize store
-	;(async () => {
-		if (config) {
-			appliedAtoms.length = config.lastMutationIndex
-			setLockstepStore(config.state)
-			setRollbackStore(config.state)
-			setInitialized(true)
-			console.debug(provider.id + ' initialized')
-			return
-		} else {
-			await provider.waitForConnected()
-			config = await provider.getNetworkDetails()
-			console.log('received initial state', config.state)
-			setRollbackStore(config!.state as T)
-			setLockstepStore(config!.state as T)
-			console.debug(provider.id + ' initialized')
-			setInitialized(true)
+	//#region handle client controlled state
+	subscription.add(
+		provider.observeRequestClientControlledState().subscribe(() => {
+			provider.broadcastClientControlledState(clientControlledStates[provider.clientId!])
+		})
+	)
+
+	const updateAllLocalClientControlledState =
+		(newStates: ClientControlledStates<CCS>): ((states: ClientControlledStates<CCS>) => void) =>
+		(states: ClientControlledStates<CCS>) => {
+			if (!newStates) return
+			for (let [clientId, state] of Object.entries(newStates)) {
+				updateLocalClientControlledState(clientId, state)(states)
+			}
 		}
-	})()
-	//#endregion
 
-	return { rollbackStore, lockstepStore, setStore, initialized, isLeader }
-}
-
-function getStoreMutation({path, value}: StoreMutation, state: any): StoreMutation {
-	const serializedPath = [] as (string | number)[]
-	for (let part of path) {
-		if (typeof part === 'function') {
-			serializedPath.push(resolvePath(serializedPath, state).findIndex(part))
-		} else {
-			serializedPath.push(part)
+	const updateLocalClientControlledState = (clientId: string, newState: ClientControlledState) => (states: ClientControlledStates<any>) => {
+		if (newState == null) {
+			delete states[clientId]
+			return
+		}
+		for (let [key, value] of Object.entries(newState)) {
+			if (value == null && states[clientId]) {
+				delete states[clientId]![key]
+			} else {
+				states[clientId] ||= {}
+				states[clientId]![key] = value
+			}
 		}
 	}
+
+	subscription.add(
+		provider.observeClientControlledStates<CCS>().subscribe((states) => {
+			// assume correct typing
+			const out = produce(updateAllLocalClientControlledState(states))
+			setClientControlledStates(out)
+		})
+	)
+	//#endregion
+
+	//#region initialize store
+	;(async () => {
+		const clientConfigPromise = provider.awaitClientConfig<S>()
+		await provider.waitForConnected()
+		const clientConfig = await clientConfigPromise
+		provider.clientId = clientConfig.clientId
+		setIsLeader(clientConfig.leader)
+		batch(() => {
+			setRollbackStore(clientConfig.initialState as S)
+			setLockstepStore(clientConfig.initialState as S)
+		})
+		console.log(provider.clientId + ' initialized')
+		setInitialized(true)
+	})()
+	//#endregion
+	const dispose = () => {
+		subscription.unsubscribe()
+	}
+
 	return {
-		path: serializedPath,
-		value,
+		rollbackStore,
+		lockstepStore,
+		setStore,
+		setStoreWithRetries,
+		clientControlledStates,
+		initialized,
+		setClientControlledState,
+		isLeader,
+		dispose,
 	}
 }
 
@@ -285,11 +348,12 @@ function resolvePath(path: (string | number)[], store: any) {
 export class SharedStoreProvider {
 	private message$: Observable<SharedStoreMessage>
 	public ws: WebSocket
+	clientId?: string
+	private nextAtomId = 0
 
 	constructor(
 		serverHost: string,
-		public networkId: string,
-		public id: string
+		public networkId: string
 	) {
 		this.ws = new WebSocket(`ws://${serverHost}/networks/${networkId}`)
 
@@ -303,7 +367,7 @@ export class SharedStoreProvider {
 				// 		throw new Error('Host received committed mutation')
 				// 	}
 				// }
-				console.debug(`client:${this.id} received message`, message)
+				console.log(`client:${this.clientId} received message`, message)
 
 				subscriber.next(message)
 			}
@@ -329,27 +393,48 @@ export class SharedStoreProvider {
 		})
 	}
 
-	sendToLeader(mutation: StoreMutationAtom) {
-		console.debug('sending mutation to leader: ', mutation)
+	async tryCommit(newAtom: NewSharedStoreTransaction) {
+		console.log('sending newAtom to leader: ', newAtom)
+		const atom: SharedStoreTransaction = {
+			...newAtom,
+			mutationId: `${this.clientId}:${this.nextAtomId}}`,
+		}
+		this.nextAtomId++
 		const message: SharedStoreMessage = {
 			type: 'mutation',
 			commit: false,
-			mutation: encodeContent(mutation),
+			mutation: encodeContent(atom),
 		}
 		this.send(message)
+
+		return await firstValueFrom(
+			this.observeComittedMutations().pipe(
+				concatMap((m) => {
+					if (m.index !== newAtom.index) return []
+					return [m.mutationId === atom.mutationId]
+				}),
+				endWith(false)
+			)
+		)
 	}
 
-	broadcastAsCommitted(mutation: StoreMutationAtom) {
-		console.debug('broadcasting mutation: ', mutation)
+	// TODO a lot of these methods should be consolidated
+
+	broadcastAsCommitted(newAtom: NewSharedStoreTransaction) {
+		console.log('broadcasting newAtom: ', newAtom)
+		const atom: SharedStoreTransaction = {
+			...newAtom,
+			mutationId: `${this.clientId}:${this.nextAtomId}}`,
+		}
 		const message: SharedStoreMessage = {
 			type: 'mutation',
 			commit: true,
-			mutation: encodeContent(mutation),
+			mutation: encodeContent(atom),
 		}
 		this.send(message)
 	}
 
-	observeComittedMutations(): Observable<StoreMutationAtom> {
+	observeComittedMutations(): Observable<SharedStoreTransaction> {
 		// we assume all mutations we receive are committed
 		return this.message$
 			.pipe(
@@ -358,7 +443,7 @@ export class SharedStoreProvider {
 					return []
 				})
 			)
-			.pipe(tap((mutation) => console.debug('received mutation: ', mutation)))
+			.pipe(tap((mutation) => console.log('received mutation: ', mutation)))
 	}
 
 	observeRequestState(): Observable<void> {
@@ -379,31 +464,59 @@ export class SharedStoreProvider {
 		)
 	}
 
-	async getNetworkDetails<T>(): Promise<NetworkClientConfig<T>> {
-		await this.send({ type: 'request-network-details' })
+	observeRequestClientControlledState(): Observable<void> {
+		return this.message$.pipe(
+			concatMap((message: SharedStoreMessage) => {
+				if (message.type === 'request-client-controlled-states') return [undefined]
+				return []
+			})
+		)
+	}
 
+	observeClientControlledStates<C extends ClientControlledState>(): Observable<ClientControlledStates<C>> {
+		return this.message$.pipe(
+			concatMap((message: SharedStoreMessage) => {
+				if (message.type === 'client-controlled-states') return [parseContent(message.states)]
+				return []
+			})
+		)
+	}
+
+	broadcastClientControlledState(values: ClientControlledState) {
+		this.send({
+			type: 'client-controlled-states',
+			states: encodeContent({
+				[this.clientId!]: values,
+			}),
+		})
+	}
+
+	async awaitClientConfig<T>(): Promise<ClientConfig<T>> {
 		return firstValueFrom(
 			this.message$.pipe(
-				concatMap((message: SharedStoreMessage) => {
-					if (message.type === 'network-details') {
-						const config = message.details
-						config.state = parseContent(config.state)
-						return [config as NetworkClientConfig<T>]
+				concatMap((message: SharedStoreMessage): ClientConfig<T>[] => {
+					if (message.type === 'client-config') {
+						// we leach off of this event which is always run when the client is initialized. a bit hacky but works
+						this.clientId = message.config.clientId
+						const config: ClientConfig<T> = {
+							...message.config,
+							initialState: parseContent(message.config.initialState) as T,
+						}
+						return [config]
 					}
-					return [] as NetworkClientConfig<T>[]
+					return []
 				})
 			)
 		)
 	}
 
-	async send(message: SharedStoreMessage) {
-		console.debug(`client:${this.id} sending message`, message)
-		await this.waitForConnected()
+	send(message: SharedStoreMessage) {
+		console.log(`client:${this.clientId} sending message`, message)
 		this.ws.send(JSON.stringify(message))
 	}
 }
 
-function encodeContent(content: any) {
+export function encodeContent(content: any) {
 	return btoa(JSON.stringify(content))
 }
 
@@ -411,18 +524,11 @@ function parseContent(content: Base64String) {
 	return JSON.parse(atob(content))
 }
 
-class SharedStoreTransaction {
-	mutations: StoreMutation[]
-	commit$: Subject<boolean>
+class SharedStoreTransactionBuilder {
+	mutations: StoreMutation[] = []
+	private commit$ = new Subject<boolean>()
 
-	constructor() {
-		this.mutations = []
-		this.commit$ = new Subject()
-	}
-
-	push(mutation: StoreMutation) {
-		this.mutations.push(mutation)
-	}
+	constructor() {}
 
 	commit() {
 		this.commit$.next(true)
@@ -433,10 +539,25 @@ class SharedStoreTransaction {
 		this.commit$.next(false)
 		this.commit$.complete()
 	}
+
+	completed() {
+		return firstValueFrom(this.commit$)
+	}
+
+	push(mutation: StoreMutation) {
+		this.mutations.push(mutation)
+	}
+
+	build(index: number): NewSharedStoreTransaction {
+		return {
+			index,
+			mutations: this.mutations,
+		}
+	}
 }
 
-export async function runOnTransaction(fn: (t: SharedStoreTransaction) => Promise<void>) {
-	const transaction = new SharedStoreTransaction()
+export async function runOnTransaction(fn: (t: SharedStoreTransactionBuilder) => Promise<void>) {
+	const transaction = new SharedStoreTransactionBuilder()
 	try {
 		await fn(transaction)
 		transaction.commit()
