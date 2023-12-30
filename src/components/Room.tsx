@@ -1,7 +1,6 @@
-import { createEffect, createSignal, For, from, Match, on, onMount, Show, Switch } from 'solid-js'
+import { createEffect, createSignal, For, Match, on, onMount, Show, Switch } from 'solid-js'
 import * as P from '../systems/player.ts'
 import { useParams } from '@solidjs/router'
-import * as R from '../systems/room.ts'
 import { ConnectionStatus } from '../utils/yjs.ts'
 import { Board } from './Board.tsx'
 import { AppContainer } from './AppContainer.tsx'
@@ -9,32 +8,24 @@ import { Choice, MultiChoiceButton } from '../MultiChoiceButton.tsx'
 import * as G from '../systems/game/game.ts'
 import * as GL from '../systems/game/gameLogic.ts'
 import { Increment } from '../systems/game/gameLogic.ts'
+import * as R from '../systems/room.ts'
 import { Button } from './Button.tsx'
-import { scan, Subscription } from 'rxjs'
 import { until } from '@solid-primitives/promise'
 
 export function RoomGuard() {
 	const params = useParams()
+	const [connectionStatus, setConnectionStatus] = createSignal<ConnectionStatus>(R.room() ? 'connected' : 'disconnected')
 
-	const [connectionStatus, setConnectionStatus] = createSignal<ConnectionStatus>('disconnected')
-	let sub = new Subscription()
-	createEffect(() => {
+	createEffect(async () => {
 		if (!R.room() || R.room()!.roomId !== params.id) {
-			R.connectToRoom(params.id).then((status) => {
-				if (status === 'disconnected') {
-					alert('Failed to connect to room')
-					return
-				}
-			})
+			setConnectionStatus('connecting')
+			await until(() => P.player() != null && P.player()!.name != null)
+			await R.connectToRoom(params.id)
+			setConnectionStatus('connected')
 		}
-
-		if (R.room()) {
-			sub.add(R.room()!.yClient.connectionStatus$.subscribe(setConnectionStatus))
-			setConnectionStatus(R.room()!.yClient.connectionStatus)
-		} else {
-			sub.unsubscribe()
-			sub = new Subscription()
-		}
+	})
+	createEffect(() => {
+		console.log('connection status', connectionStatus())
 	})
 
 	return (
@@ -51,8 +42,8 @@ export function RoomGuard() {
 						<Match when={connectionStatus() === 'disconnected'}>
 							<div>disconnected</div>
 						</Match>
-						<Match when={connectionStatus() === 'connected' && R.room()!}>
-							<Room />
+						<Match when={connectionStatus() === 'connected'}>
+							<Room room={R.room()!} />
 						</Match>
 					</Switch>
 				</div>
@@ -61,23 +52,13 @@ export function RoomGuard() {
 	)
 }
 
-function Room() {
-	const roomStatus = from(R.room()!.observeRoomStatus())
-	createEffect(() => {
-		console.log('room status', roomStatus(), 'game', G.game())
-	})
-
+function Room(props: { room: R.Room }) {
 	return (
 		<Switch>
-			<Match when={roomStatus() === 'pregame' && P.player()!.name != null}>
+			<Match when={props.room.state.status === 'pregame'}>
 				<Lobby />
 			</Match>
-			<Match
-				when={
-					G.game() &&
-					(roomStatus() === 'in-progress' || roomStatus() === 'postgame')
-				}
-			>
+			<Match when={G.game()}>
 				<Board game={G.game()!} />
 			</Match>
 			<Match when={true}>
@@ -92,8 +73,9 @@ function Lobby() {
 		navigator.clipboard.writeText(window.location.href)
 	}
 
-	const host = from(R.room()!.observeHost())
-	const canStart = from(R.room()!.observeCanStart())
+	createEffect(() => {
+		console.log({ isLeader: R.room()!.sharedStore.isLeader() })
+	})
 
 	return (
 		<div class="grid grid-cols-[60%_auto] gap-2">
@@ -105,27 +87,18 @@ function Lobby() {
 				<Button kind="primary" class="whitespace-nowrap" onclick={copyInviteLink}>
 					Copy Invite Link
 				</Button>
-				<Show when={P.player() && host() && host()!.id === P.player()!.id}>
+				<Show when={P.player() && R.room()!.sharedStore.isLeader()}>
 					<Button
 						kind="primary"
-						disabled={!canStart()}
+						disabled={!R.room()!.canStart()}
 						class="ml-1 w-full rounded"
 						onClick={async () => {
-							const players = await R.room()!.players
-
-							const playerColors = {
-								[players[0].id]: 'white',
-								[players[1].id]: 'black',
-							} as const
-
-							await R.room()!.dispatchRoomAction({
-								type: 'new-game',
-								playerColors,
-								gameConfig: await R.room()!.gameConfig(),
-							})
+							// change this to a "set ready" pattern
+							if (!R.room()!.canStart()) return
+							R.room()!.startGame()
 						}}
 					>
-						{!canStart() ? '(Waiting for opponent to connect...)' : 'Start'}
+						{!R.room()!.canStart() ? '(Waiting for opponent to connect...)' : 'Start'}
 					</Button>
 				</Show>
 			</div>
@@ -134,15 +107,7 @@ function Lobby() {
 }
 
 function GameConfigForm() {
-	const gameConfig = from(R.room()!.yClient.observeValue('gameConfig', true))
-
-	const variant = () => gameConfig()?.variant || 'regular'
-	const timeControl = () => gameConfig()?.timeControl || '5m'
-	const increment = () => gameConfig()?.increment || '0'
-
-	const updateGameConfig = (config: Partial<GL.GameConfig>) => {
-		R.room()!.yClient.setValue('gameConfig', { ...gameConfig()!, ...config })
-	}
+	const gameConfig = () => R.room()!.rollbackState.gameConfig
 
 	return (
 		<div>
@@ -156,11 +121,9 @@ function GameConfigForm() {
 						'col-span-full': true,
 						'grid-rows-[min-content_5em]': true,
 					}}
-					choices={GL.VARIANTS.map(
-						(c) => ({ label: c, id: c }) satisfies Choice<GL.Variant>
-					)}
-					selected={variant() || 'regular'}
-					onChange={(v) => updateGameConfig({ variant: v })}
+					choices={GL.VARIANTS.map((c) => ({ label: c, id: c }) satisfies Choice<GL.Variant>)}
+					selected={gameConfig().variant}
+					onChange={(v) => R.room()!.setGameConfig({ variant: v })}
 				/>
 				<MultiChoiceButton
 					classList={{
@@ -171,11 +134,9 @@ function GameConfigForm() {
 						'text-sm': true,
 					}}
 					label="Time Control"
-					choices={GL.TIME_CONTROLS.map(
-						(tc) => ({ label: tc, id: tc }) satisfies Choice<GL.TimeControl>
-					)}
-					selected={timeControl()}
-					onChange={(v) => updateGameConfig({ timeControl: v })}
+					choices={GL.TIME_CONTROLS.map((tc) => ({ label: tc, id: tc }) satisfies Choice<GL.TimeControl>)}
+					selected={gameConfig().timeControl}
+					onChange={(v) => R.room()!.setGameConfig({ timeControl: v })}
 				/>
 				<MultiChoiceButton
 					label="Increment"
@@ -185,11 +146,9 @@ function GameConfigForm() {
 						'grid-cols-4': true,
 						'text-sm': true,
 					}}
-					choices={GL.INCREMENTS.map(
-						(i) => ({ label: `${i}s`, id: i }) satisfies Choice<Increment>
-					)}
-					selected={increment()}
-					onChange={(v) => updateGameConfig({ increment: v })}
+					choices={GL.INCREMENTS.map((i) => ({ label: `${i}s`, id: i }) satisfies Choice<Increment>)}
+					selected={gameConfig().increment}
+					onChange={(v) => R.room()!.setGameConfig({ increment: v })}
 				/>
 			</div>
 		</div>
@@ -198,11 +157,7 @@ function GameConfigForm() {
 
 function ChatBox() {
 	// individual messages are not mutated
-	const messages = from(
-		R.room()!
-			.yClient.observeEvent('chatMessage', true)
-			.pipe(scan((acc, m) => [...acc, m], [] as R.ChatMessage[]))
-	)
+	const messages = () => R.room()!.chatMessages
 	const [message, setMessage] = createSignal('')
 	const sendMessage = (e: SubmitEvent) => {
 		e.preventDefault()
@@ -221,13 +176,8 @@ function ChatBox() {
 
 	return (
 		<div class="flex h-full flex-col">
-			<div
-				ref={chatFeed}
-				class="mb-2 flex h-48 grow flex-col overflow-y-scroll"
-			>
-				<For each={messages()}>
-					{(message) => <ChatMessage message={message} />}
-				</For>
+			<div ref={chatFeed} class="mb-2 flex h-48 grow flex-col overflow-y-scroll">
+				<For each={messages()}>{(message) => <ChatMessage message={message} />}</For>
 			</div>
 			<form onSubmit={sendMessage} class="flex h-9 w-full">
 				<input

@@ -84,12 +84,6 @@ export type GameOutcome = {
 		| 'flagged'
 }
 
-export type GameStateNoGetters = {
-	players: { [id: string]: Color }
-	boardHistory: BoardHistoryEntry[]
-	moveHistory: MoveHistory
-}
-
 export const VARIANTS = [
 	'regular',
 	'fog-of-war',
@@ -112,9 +106,11 @@ export const defaultGameConfig: GameConfig = {
 	increment: '1',
 }
 
-export type GameState = GameStateNoGetters & {
-	board: Board
-	lastMove: Move
+export type GameState = {
+	players: { [id: string]: Color }
+	boardHistory: BoardHistoryEntry[]
+	moveHistory: MoveHistory
+	drawOfferedBy?: string
 }
 
 export type Board = {
@@ -131,6 +127,23 @@ export type Coords = {
 }
 
 //#endregion
+
+
+export function newGameState(config: GameConfig, players: GameState['players']): GameState {
+	const startingBoard: BoardHistoryEntry = {
+		board: startPos(),
+		index: 0,
+		hash: hashBoard(startPos()),
+	}
+
+	return {
+		players,
+		boardHistory: [startingBoard],
+		moveHistory: [],
+	}
+}
+
+
 
 //#region move conversions
 export function coordsFromNotation(notation: string) {

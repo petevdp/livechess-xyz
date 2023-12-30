@@ -1,8 +1,7 @@
-import { Accessor, createEffect, createRoot, createSignal, from, on, untrack } from 'solid-js'
+import { Accessor, createEffect, createRoot, createSignal, from, on } from 'solid-js'
 import * as GL from './gameLogic.ts'
 import { BoardHistoryEntry, GameConfig, startPos, timeControlToMs } from './gameLogic.ts'
 import * as R from '../room.ts'
-import * as P from '../player.ts'
 import {
 	concat,
 	concatMap,
@@ -20,7 +19,6 @@ import {
 } from 'rxjs'
 import { filter, map } from 'rxjs/operators'
 import { HasTimestampAndIndex } from '../../utils/yjs.ts'
-import { until } from '@solid-primitives/promise'
 
 type PromotionSelection =
 	| {
@@ -37,42 +35,43 @@ type PromotionSelection =
 
 export const [game, setGame] = createSignal(null as Game | null)
 
-createRoot(() => {
-	let subscription = new Subscription()
-	let gameIndex = 0
-	createEffect(() => {
-		const room = R.room()
-		untrack(() => {
-			if (!room) {
-				subscription.unsubscribe()
-				subscription = new Subscription()
-				return
-			}
-			subscription.add(
-				observeGameActions(room)
-					.pipe(filter((a) => a.type === 'new-game'))
-					.subscribe(async (a) => {
-						console.log('initializing game')
-						if (a.index < gameIndex) return
-						const allActions = await room.yClient.getAllevents('roomAction')
-						let currentNewGameActionIndex = getCurrentNewGameActionIndex(allActions)
-						if (currentNewGameActionIndex === -1) return
-						const newGameAction = allActions[currentNewGameActionIndex]
-						await game()?.destroy()
-						let _game = new Game(
-							room,
-							//@ts-ignore I quit
-							newGameAction.gameConfig,
-							//@ts-ignore
-							newGameAction.playerColors,
-							await until(() => P.player()?.id)
-						)
-						setGame(_game)
-					})
-			)
-		})
-	})
-})
+// createRoot(() => {
+// 	let subscription = new Subscription()
+// 	let gameIndex = 0
+// 	createEffect(() => {
+// 		const room = R.room()
+// 		untrack(() => {
+// 			if (!room) {
+// 				subscription.unsubscribe()
+// 				subscription = new Subscription()
+// 				return
+// 			}
+// 			subscription.add(
+// 				observeGameActions(room)
+// 					.pipe(filter((a) => a.type === 'new-game'))
+// 					.subscribe(async (a) => {
+// 						console.log('initializing game')
+// 						if (a.index < gameIndex) return
+// 						const allActions = await room.yClient.getAllevents('roomAction')
+// 						let currentNewGameActionIndex = getCurrentNewGameActionIndex(allActions)
+// 						if (currentNewGameActionIndex === -1) return
+// 						const newGameAction = allActions[currentNewGameActionIndex]
+// 						await game()?.destroy()
+// 						let _game = new Game(
+// 							room,
+// 							//@ts-ignore I quit
+// 							newGameAction.gameConfig,
+// 							//@ts-ignore
+// 							newGameAction.playerColors,
+// 							await until(() => P.player()?.id)
+// 						)
+// 						setGame(_game)
+// 					})
+// 			)
+// 		})
+// 	})
+// })
+//
 
 export type PlayerWithColor = R.RoomParticipant & { color: GL.Color }
 
@@ -119,12 +118,6 @@ export class Game {
 				},
 				get moveHistory() {
 					return moveHistory() || []
-				},
-				get board() {
-					return this.boardHistory[this.boardHistory.length - 1].board
-				},
-				get lastMove() {
-					return this.moveHistory[this.moveHistory.length - 1]
 				},
 				players: this.playerColors,
 			}

@@ -1,6 +1,9 @@
 lockfileVersion: '6.0'
 
 dependencies:
+  '@solid-primitives/deep':
+    specifier: ^0.2.4
+    version: 0.2.4(solid-js@1.8.7)
   '@solid-primitives/promise':
     specifier: ^1.0.13
     version: 1.0.13(solid-js@1.8.7)
@@ -1105,12 +1108,39 @@ packages:
     resolution: {integrity: sha512-+Fj43pSMwJs4KRrH/938Uf+uAELIgVBmQzg/q1YG10djyfA3TnrU8N8XzqCh/okZdszqBQTZf96idMfE5lnwTA==}
     dev: true
 
+  /@solid-primitives/deep@0.2.4(solid-js@1.8.7):
+    resolution: { integrity: sha512-4+1CL0zTj/MacwzMSEqSKlPlChsGFJsVk2tU6NUKeDt3GrX4Mpkys2JHuw3UZLUgCNlDZDbqMv+5MYMwl+dvww== }
+    peerDependencies:
+      solid-js: ^1.6.12
+    dependencies:
+      '@solid-primitives/memo': 1.3.5(solid-js@1.8.7)
+      solid-js: 1.8.7
+    dev: false
+
+  /@solid-primitives/memo@1.3.5(solid-js@1.8.7):
+    resolution: { integrity: sha512-fTtyM3rBDrgFbz4xoQnMNzbBR4GzoaYeZHj5RRxceBU9QDz7u6HE8+5mbxd6pJ+SuntjI5aYiAtwuyI8gG3rhA== }
+    peerDependencies:
+      solid-js: ^1.6.12
+    dependencies:
+      '@solid-primitives/scheduled': 1.4.1(solid-js@1.8.7)
+      '@solid-primitives/utils': 6.2.1(solid-js@1.8.7)
+      solid-js: 1.8.7
+    dev: false
+
   /@solid-primitives/promise@1.0.13(solid-js@1.8.7):
     resolution: {integrity: sha512-FhzlcpGOTRCPBvCe9c53YyjuOpMdwrEbn33fbxy3133kc/Il+pgWZuaZgxBOjiaZevTXpAMtOG9dXjtT0MCqGg==}
     peerDependencies:
       solid-js: ^1.6.12
     dependencies:
       '@solid-primitives/utils': 6.2.1(solid-js@1.8.7)
+      solid-js: 1.8.7
+    dev: false
+
+  /@solid-primitives/scheduled@1.4.1(solid-js@1.8.7):
+    resolution: { integrity: sha512-OLcNXwYpX7HUOEqNPcmR31dkyI1E2imkMDBRlqsGT0ZhJV1L2g0TEREpo4nm/kUhh8LVQzkfnxS+GONx9kh90A== }
+    peerDependencies:
+      solid-js: ^1.6.12
+    dependencies:
       solid-js: 1.8.7
     dev: false
 

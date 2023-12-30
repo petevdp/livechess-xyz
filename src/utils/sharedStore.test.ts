@@ -1,5 +1,5 @@
 import {describe, expect, it, test} from 'vitest'
-import {buildTransaction, createSharedStore, newNetwork, SharedStore, SharedStoreProvider} from './sharedStore.ts'
+import {buildTransaction, initSharedStore, newNetwork, SharedStore, SharedStoreProvider} from './sharedStore.ts'
 import {until} from '@solid-primitives/promise'
 import {createRoot} from 'solid-js'
 import {sleep} from './time.ts'
@@ -30,15 +30,15 @@ describe('network provider/shared store', () => {
 		let dispose = () => {}
 
 		type T = { ayy: string; lmao?: string }
-		let leaderStore = null as unknown as ReturnType<typeof createSharedStore>
-		let followerStore = null as unknown as ReturnType<typeof createSharedStore>
+		let leaderStore = null as unknown as ReturnType<typeof initSharedStore>
+		let followerStore = null as unknown as ReturnType<typeof initSharedStore>
 
 		createRoot((d) => {
 			dispose = () => {
 				d()
 			}
-			leaderStore = createSharedStore<T>(provider1, {}, { ayy: 'ayy' })
-			followerStore = createSharedStore<T>(provider2)
+			leaderStore = initSharedStore<T>(provider1, {}, { ayy: 'ayy' })
+			followerStore = initSharedStore<T>(provider2)
 		})
 
 		await until(() => followerStore.initialized() && leaderStore.initialized())
@@ -59,9 +59,9 @@ describe('network provider/shared store', () => {
 
 		const provider3 = new SharedStoreProvider(SERVER_HOST, network.networkId)
 
-		let leaderStore = null as unknown as ReturnType<typeof createSharedStore>
-		let follower1Store = null as unknown as ReturnType<typeof createSharedStore>
-		let follower2Store = null as unknown as ReturnType<typeof createSharedStore>
+		let leaderStore = null as unknown as ReturnType<typeof initSharedStore>
+		let follower1Store = null as unknown as ReturnType<typeof initSharedStore>
+		let follower2Store = null as unknown as ReturnType<typeof initSharedStore>
 		let dispose = () => {}
 
 		createRoot((d) => {
@@ -69,11 +69,17 @@ describe('network provider/shared store', () => {
 				d()
 			}
 
-			leaderStore = createSharedStore(provider1)
-			follower1Store = createSharedStore(provider2)
-			follower2Store = createSharedStore(provider3)
+			leaderStore = initSharedStore(provider1)
 		})
+
+		createRoot(() => {
+			follower1Store = initSharedStore(provider2)
+			follower2Store = initSharedStore(provider3)
+		})
+
 		await until(() => leaderStore.initialized() && follower1Store.initialized() && follower2Store.initialized())
+		console.log('initialized')
+		console.log({ leader: provider1.clientId, follower1: provider2.clientId, follower2: provider3.clientId })
 
 		const follower1Set = follower1Store.setStore({ path: ['ayy'], value: 'follower1 was here' })
 		const follower2Set = follower2Store.setStore({ path: ['ayy'], value: 'follower2 was here' })
@@ -100,7 +106,7 @@ describe('network provider/shared store', () => {
 			const provider1 = new SharedStoreProvider(SERVER_HOST, network.networkId)
 			toDispose.push(d)
 
-			leaderStore = createSharedStore(provider1, {}, { ayy: 'lmao' })
+			leaderStore = initSharedStore(provider1, {}, { ayy: 'lmao' })
 		})
 
 		await sleep(200)
@@ -109,7 +115,7 @@ describe('network provider/shared store', () => {
 			const provider2 = new SharedStoreProvider(SERVER_HOST, network.networkId)
 
 			toDispose.push(() => {})
-			followerStore = createSharedStore(provider2)
+			followerStore = initSharedStore(provider2)
 		})
 
 		await until(() => leaderStore.initialized() && followerStore.initialized())
@@ -120,16 +126,16 @@ describe('network provider/shared store', () => {
 	test('can elect new leader', async () => {
 		const network = await newNetwork(SERVER_HOST)
 		const provider1 = new SharedStoreProvider(SERVER_HOST, network.networkId)
-
 		const provider2 = new SharedStoreProvider(SERVER_HOST, network.networkId)
+		const provider3 = new SharedStoreProvider(SERVER_HOST, network.networkId)
 		const toDispose: Function[] = []
-		let originalLeaderStore = null as unknown as ReturnType<typeof createSharedStore>
-		let followerStore = null as unknown as ReturnType<typeof createSharedStore>
+		let originalLeaderStore = null as unknown as ReturnType<typeof initSharedStore>
+		let followerStore = null as unknown as ReturnType<typeof initSharedStore>
 
 		createRoot((dispose) => {
 			toDispose.push(dispose)
-			originalLeaderStore = createSharedStore(provider1)
-			followerStore = createSharedStore(provider2)
+			originalLeaderStore = initSharedStore(provider1)
+			followerStore = initSharedStore(provider2)
 		})
 
 		await until(() => originalLeaderStore.initialized() && followerStore.initialized())
@@ -137,6 +143,14 @@ describe('network provider/shared store', () => {
 		provider1.ws.close()
 
 		await until(() => followerStore.isLeader())
+		let followerStore2 = null as unknown as ReturnType<typeof initSharedStore>
+		createRoot((d) => {
+			toDispose.push(d)
+			followerStore2 = initSharedStore(provider3)
+		})
+		await until(() => followerStore2.initialized())
+		expect(followerStore2.isLeader()).toBe(false)
+
 	})
 
 	test('can handle dynamic transactions', async () => {
@@ -144,15 +158,15 @@ describe('network provider/shared store', () => {
 		const provider1 = new SharedStoreProvider(SERVER_HOST, network.networkId)
 		const provider2 = new SharedStoreProvider(SERVER_HOST, network.networkId)
 		let dispose = () => {}
-		let leaderStore = null as unknown as ReturnType<typeof createSharedStore>
-		let followerStore = null as unknown as ReturnType<typeof createSharedStore>
+		let leaderStore = null as unknown as ReturnType<typeof initSharedStore>
+		let followerStore = null as unknown as ReturnType<typeof initSharedStore>
 
 		createRoot((d) => {
 			dispose = () => {
 				d()
 			}
-			leaderStore = createSharedStore(provider1)
-			followerStore = createSharedStore(provider2)
+			leaderStore = initSharedStore(provider1)
+			followerStore = initSharedStore(provider2)
 		})
 		await until(() => followerStore.initialized() && leaderStore.initialized())
 
@@ -170,15 +184,15 @@ describe('network provider/shared store', () => {
 		const provider1 = new SharedStoreProvider(SERVER_HOST, network.networkId)
 		const provider2 = new SharedStoreProvider(SERVER_HOST, network.networkId)
 		let dispose = () => {}
-		let leaderStore = null as unknown as ReturnType<typeof createSharedStore>
-		let followerStore = null as unknown as ReturnType<typeof createSharedStore>
+		let leaderStore = null as unknown as ReturnType<typeof initSharedStore>
+		let followerStore = null as unknown as ReturnType<typeof initSharedStore>
 
 		createRoot((d) => {
 			dispose = () => {
 				d()
 			}
-			leaderStore = createSharedStore(provider1)
-			followerStore = createSharedStore(provider2)
+			leaderStore = initSharedStore(provider1)
+			followerStore = initSharedStore(provider2)
 		})
 
 		await until(() => followerStore.initialized() && leaderStore.initialized())
@@ -199,15 +213,15 @@ describe('network provider/shared store', () => {
 		const provider2 = new SharedStoreProvider(SERVER_HOST, network.networkId)
 		const provider3 = new SharedStoreProvider(SERVER_HOST, network.networkId)
 		let dispose = () => {}
-		let leaderStore = null as unknown as ReturnType<typeof createSharedStore>
-		let follower1Store = null as unknown as ReturnType<typeof createSharedStore>
-		let follower2Store = null as unknown as ReturnType<typeof createSharedStore>
+		let leaderStore = null as unknown as ReturnType<typeof initSharedStore>
+		let follower1Store = null as unknown as ReturnType<typeof initSharedStore>
+		let follower2Store = null as unknown as ReturnType<typeof initSharedStore>
 
 		createRoot((d) => {
 			dispose = d
-			leaderStore = createSharedStore(provider1)
-			follower1Store = createSharedStore(provider2)
-			follower2Store = createSharedStore(provider3)
+			leaderStore = initSharedStore(provider1)
+			follower1Store = initSharedStore(provider2)
+			follower2Store = initSharedStore(provider3)
 		})
 		await until(() => follower1Store.initialized() && leaderStore.initialized() && follower2Store.initialized())
 
@@ -218,6 +232,37 @@ describe('network provider/shared store', () => {
 		await Promise.all([follower1MutDone, follower2MutDone])
 		expect(leaderStore.lockstepStore.arr[0]).toBe('ayy')
 		expect(leaderStore.lockstepStore.arr[1]).toBe('lmao')
+		dispose()
+	})
+
+	test('can push non-rollback mutations', async () => {
+		const network = await newNetwork(SERVER_HOST)
+		const provider1 = new SharedStoreProvider(SERVER_HOST, network.networkId)
+		const provider2 = new SharedStoreProvider(SERVER_HOST, network.networkId)
+
+		let dispose = () => {}
+		let leaderStore = null as unknown as ReturnType<typeof initSharedStore>
+		let follower1Store = null as unknown as ReturnType<typeof initSharedStore>
+
+		createRoot((d) => {
+			dispose = d
+			leaderStore = initSharedStore(provider1, {}, { arr: [] })
+		})
+
+		await until(leaderStore.initialized)
+
+		createRoot(() => {
+			follower1Store = initSharedStore(provider2)
+		})
+
+		await until(() => follower1Store.initialized() && leaderStore.initialized())
+
+		leaderStore.setStore({ path: ['arr', '__push__'], value: 1 })
+		const success = await follower1Store.setStore({ path: ['arr', '__push__'], value: 2 }, undefined, false)
+
+		expect(success).toBe(true)
+		expect(leaderStore.lockstepStore.arr).toEqual([1, 2])
+		expect(follower1Store.lockstepStore.arr).toEqual([1, 2])
 		dispose()
 	})
 })

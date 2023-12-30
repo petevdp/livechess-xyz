@@ -13,6 +13,7 @@
 		"lint": "eslint --ext .ts,.tsx,.js,.jsx ./src"
 	},
 	"dependencies": {
+		"@solid-primitives/deep": "^0.2.4",
 		"@solid-primitives/promise": "^1.0.13",
 		"@solidjs/router": "^0.10.2",
 		"lodash": "^4.17.21",

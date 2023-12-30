@@ -1,7 +1,6 @@
-import { createEffect, createRoot, createSignal } from 'solid-js'
+import { createSignal } from 'solid-js'
 import { createId } from '../utils/ids.ts'
 import { useLocalStorage } from '../utils/persistence.ts'
-import * as R from './room.ts'
 
 export type Player = {
 	id: string
@@ -26,33 +25,4 @@ export async function setupPlayer() {
 	if (player() === null) {
 		setPlayer({ id: await createId(6), name: null })
 	}
-
-	createRoot(() => {
-		createEffect(() => {
-			const _room = R.room()!
-			if (!_room) return
-			_room.yClient.setLocalAwarenessState('playerId', player()!.id)
-			;(async () => {
-				const players = await _room.players
-				const playerReplicated = players.find((p) => p.id === player()!.id)
-
-				let isSpectator
-
-				if (players.length > 2 && !playerReplicated) {
-					isSpectator = true
-				} else if (playerReplicated) {
-					isSpectator = playerReplicated.spectator
-				} else {
-					isSpectator = false
-				}
-				const joinTs = playerReplicated?.joinTs || Date.now()
-
-				await _room.yClient.setEntity('player', player()!.id, {
-					...player()!,
-					spectator: isSpectator,
-					joinTs,
-				})
-			})()
-		})
-	})
 }

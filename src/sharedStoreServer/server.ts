@@ -1,8 +1,27 @@
 import * as ws from 'ws'
 import * as http from 'http'
-import { Base64String, ClientConfig, encodeContent, NewNetworkResponse, SharedStoreMessage } from '../utils/sharedStore.ts'
-import { BehaviorSubject, concatMap, EMPTY, endWith, firstValueFrom, from, interval, mergeAll, Observable, share, switchMap } from 'rxjs'
-import { map } from 'rxjs/operators'
+import {
+	Base64String,
+	ClientConfig,
+	encodeContent,
+	NewNetworkResponse,
+	SharedStoreMessage
+} from '../utils/sharedStore.ts'
+import {
+	BehaviorSubject,
+	concatMap,
+	EMPTY,
+	endWith,
+	first,
+	firstValueFrom,
+	from,
+	interval,
+	mergeAll,
+	Observable,
+	share,
+	switchMap,
+} from 'rxjs'
+import {map} from 'rxjs/operators'
 
 // TODO add tld support
 
@@ -10,9 +29,20 @@ const networks = new Map<string, Network>()
 type Network = {
 	cleanupAt: number | null
 	leader$: BehaviorSubject<Client | undefined>
+	nextLeader?: Client
 	leader?: Client
 	clients: Client[]
 	followers: Client[]
+}
+
+function printNetwork(network: Network) {
+	return {
+		cleanupAt: network.cleanupAt,
+		leader: network.leader?.clientId,
+		nextLeader: network.nextLeader?.clientId,
+		clients: network.clients.map((c) => c.clientId),
+		followers: network.followers.map((c) => c.clientId),
+	}
 }
 
 class Client {
@@ -36,7 +66,7 @@ class Client {
 	}
 
 	send(msg: SharedStoreMessage) {
-		console.log(`${this.networkId}:${this.clientId} sent`, msg)
+		console.log(`sending to ${this.networkId}:${this.clientId}`, msg)
 		this.socket.send(JSON.stringify(msg))
 	}
 }
@@ -54,7 +84,7 @@ function createId(size: number) {
 	return result
 }
 
-function thirtySeconsFromNow() {
+function thirtySecondsFromNow() {
 	return Date.now() + 1000 * 30
 }
 
@@ -67,7 +97,7 @@ export function startServer(port: number) {
 		if (request.url === '/networks/new') {
 			const networkId = createId(6)
 			networks.set(networkId, {
-				cleanupAt: thirtySeconsFromNow(),
+				cleanupAt: thirtySecondsFromNow(),
 				followers: [],
 				leader$: new BehaviorSubject<Client | undefined>(undefined),
 				get leader() {
@@ -119,9 +149,10 @@ export function startServer(port: number) {
 		const client = new Client(socket, createId(6), networkId)
 
 		console.log(`new socket connected to network ${networkId} with clientId ${client.clientId}`)
+		console.log(`network before client init: ${client.clientId}`, printNetwork(network))
 
-		//#region dispatch initial events
-		;(async () => {
+		//#region dispatch initial events(async () => {
+			// if we're the only client, we're the leader. otherwise, there's already a leader or we're waiting for one to be elected
 			if (network.clients.length === 0) {
 				network.leader$.next(client)
 			} else {
@@ -131,10 +162,10 @@ export function startServer(port: number) {
 			//#region get config for new client
 			let initialState: Base64String
 			let lastMutationIndex: number
-			if (network.leader?.clientId == client.clientId) {
+			if (network.leader?.clientId === client.clientId) {
 				// if we're the leader and we're just connecting, it means we're the first client
 				initialState = encodeContent({})
-				lastMutationIndex = 0
+				lastMutationIndex = -1
 			} else {
 				const stateResponsePromise = firstValueFrom(
 					network.leader$.pipe(
@@ -146,12 +177,18 @@ export function startServer(port: number) {
 						endWith(null)
 					)
 				)
-				network.leader!.send({ type: 'request-state' })
+				console.log('requesting state from leader')
+				network.leader$.pipe(concatMap((leader) => !!leader ? [leader] : []), first()).subscribe((leader) => {
+					leader.send({type: 'request-state'})
+				})
+
 				const stateResponse = await stateResponsePromise
 				if (!stateResponse) throw new Error('did not receive state from leader')
-				initialState = stateResponse.state
 				lastMutationIndex = stateResponse.lastMutationIndex
+				initialState = stateResponse.state
 			}
+			console.log({clientId: client.clientId})
+			console.log(`network before client-config: ${client.clientId}`, printNetwork(network))
 			const config: ClientConfig<Base64String> = {
 				clientId: client.clientId,
 				initialState,
@@ -201,8 +238,28 @@ export function startServer(port: number) {
 		//#endregion
 
 		//#region client message handling
-		async function handleMessageFromClient(message: SharedStoreMessage, sender: Client, leader: Client) {
-			const isLeader = sender.clientId === leader.clientId
+
+		//#region passing messages to leader
+		let leaderMsgBuffer: SharedStoreMessage[] = []
+		network.leader$.subscribe((leader) => {
+			if (!leader) return
+			for (let msg of leaderMsgBuffer) {
+				leader.send(msg)
+			}
+			leaderMsgBuffer = []
+		})
+
+		function sendToLeaderBuffered(message: SharedStoreMessage) {
+			if (!network.leader) {
+				leaderMsgBuffer.push(message)
+				return
+			}
+			network.leader.send(message)
+		}
+
+		//#endregion
+		async function handleMessageFromClient(message: SharedStoreMessage, sender: Client) {
+			const isLeader = sender.clientId === network.leader?.clientId
 			switch (message.type) {
 				case 'mutation': {
 					if (message.commit && !isLeader) {
@@ -224,21 +281,29 @@ export function startServer(port: number) {
 
 					if (!message.commit && !isLeader) {
 						console.log('follower sending mutation to leader', message)
-						leader.send(message)
+						sendToLeaderBuffered(message)
 					}
 					break
 				}
 				case 'ack-promote-to-leader': {
 					if (isLeader) {
-						throw new Error('leader acking promote to leader is redundant')
+						throw new Error('leader acking promote to leader is redundant, figure out why this happened')
 					}
-					network.leader$.next(client)
+					if (!network.nextLeader) {
+						throw new Error('nextLeader was not set when ack-promote-to-leader was received')
+					}
+					if (network.nextLeader?.clientId !== sender.clientId) {
+						// another client has already become the leader, ignore
+						break;
+					}
+					delete network.nextLeader
+					network.followers = network.followers.filter((c) => c.clientId !== sender.clientId)
+					network.leader$.next(sender)
 					break
 				}
 				case 'client-controlled-states': {
 					// we handle this in the initial dispatch
 					if (message.forClient) break
-
 					for (let client of network.clients) {
 						if (client.clientId === sender.clientId) continue
 						client.send(message)
@@ -253,43 +318,39 @@ export function startServer(port: number) {
 			}
 		}
 
-		let missingLeaderBuffer: SharedStoreMessage[] = []
 		const subscription = client.message$.subscribe(async (message) => {
-			if (!network.leader) {
-				missingLeaderBuffer.push(message)
-				return
-			}
-			for (let msg of missingLeaderBuffer) {
-				await handleMessageFromClient(msg, client, network.leader!)
-			}
-			missingLeaderBuffer = []
-			handleMessageFromClient(message, client, network.leader!)
+			handleMessageFromClient(message, client)
 		})
 		//#endregion
 
 		//#region socket cleanup
 		socket.on('close', () => {
+			console.log(`socket closed for network ${networkId} with clientId ${client.clientId}`)
 			subscription.unsubscribe()
-			if (network.clients.length === 0) {
-				network.cleanupAt = thirtySeconsFromNow()
-				return
-			}
-
+			console.log(`network before ws closed: ${client.clientId}`, printNetwork(network))
+			network.followers = network.followers.filter((c) => c.clientId !== client.clientId)
 			if (network.leader?.clientId === client.clientId) {
 				network.leader$.next(undefined)
-				const nextLeader = network.followers.shift()
-				if (nextLeader) {
-					nextLeader.send({ type: 'promote-to-leader' })
+				network.nextLeader = network.followers[0]
+				network.nextLeader?.send({type: 'promote-to-leader'})
+			} else if (network.nextLeader?.clientId === client.clientId) {
+				network.nextLeader = network.followers[0]
+				network.nextLeader?.send({type: 'promote-to-leader'})
+			}
+
+			if (network.clients.length === 0) {
+				network.cleanupAt = thirtySecondsFromNow()
+			} else {
+				// asks clients to remove the disconnected client from their copy of client-controlled-states
+				const states = encodeContent({[client.clientId]: null})
+				const message: SharedStoreMessage = {type: 'client-controlled-states', states}
+				for (let client of network.clients) {
+					if (client.clientId === client.clientId) continue
+					client.send(message)
 				}
 			}
 
-			// asks clients to remove the disconnected client from their copy of client-controlled-states
-			const states = encodeContent({ [client.clientId]: null })
-			const message: SharedStoreMessage = { type: 'client-controlled-states', states }
-			for (let client of network.clients) {
-				if (client.clientId === client.clientId) continue
-				client.send(message)
-			}
+			console.log(`network after ws closed: ${client.clientId}`, printNetwork(network))
 		})
 		//#endregion
 	})
