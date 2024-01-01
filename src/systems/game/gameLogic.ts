@@ -1,15 +1,7 @@
 import hash from 'object-hash'
 //#region primitives
 
-
-export const PIECES = [
-	'pawn',
-	'knight',
-	'bishop',
-	'rook',
-	'queen',
-	'king',
-] as const
+export const PIECES = ['pawn', 'knight', 'bishop', 'rook', 'queen', 'king'] as const
 export type Piece = (typeof PIECES)[number]
 export const PROMOTION_PIECES = ['knight', 'bishop', 'rook', 'queen'] as const
 export type PromotionPiece = (typeof PROMOTION_PIECES)[number]
@@ -74,22 +66,10 @@ export const startPos = () =>
 //#region organization
 export type GameOutcome = {
 	winner: 'white' | 'black' | null
-	reason:
-		| 'checkmate'
-		| 'stalemate'
-		| 'insufficient-material'
-		| 'threefold-repetition'
-		| 'resigned'
-		| 'draw-accepted'
-		| 'flagged'
+	reason: 'checkmate' | 'stalemate' | 'insufficient-material' | 'threefold-repetition' | 'resigned' | 'draw-accepted' | 'flagged'
 }
 
-export const VARIANTS = [
-	'regular',
-	'fog-of-war',
-	'duck',
-	'fischer-random',
-] as const
+export const VARIANTS = ['regular', 'fog-of-war', 'duck', 'fischer-random'] as const
 export type Variant = (typeof VARIANTS)[number]
 export const TIME_CONTROLS = ['15m', '10m', '5m', '3m', '1m', '0.5m'] as const
 export type TimeControl = (typeof TIME_CONTROLS)[number]
@@ -110,7 +90,9 @@ export type GameState = {
 	players: { [id: string]: Color }
 	boardHistory: BoardHistoryEntry[]
 	moveHistory: MoveHistory
-	drawOfferedBy?: string
+	whiteOfferingDraw: boolean
+	blackOfferingDraw: boolean
+	resigned?: Color
 }
 
 export type Board = {
@@ -128,7 +110,6 @@ export type Coords = {
 
 //#endregion
 
-
 export function newGameState(config: GameConfig, players: GameState['players']): GameState {
 	const startingBoard: BoardHistoryEntry = {
 		board: startPos(),
@@ -140,10 +121,10 @@ export function newGameState(config: GameConfig, players: GameState['players']):
 		players,
 		boardHistory: [startingBoard],
 		moveHistory: [],
+		whiteOfferingDraw: false,
+		blackOfferingDraw: false,
 	}
 }
-
-
 
 //#region move conversions
 export function coordsFromNotation(notation: string) {
@@ -157,11 +138,7 @@ export function notationFromCoords(coords: Coords) {
 	return String.fromCharCode('a'.charCodeAt(0) + coords.x) + (coords.y + 1)
 }
 
-export function candidateMoveToMove(
-	candidateMove: CandidateMove,
-	promotion?: PromotionPiece,
-	capture?: boolean
-): Move {
+export function candidateMoveToMove(candidateMove: CandidateMove, promotion?: PromotionPiece, capture?: boolean): Move {
 	return {
 		from: notationFromCoords(candidateMove.from),
 		to: notationFromCoords(candidateMove.to),
@@ -170,7 +147,7 @@ export function candidateMoveToMove(
 		promotion: promotion,
 		enPassant: candidateMove.enPassant,
 		ts: Date.now(),
-		capture: capture || false
+		capture: capture || false,
 	} satisfies Move
 }
 
@@ -190,7 +167,7 @@ function moveToCandidateMove(move: Move): CandidateMove {
 //#region game status
 
 export function inCheck(game: GameState) {
-	return _inCheck(game.board)
+	return _inCheck(getBoard(game))
 }
 
 export function checkmated(game: GameState) {
@@ -209,7 +186,7 @@ export function threefoldRepetition(game: GameState) {
 }
 
 export function insufficientMaterial(game: GameState) {
-	for (let piece of Object.values(game.board.pieces)) {
+	for (let piece of Object.values(getBoard(game).pieces)) {
 		if (piece.type === 'pawn' || piece.type === 'rook' || piece.type === 'queen') {
 			return false
 		}
@@ -217,11 +194,21 @@ export function insufficientMaterial(game: GameState) {
 	return true
 }
 
+function getBoard(game: GameState) {
+	return game.boardHistory[game.boardHistory.length - 1].board
+}
+
 export function getGameOutcome(state: GameState) {
 	let winner: GameOutcome['winner']
 	let reason: GameOutcome['reason']
-	if (checkmated(state)) {
-		winner = state.board.toMove === 'white' ? 'black' : 'white'
+	if (state.resigned) {
+		winner = state.resigned === 'white' ? 'black' : 'white'
+		reason = 'resigned'
+	} else if (state.whiteOfferingDraw && state.blackOfferingDraw) {
+		winner = null
+		reason = 'draw-accepted'
+	} else if (checkmated(state)) {
+		winner = getBoard(state).toMove === 'white' ? 'black' : 'white'
 		reason = 'checkmate'
 	} else if (stalemated(state)) {
 		winner = null
@@ -243,13 +230,8 @@ export function getGameOutcome(state: GameState) {
 //#region move application
 
 // returns new board and  returns null if move is invalid
-export function validateAndPlayMove(
-	from: string,
-	to: string,
-	game: GameState,
-	promotionPiece?: PromotionPiece
-) {
-	if (game.board.pieces[from].color !== game.board.toMove) {
+export function validateAndPlayMove(from: string, to: string, game: GameState, promotionPiece?: PromotionPiece) {
+	if (getBoard(game).pieces[from].color !== getBoard(game).toMove) {
 		return
 	}
 
@@ -257,15 +239,13 @@ export function validateAndPlayMove(
 		return
 	}
 	const candidateMoves = getLegalMoves([coordsFromNotation(from)], game)
-	const candidate = candidateMoves.find(
-		(m) => notationFromCoords(m.to) === to && m.promotion === promotionPiece
-	)
+	const candidate = candidateMoves.find((m) => notationFromCoords(m.to) === to && m.promotion === promotionPiece)
 	if (!candidate) {
 		return
 	}
-	const isCapture = !!game.board.pieces[to]
+	const isCapture = !!getBoard(game).pieces[to]
 	const move = candidateMoveToMove(candidate, undefined, isCapture)
-	const [newBoard, promoted] = applyMoveToBoard(candidate, game.board)
+	const [newBoard, promoted] = applyMoveToBoard(candidate, getBoard(game))
 
 	return {
 		board: newBoard,
@@ -276,9 +256,7 @@ export function validateAndPlayMove(
 
 // uncritically apply a move to a board
 export function applyMoveToBoard(move: CandidateMove | Move, board: Board) {
-	const _move = (
-		typeof move.from === 'string' ? moveToCandidateMove(move as Move) : move
-	) as CandidateMove
+	const _move = (typeof move.from === 'string' ? moveToCandidateMove(move as Move) : move) as CandidateMove
 	const piece = board.pieces[notationFromCoords(_move.from)]
 	const newBoard = JSON.parse(JSON.stringify(board)) as Board
 	let moveToCoords = notationFromCoords(_move.to)
@@ -336,26 +314,20 @@ export type CandidateMoveOptions = {
 	promotion?: PromotionPiece
 }
 
-export function getLegalMoves(
-	piecePositions: Coords[],
-	game: GameState
-): CandidateMove[] {
+export function getLegalMoves(piecePositions: Coords[], game: GameState): CandidateMove[] {
 	let candidateMoves: CandidateMove[] = []
 
 	for (const start of piecePositions) {
-		const piece = game.board.pieces[notationFromCoords(start)]
-		if (piece.color !== game.board.toMove) {
+		const piece = getBoard(game).pieces[notationFromCoords(start)]
+		if (piece.color !== getBoard(game).toMove) {
 			continue
 		}
-		candidateMoves = [
-			...candidateMoves,
-			...getMovesFromCoords(start, game.board, game.moveHistory, piece),
-		]
+		candidateMoves = [...candidateMoves, ...getMovesFromCoords(start, getBoard(game), game.moveHistory, piece)]
 	}
 
 	candidateMoves = candidateMoves.filter((move) => {
-		const [newBoard] = applyMoveToBoard(move, game.board)
-		newBoard.toMove = game.board.toMove
+		const [newBoard] = applyMoveToBoard(move, getBoard(game))
+		newBoard.toMove = getBoard(game).toMove
 		return !_inCheck(newBoard)
 	})
 
@@ -394,9 +366,7 @@ function getMovesFromCoords(
 function pawnMoves(start: Coords, board: Board, history: MoveHistory) {
 	let moves: CandidateMove[] = []
 	let direction = board.toMove === 'white' ? 1 : -1
-	const onStartingRank =
-		(board.toMove === 'white' && start.y === 1) ||
-		(board.toMove === 'black' && start.y === 6)
+	const onStartingRank = (board.toMove === 'white' && start.y === 1) || (board.toMove === 'black' && start.y === 6)
 	const promotingRank = board.toMove === 'white' ? 6 : 1
 
 	type Options = Omit<Omit<CandidateMoveOptions, 'from'>, 'piece'>
@@ -434,12 +404,7 @@ function pawnMoves(start: Coords, board: Board, history: MoveHistory) {
 
 	// diagonal capture right
 	{
-		const [_moves, _terminateReason] = castLegalMoves(
-			start,
-			{ x: 1, y: direction },
-			1,
-			board
-		)
+		const [_moves, _terminateReason] = castLegalMoves(start, { x: 1, y: direction }, 1, board)
 		if (_terminateReason === 'capture') {
 			addMoves(_moves.map((m) => ({ to: m, capture: true })))
 		}
@@ -447,12 +412,7 @@ function pawnMoves(start: Coords, board: Board, history: MoveHistory) {
 
 	// diagonal capture left
 	{
-		const [_moves, _terminateReason] = castLegalMoves(
-			start,
-			{ x: -1, y: direction },
-			1,
-			board
-		)
+		const [_moves, _terminateReason] = castLegalMoves(start, { x: -1, y: direction }, 1, board)
 		if (_terminateReason === 'capture') {
 			addMoves(_moves.map((m) => ({ to: m })))
 		}
@@ -474,12 +434,10 @@ function pawnMoves(start: Coords, board: Board, history: MoveHistory) {
 		if (!lastMove || lastMove.piece !== 'pawn') {
 			return
 		}
-		const movedTwoRanks =
-			Math.abs(parseInt(lastMove.from[1]) - parseInt(lastMove.to[1])) === 2
+		const movedTwoRanks = Math.abs(parseInt(lastMove.from[1]) - parseInt(lastMove.to[1])) === 2
 		let lastMoveX = coordsFromNotation(lastMove.to).x
 		let lastMoveY = coordsFromNotation(lastMove.to).y
-		const isHorizontallyAdjacent =
-			Math.abs(start.x - lastMoveX) === 1 && start.y === lastMoveY
+		const isHorizontallyAdjacent = Math.abs(start.x - lastMoveX) === 1 && start.y === lastMoveY
 		if (movedTwoRanks && isHorizontallyAdjacent) {
 			addMove({
 				to: { x: lastMoveX, y: lastMoveY + direction },
@@ -512,12 +470,7 @@ function knightMoves(start: Coords, board: Board) {
 	]
 
 	for (let direction of directions) {
-		const [_moves] = castLegalMoves(
-			start,
-			{ x: direction[0], y: direction[1] },
-			1,
-			board
-		)
+		const [_moves] = castLegalMoves(start, { x: direction[0], y: direction[1] }, 1, board)
 		moves = [...moves, ..._moves]
 	}
 	return moves.map((m) =>
@@ -539,17 +492,10 @@ function bishopMoves(start: Coords, board: Board) {
 	]
 
 	for (let direction of directions) {
-		const [_moves] = castLegalMoves(
-			start,
-			{ x: direction[0], y: direction[1] },
-			8,
-			board
-		)
+		const [_moves] = castLegalMoves(start, { x: direction[0], y: direction[1] }, 8, board)
 		moves = [...moves, ..._moves]
 	}
-	return moves.map((m) =>
-		newCandidateMove({ from: start, to: m, piece: 'bishop' })
-	)
+	return moves.map((m) => newCandidateMove({ from: start, to: m, piece: 'bishop' }))
 }
 
 function rookMoves(start: Coords, board: Board) {
@@ -562,25 +508,13 @@ function rookMoves(start: Coords, board: Board) {
 	]
 
 	for (let direction of directions) {
-		const [_moves] = castLegalMoves(
-			start,
-			{ x: direction[0], y: direction[1] },
-			8,
-			board
-		)
+		const [_moves] = castLegalMoves(start, { x: direction[0], y: direction[1] }, 8, board)
 		moves = [...moves, ..._moves]
 	}
-	return moves.map((m) =>
-		newCandidateMove({ from: start, to: m, piece: 'rook' })
-	)
+	return moves.map((m) => newCandidateMove({ from: start, to: m, piece: 'rook' }))
 }
 
-function kingMoves(
-	start: Coords,
-	board: Board,
-	history: MoveHistory,
-	checkCastling: boolean
-) {
+function kingMoves(start: Coords, board: Board, history: MoveHistory, checkCastling: boolean) {
 	let moves: Coords[] = []
 	const directions = [
 		[1, 0],
@@ -594,12 +528,7 @@ function kingMoves(
 	]
 
 	for (let direction of directions) {
-		const [_moves] = castLegalMoves(
-			start,
-			{ x: direction[0], y: direction[1] },
-			1,
-			board
-		)
+		const [_moves] = castLegalMoves(start, { x: direction[0], y: direction[1] }, 1, board)
 		moves = [...moves, ..._moves]
 	}
 
@@ -649,12 +578,8 @@ function kingMoves(
 				y: start.y,
 			} satisfies Coords)
 		}
-		const noChecksInKingPath = kingSquares.every(
-			(n) => !squareAttacked(n, board)
-		)
-		const castlingSquaresClear =
-			movesNotation.includes(notationFromCoords(beforeRook)) &&
-			termination !== 'capture'
+		const noChecksInKingPath = kingSquares.every((n) => !squareAttacked(n, board))
+		const castlingSquaresClear = movesNotation.includes(notationFromCoords(beforeRook)) && termination !== 'capture'
 
 		if (!castlingSquaresClear || !noChecksInKingPath) {
 			continue
@@ -682,12 +607,7 @@ function pieceHasMoved(coords: Coords, history: MoveHistory) {
 
 type TerminateReason = 'piece' | 'bounds' | 'capture' | 'max'
 
-function castLegalMoves(
-	start: Coords,
-	direction: Coords,
-	max: number,
-	board: Board
-) {
+function castLegalMoves(start: Coords, direction: Coords, max: number, board: Board) {
 	let moves: Coords[] = []
 	let coords = start
 	let terminateReason = 'max' satisfies TerminateReason
@@ -716,15 +636,11 @@ function inBounds(coords: Coords) {
 }
 
 function findPiece(piece: ColoredPiece, board: Board) {
-	return Object.entries(board.pieces).find(
-		([_, _piece]) => _piece?.type === piece.type && _piece.color === piece.color
-	)![0]
+	return Object.entries(board.pieces).find(([_, _piece]) => _piece?.type === piece.type && _piece.color === piece.color)![0]
 }
 
 function _inCheck(board: Board) {
-	const king = coordsFromNotation(
-		findPiece({ color: board.toMove, type: 'king' }, board)
-	)
+	const king = coordsFromNotation(findPiece({ color: board.toMove, type: 'king' }, board))
 	return squareAttacked(king, board)
 }
 
@@ -741,13 +657,7 @@ function squareAttacked(square: Coords, board: Board) {
 			color: board.toMove,
 			type: simulatedPieceType,
 		} as ColoredPiece
-		const simulatedMoves = getMovesFromCoords(
-			square,
-			board,
-			[],
-			simulatedPiece,
-			false
-		)
+		const simulatedMoves = getMovesFromCoords(square, board, [], simulatedPiece, false)
 		for (let move of simulatedMoves) {
 			const attackingPiece = board.pieces[notationFromCoords(move.to)]
 			if (attackingPiece && attackingPiece.type === simulatedPieceType) {
@@ -760,14 +670,13 @@ function squareAttacked(square: Coords, board: Board) {
 
 function noMoves(game: GameState) {
 	let legalMoves = getLegalMoves(
-		Object.keys(game.board.pieces).map((n) => coordsFromNotation(n)),
+		Object.keys(getBoard(game).pieces).map((n) => coordsFromNotation(n)),
 		game
 	)
 	return legalMoves.length === 0
 }
 
 //#endregion
-
 
 //#region misc
 export function hashBoard(board: Board) {
@@ -780,7 +689,6 @@ export function timeControlToMs(timeControl: TimeControl) {
 }
 
 //#endregion
-
 
 function toShortPieceName(piece: Piece) {
 	if (piece === 'knight') {

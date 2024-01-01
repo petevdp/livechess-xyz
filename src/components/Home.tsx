@@ -1,7 +1,9 @@
 import { AppContainer } from './AppContainer.tsx'
 import * as R from '../systems/room.ts'
+import * as P from '../systems/player.ts'
 import { useNavigate } from '@solidjs/router'
 import { Button } from './Button.tsx'
+import {until} from "@solid-primitives/promise";
 
 export function Home() {
 	const navigate = useNavigate()

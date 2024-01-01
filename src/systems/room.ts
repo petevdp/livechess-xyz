@@ -34,13 +34,14 @@ export async function createRoom() {
 	await connectToRoom(response.networkId)
 }
 
-export async function connectToRoom(roomId: string) {
-	const player = P.player()!
+export async function connectToRoom(roomId: string, abort?: () => void) {
+	const player = P.player()
 	if (!player) {
 		throw new Error('No player set')
 	}
 	const provider = new SharedStoreProvider(SERVER_HOST, roomId)
-	provider.disconnected$.then(() => alert('disconnected from websocket'))
+	provider.disconnected$.then(() => abort && abort())
+
 	// will only be used if the room is new
 	let state: RoomState
 
@@ -86,14 +87,18 @@ export async function connectToRoom(roomId: string) {
 
 		disposePrevious = () => {
 			window.removeEventListener('beforeunload', unloadListener)
+			room.sendMessage(`${P.player()?.name} has disconnected`, true)
 			_dispose()
 		}
 	})
 	await until(() => store.initialized())
 	let room = new Room(store, provider)
 	setRoom(room)
-	room.ensurePlayerAdded(player)
-	room.sendMessage(`${player.name} has joined the room`, true)
+	until(() => P.player()?.name).then(() => {
+		room.ensurePlayerAdded(P.player()!).then(() => {
+			room.sendMessage(`${P.player()!.name} has joined the room`, true)
+		})
+	})
 }
 
 export class Room {
@@ -122,6 +127,7 @@ export class Room {
 	}
 
 	get connectedPlayers() {
+		console.log('states', this.sharedStore.clientControlledStates)
 		trackStore(this.sharedStore.clientControlledStates)
 		let playerIds: string[] = []
 		Object.values(this.sharedStore.clientControlledStates).forEach((state) => {
@@ -159,7 +165,7 @@ export class Room {
 			})
 
 			return [
-				{ path: ['status'], value: 'in-progress' },
+				{ path: ['status'], value: 'playing' },
 				{ path: ['gameState'], value: gameState },
 			]
 		}, 2)
@@ -199,6 +205,10 @@ export class Room {
 		}
 
 		await this.sharedStore.setStore({ path: ['messages', '__push__'], value: newMessage }, undefined, false)
+	}
+
+	configureNewGame() {
+		this.setState({ path: ['status'], value: 'pregame' })
 	}
 
 	private setupListeners() {

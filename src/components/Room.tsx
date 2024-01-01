@@ -1,13 +1,12 @@
 import { createEffect, createSignal, For, Match, on, onMount, Show, Switch } from 'solid-js'
 import * as P from '../systems/player.ts'
-import { useParams } from '@solidjs/router'
+import {useNavigate, useParams} from '@solidjs/router'
 import { ConnectionStatus } from '../utils/yjs.ts'
 import { Board } from './Board.tsx'
 import { AppContainer } from './AppContainer.tsx'
 import { Choice, MultiChoiceButton } from '../MultiChoiceButton.tsx'
-import * as G from '../systems/game/game.ts'
+import * as G from '../systems/game/newGame.ts'
 import * as GL from '../systems/game/gameLogic.ts'
-import { Increment } from '../systems/game/gameLogic.ts'
 import * as R from '../systems/room.ts'
 import { Button } from './Button.tsx'
 import { until } from '@solid-primitives/promise'
@@ -15,12 +14,13 @@ import { until } from '@solid-primitives/promise'
 export function RoomGuard() {
 	const params = useParams()
 	const [connectionStatus, setConnectionStatus] = createSignal<ConnectionStatus>(R.room() ? 'connected' : 'disconnected')
+	const navigate = useNavigate()
 
 	createEffect(async () => {
 		if (!R.room() || R.room()!.roomId !== params.id) {
 			setConnectionStatus('connecting')
 			await until(() => P.player() != null && P.player()!.name != null)
-			await R.connectToRoom(params.id)
+			await R.connectToRoom(params.id, () => navigate('/'))
 			setConnectionStatus('connected')
 		}
 	})
@@ -59,7 +59,7 @@ function Room(props: { room: R.Room }) {
 				<Lobby />
 			</Match>
 			<Match when={G.game()}>
-				<Board game={G.game()!} />
+				<Board />
 			</Match>
 			<Match when={true}>
 				<div>idk</div>
@@ -75,6 +75,9 @@ function Lobby() {
 
 	createEffect(() => {
 		console.log({ isLeader: R.room()!.sharedStore.isLeader() })
+	})
+	createEffect(() => {
+		console.log(JSON.stringify(R.room()!.connectedPlayers, null, 2))
 	})
 
 	return (
@@ -146,7 +149,7 @@ function GameConfigForm() {
 						'grid-cols-4': true,
 						'text-sm': true,
 					}}
-					choices={GL.INCREMENTS.map((i) => ({ label: `${i}s`, id: i }) satisfies Choice<Increment>)}
+					choices={GL.INCREMENTS.map((i) => ({ label: `${i}s`, id: i }) satisfies Choice<GL.Increment>)}
 					selected={gameConfig().increment}
 					onChange={(v) => R.room()!.setGameConfig({ increment: v })}
 				/>

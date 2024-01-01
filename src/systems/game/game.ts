@@ -73,7 +73,7 @@ export const [game, setGame] = createSignal(null as Game | null)
 // })
 //
 
-export type PlayerWithColor = R.RoomParticipant & { color: GL.Color }
+export type PlayerWithColor = R.Room & { color: GL.Color }
 
 export class Game {
 	state: GL.GameState

@@ -84,7 +84,9 @@ export type SharedStoreMessage =
 
 //#endregion
 
-export type SharedStore<T extends object, CCS extends ClientControlledState = ClientControlledState> = ReturnType<typeof initSharedStore<T, CCS>>
+export type SharedStore<T extends object, CCS extends ClientControlledState = ClientControlledState> = ReturnType<
+	typeof initSharedStore<T, CCS>
+>
 
 /**
  * Create a shared store that can be used to synchronize state between multiple clients, and can rollback any conflicting changes.
@@ -97,9 +99,12 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 	startingClientState = {} as CCS,
 	startingState: S = {} as S
 ) {
+	//#region statuses
 	const [initialized, setInitialized] = createSignal(false)
-	const appliedTransactions = [] as NewSharedStoreOrderedTransaction[]
+	const [isLeader, setIsLeader] = createSignal(false)
+	//#endregion
 
+	//#region stores
 	const [rollbackStore, _setRollbackStore] = createStore<S>({} as S)
 	const setRollbackStore = (...args: any[]) => {
 		const path = args.slice(0, -1)
@@ -107,29 +112,20 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 		_setRollbackStore(...interpolatePath(path, rollbackStore), args[args.length - 1])
 	}
 
-	// mutations currently applied to the rollback store
-	const previousValues = new Map<number, any[]>()
 	const [lockstepStore, _setLockstepStore] = createStore<S>({} as S)
 	const setLockstepStore = (...args: any[]) => {
 		const path = args.slice(0, -1)
 		//@ts-ignore
 		_setLockstepStore(...interpolatePath(path, lockstepStore), args[args.length - 1])
 	}
-	const [isLeader, setIsLeader] = createSignal(false)
+	//#endregion
 
-	const [clientControlledStates, setClientControlledStates] = createStore<ClientControlledStates<CCS>>({
-		[provider.clientId!]: { ...startingClientState },
-	})
+	let subscription = new Subscription()
 
-	const setClientControlledState = async (state: Partial<CCS>) => {
-		await until(initialized)
-		setClientControlledStates(produce(updateLocalClientControlledState(provider.clientId!, state)))
-		provider.broadcastClientControlledState(state)
-	}
-
+	//#region transactions
+	const previousValues = new Map<number, any[]>()
 	const transactionsBeingBuilt = new Set<SharedStoreTransactionBuilder>()
-
-	// if you set a transaction, you can't await this function or it will lock up
+	const appliedTransactions = [] as NewSharedStoreOrderedTransaction[]
 	const setStore = async (mutation: StoreMutation, transactionBuilder?: SharedStoreTransactionBuilder, rollback = true) => {
 		await until(initialized)
 		let transaction: NewSharedStoreOrderedTransaction
@@ -230,6 +226,7 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 		}
 		return false
 	}
+	//#endregion
 
 	//#region handle incoming mutations
 	const applyMutationsToStore = (mutations: StoreMutation[], setStore: (...args: any[]) => any) => {
@@ -239,7 +236,7 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 	}
 
 	function handleReceivedTransaction(receivedAtom: SharedStoreOrderedTransaction) {
-		console.log(`processing atom (${provider.clientId})`, receivedAtom, appliedTransactions.length)
+		console.debug(`processing atom (${provider.clientId})`, receivedAtom, appliedTransactions.length)
 		for (let mut of receivedAtom.mutations) {
 			mut.path = interpolatePath(mut.path, lockstepStore)
 		}
@@ -248,14 +245,14 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 			//#region we're a leader, listening to mutations from followers
 
 			// we've received the first valid mutation with this index
-			if (receivedAtom.index == appliedTransactions.length) {
+			if (receivedAtom.index === appliedTransactions.length) {
 				applyMutationsToStore(receivedAtom.mutations, setRollbackStore)
 				applyMutationsToStore(receivedAtom.mutations, setLockstepStore)
 				appliedTransactions.push(receivedAtom)
 				// this is now canonical state, and we can broadcast it
 				provider.broadcastAsCommitted(receivedAtom, receivedAtom.mutationId)
 			} else {
-				console.warn('received mutation with index that is not the next index', receivedAtom.index, appliedTransactions.length)
+				console.warn('received mutation with index that is not the next index', receivedAtom.index, appliedTransactions.length, receivedAtom)
 			}
 			return
 			//#endregion
@@ -297,7 +294,6 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 		//#endregion
 	}
 
-	let subscription = new Subscription()
 	subscription.add(
 		provider.observeComittedMutations().subscribe(async (_receivedAtom) => {
 			await until(initialized)
@@ -319,9 +315,6 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 		})
 	)
 
-	onCleanup(() => {
-		subscription.unsubscribe()
-	})
 	//#endregion
 
 	//#region handle state dump requests
@@ -348,7 +341,14 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 	)
 	//#endregion
 
-	//#region handle client controlled state
+	//#region client controlled state
+	const setClientControlledState = async (state: Partial<CCS>) => {
+		await until(initialized)
+		setClientControlledStates(produce(updateLocalClientControlledState(provider.clientId!, state)))
+		provider.broadcastClientControlledState(state)
+	}
+
+	const [clientControlledStates, setClientControlledStates] = createStore<ClientControlledStates<CCS>>()
 	subscription.add(
 		provider.observeRequestClientControlledState().subscribe(() => {
 			provider.broadcastClientControlledState(clientControlledStates[provider.clientId!])
@@ -403,14 +403,23 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 				setRollbackStore(clientConfig.initialState as S)
 				setLockstepStore(clientConfig.initialState as S)
 			}
+			setClientControlledState(startingClientState)
+			provider.broadcastClientControlledState(clientControlledStates[provider.clientId!])
 		})
 		appliedTransactions.length = clientConfig.lastMutationIndex + 1
 		setInitialized(true)
 	})()
 	//#endregion
+
+	//#region cleanup
 	const dispose = () => {
 		subscription.unsubscribe()
 	}
+
+	onCleanup(() => {
+		subscription.unsubscribe()
+	})
+	//#endregion
 
 	return {
 		rollbackStore,
@@ -467,14 +476,7 @@ export class SharedStoreProvider {
 		this.message$ = new Observable<SharedStoreMessage>((subscriber) => {
 			const listener = (event: MessageEvent) => {
 				const message = JSON.parse(event.data) as SharedStoreMessage
-				// if (message.type === 'mutation') {
-				// 	if (!message.commit && !this.leader) {
-				// 		throw new Error('Non host received non-committed mutation')
-				// 	} else if (message.commit && this.leader) {
-				// 		throw new Error('Host received committed mutation')
-				// 	}
-				// }
-				console.log(`client:${this.clientId} received message`, message)
+				console.debug(`client:${this.clientId} received message`, message)
 
 				subscriber.next(message)
 			}
@@ -520,7 +522,6 @@ export class SharedStoreProvider {
 			...newTransaction,
 			mutationId: `${this.clientId}:${this.nextAtomId}`,
 		}
-		console.log(this.clientId, 'sending new transaction to leader: ', transaction)
 		this.nextAtomId++
 		const message: SharedStoreMessage = {
 			type: 'mutation',
@@ -540,7 +541,6 @@ export class SharedStoreProvider {
 		return await firstValueFrom(
 			this.observeComittedMutations().pipe(
 				concatMap((m) => {
-					console.log(`${this.clientId} transaction`, m)
 					if (m.index !== newTransaction.index) return []
 					return [m.mutationId === transaction.mutationId]
 				}),
@@ -574,7 +574,6 @@ export class SharedStoreProvider {
 					return []
 				})
 			)
-			.pipe(tap((mutation) => console.log(`${this.clientId} received mutation: `, mutation)))
 	}
 
 	observeOrderInvariantMutationFailed(): Observable<string> {
@@ -653,7 +652,7 @@ export class SharedStoreProvider {
 	}
 
 	send(message: SharedStoreMessage) {
-		console.log(`${this.clientId} sending message`, message)
+		console.trace(`${this.clientId} sending message`, message)
 		this.ws.send(JSON.stringify(message))
 	}
 }
@@ -666,7 +665,7 @@ function parseContent(content: Base64String) {
 	return JSON.parse(atob(content))
 }
 
-class SharedStoreTransactionBuilder {
+export class SharedStoreTransactionBuilder {
 	mutations: StoreMutation[] = []
 	private commit$ = new Subject<boolean>()
 

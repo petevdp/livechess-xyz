@@ -166,21 +166,13 @@ export function startServer(port: number) {
 					network.leader$.pipe(
 						switchMap((leader) => {
 							if (!leader) return EMPTY as Observable<SharedStoreMessage>
+							leader.send({ type: 'request-state' })
 							return leader.message$
 						}),
 						concatMap((m) => (m.type === 'state' ? [m] : [])),
 						endWith(null)
 					)
 				)
-				console.log('requesting state from leader')
-				network.leader$
-					.pipe(
-						concatMap((leader) => (!!leader ? [leader] : [])),
-						first()
-					)
-					.subscribe((leader) => {
-						leader.send({ type: 'request-state' })
-					})
 
 				const stateResponse = await stateResponsePromise
 				if (!stateResponse) throw new Error('did not receive state from leader')
@@ -323,7 +315,7 @@ export function startServer(port: number) {
 		})
 		//#endregion
 
-		//#region socket cleanup
+		//#region client cleanup
 		socket.on('close', () => {
 			console.log(`socket closed for network ${networkId} with clientId ${client.clientId}`)
 			subscription.unsubscribe()
@@ -342,11 +334,12 @@ export function startServer(port: number) {
 				network.cleanupAt = thirtySecondsFromNow()
 			} else {
 				// asks clients to remove the disconnected client from their copy of client-controlled-states
+				console.log(`nulling out client-controlled-states for disconnected client (${client.clientId})`)
 				const states = encodeContent({ [client.clientId]: null })
 				const message: SharedStoreMessage = { type: 'client-controlled-states', states }
-				for (let client of network.clients) {
-					if (client.clientId === client.clientId) continue
-					client.send(message)
+				for (let clt of network.clients) {
+					if (clt.clientId === client.clientId) continue
+					clt.send(message)
 				}
 			}
 
