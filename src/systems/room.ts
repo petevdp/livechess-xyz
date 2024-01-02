@@ -1,8 +1,8 @@
 import * as P from './player.ts'
 import * as GL from './game/gameLogic.ts'
 import { PLAYER_TIMEOUT, SERVER_HOST } from '../config.ts'
-import { initSharedStore, newNetwork, SharedStore, SharedStoreProvider, StoreMutation } from '../utils/sharedStore.ts'
-import { createEffect, createRoot, createSignal, on } from 'solid-js'
+import { initSharedStore, newNetwork, SharedStore, SharedStoreProvider } from '../utils/sharedStore.ts'
+import { createEffect, createRoot, createSignal, on, onCleanup } from 'solid-js'
 import { until } from '@solid-primitives/promise'
 import { trackStore } from '@solid-primitives/deep'
 
@@ -90,10 +90,15 @@ export async function connectToRoom(roomId: string, player: P.Player, abort?: ()
 	await until(() => store.initialized())
 	await store.setStoreWithRetries((state) => {
 		if (state.players.some((p) => p.id === player.id)) return []
-		return [{ path: ['players', '__push__'], value: { id: player.id, name: P.playerName() } }]
+		return [
+			{ path: ['players', '__push__'], value: { id: player.id, name: P.playerName() } },
+			{
+				path: ['messages', '__push__'],
+				value: { type: 'system', text: `${player.name} has joined`, sender: null, ts: Date.now() },
+			},
+		]
 	})
-	let room = new Room(store, provider, player)
-	setRoom(room)
+	return new Room(store, provider, player)
 }
 
 export class Room {
@@ -111,7 +116,6 @@ export class Room {
 		public player: P.Player
 	) {
 		this.setupListeners()
-		this.ensurePlayerAdded()
 	}
 
 	//#region helpers
@@ -193,26 +197,6 @@ export class Room {
 		this.sharedStore.setStore({ path: ['gameConfig'], value: config })
 	}
 
-	async ensurePlayerAdded() {
-		await this.sharedStore.setClientControlledState({ playerId: this.player.id })
-		let added = false
-		const success = await this.sharedStore.setStoreWithRetries((state: RoomState) => {
-			let index: number = state.players.findIndex((p) => p.id === this.player.id)
-			if (index !== -1) return
-			added = true
-			return [
-				{
-					path: ['players', '__push__'],
-					value: { id: this.player.id, name: null } as RoomParticipant,
-				},
-			] as StoreMutation[]
-		})
-
-		if (!success) {
-			throw new Error('Failed to add player')
-		}
-	}
-
 	async setPlayerName(name: string) {
 		this.sharedStore.setStoreWithRetries((state) => {
 			let _name = name
@@ -287,31 +271,37 @@ export class Room {
 
 			//#region messages on active player change
 			let prevActivePlayers = new Set<string>(this.activePlayers.map((p) => p.id))
-			let seenPlayers = new Set<string>(this.players.map((p) => p.id))
 
-			// TODO this is a big buggy, fix
-			const checkActiveCnnections = () => {
+			const checkActiveConnections = () => {
+				const hasPreviouslyDisconnected = (player: P.Player, state: RoomState) => {
+					return state.messages.some((m) => m.text.match(`${player.name} has disconnected`))
+				}
+
 				// make sure we're the only client sending these messages
 				if (!this.sharedStore.isLeader()) return
-				for (let player of this.players) {
-					const isActive = this.activePlayers.some((p) => p.id === player.id)
-					if (!prevActivePlayers.has(player.id) && isActive) {
-						prevActivePlayers.add(player.id)
-						if (seenPlayers.has(player.id)) {
-							this.sendMessage(`${player.name} has reconnected`, true)
-						} else {
-							this.sendMessage(`${player.name} has joined`, true)
-							seenPlayers.add(player.id)
-						}
-					} else if (prevActivePlayers.has(player.id) && !isActive) {
-						prevActivePlayers.delete(player.id)
+				console.log({ active: this.activePlayers })
+				for (let player of this.activePlayers) {
+					if (!prevActivePlayers.has(player.id) && hasPreviouslyDisconnected(player, this.state)) {
+						this.sendMessage(`${player.name} has reconnected`, true)
+					}
+					prevActivePlayers.add(player.id)
+				}
+				console.log([...prevActivePlayers.values()])
+				for (let playerId of prevActivePlayers.values()) {
+					const player = this.players.find((p) => p.id === playerId)!
+					console.log({ player })
+					if (!this.activePlayers.some((p) => p.id === playerId)) {
+						prevActivePlayers.delete(playerId)
 						this.sendMessage(`${player.name} has disconnected`, true)
 					}
 				}
 			}
 
-			until(() => this.player).then(checkActiveCnnections)
-			setInterval(checkActiveCnnections, 1000)
+			until(() => this.activePlayers.length).then(checkActiveConnections)
+			const interval = setInterval(checkActiveConnections, 1000)
+			onCleanup(() => {
+				clearInterval(interval)
+			})
 			//#endregion
 		})
 	}
