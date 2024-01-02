@@ -223,6 +223,7 @@ export function getGameOutcome(state: GameState) {
 		winner = null
 		reason = 'threefold-repetition'
 	} else {
+		// we handle flags externally
 		return null
 	}
 	return { winner, reason } as GameOutcome

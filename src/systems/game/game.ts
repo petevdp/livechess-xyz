@@ -42,7 +42,9 @@ export class Game {
 		this.registerListeners()
 	}
 
-	get outcome() {
+	get outcome(): GL.GameOutcome | null {
+		if (this.clock.white <= 0) return { winner: 'black', reason: 'flagged' }
+		if (this.clock.black <= 0) return { winner: 'white', reason: 'flagged' }
 		return this.getOutcome()
 	}
 
@@ -308,4 +310,3 @@ createRoot(() => {
 		})
 	})
 })
-
