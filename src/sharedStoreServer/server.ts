@@ -21,6 +21,7 @@ import { map } from 'rxjs/operators'
 
 const networks = new Map<string, Network>()
 type Network = {
+	id: string
 	cleanupAt: number | null
 	leader$: BehaviorSubject<Client | null>
 	nextLeader?: Client
@@ -39,19 +40,36 @@ function printNetwork(network: Network) {
 	}
 }
 
+const NO_LEADER_MSG_WHITELIST = ['ack-promote-to-leader', 'promote-to-leader'] as SharedStoreMessage['type'][]
+
 class Client {
 	message$: Observable<SharedStoreMessage>
+
+	messageToSendBuffer: SharedStoreMessage[] = []
 
 	constructor(
 		public socket: ws.WebSocket,
 		public clientId: string,
-		public networkId: string
+		public network: Network
 	) {
+		let msgBuffer: SharedStoreMessage[] = []
 		this.message$ = new Observable<SharedStoreMessage>((s) => {
 			socket.on('message', (data) => {
 				const message = JSON.parse(data.toString()) as SharedStoreMessage
-				console.log(`${networkId}:${clientId} sent`, message)
-				s.next(message)
+				if (this.network.leader) {
+					msgBuffer.forEach((m) => {
+						console.log(`${this.network.id}:${clientId} sent by client from message buffer`, m)
+						this.network.leader!.send(m)
+					})
+					msgBuffer = []
+					console.log(`${this.network.id}:${clientId} sent by client`, message)
+					s.next(message)
+				} else if (NO_LEADER_MSG_WHITELIST.includes(message.type)) {
+					console.log(`${this.network.id}:${clientId} sent by client`, message)
+					s.next(message)
+				} else {
+					msgBuffer.push(message)
+				}
 			})
 			socket.on('close', () => {
 				s.complete()
@@ -60,8 +78,19 @@ class Client {
 	}
 
 	send(msg: SharedStoreMessage) {
-		console.log(`sending to ${this.networkId}:${this.clientId}`, msg)
-		this.socket.send(JSON.stringify(msg))
+		if (this.network.leader) {
+			this.messageToSendBuffer.forEach((m) => {
+				console.log(`sending to client from message buffer to ${this.network.id}:${this.clientId}`, m)
+				this.socket.send(JSON.stringify(m))
+			})
+			this.messageToSendBuffer = []
+			console.log(`sending to client ${this.network.id}:${this.clientId}`, msg)
+			this.socket.send(JSON.stringify(msg))
+		} else if (NO_LEADER_MSG_WHITELIST.includes(msg.type)) {
+			this.socket.send(JSON.stringify(msg))
+		} else {
+			this.messageToSendBuffer.push(msg)
+		}
 	}
 }
 
@@ -91,6 +120,7 @@ export function startServer(port: number) {
 		if (request.url === '/networks/new') {
 			const networkId = createId(6)
 			networks.set(networkId, {
+				id: networkId,
 				cleanupAt: thirtySecondsFromNow(),
 				followers: [],
 				leader$: new BehaviorSubject<Client | null>(null),
