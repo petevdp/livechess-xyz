@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import * as R from './room.ts'
 import { connectToRoom } from './room.ts'
 import { until } from '@solid-primitives/promise'
-import { createEffect, createRoot } from 'solid-js'
 
 describe('room', () => {
 	it('can be created and connected to', async () => {
@@ -12,12 +11,6 @@ describe('room', () => {
 		expect(room.rollbackState.status).toBe('pregame')
 		expect(room.state.status).toBe('pregame')
 		expect(room.sharedStore.initialized()).toBe(true)
-		createRoot(() => {
-			createEffect(() => {
-				room.chatMessages.length
-				console.log(room.chatMessages)
-			})
-		})
 		await until(() => room.state.messages.length >= 1)
 		expect(room.state.messages[0].text).toContain('player1 has joined')
 		room.destroy()

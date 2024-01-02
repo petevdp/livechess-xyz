@@ -653,7 +653,7 @@ export class SharedStoreProvider {
 				})
 			)
 		).catch((e) => {
-			throw new Error('Failed to connect to server')
+			throw new Error(`Failed to connect to server: ${e.message}`)
 		})
 	}
 

@@ -1,11 +1,11 @@
-import { describe, expect, it, test } from 'vitest'
-import { buildTransaction, initSharedStore, newNetwork, SharedStore, SharedStoreProvider } from './sharedStore.ts'
-import { until } from '@solid-primitives/promise'
-import { createEffect, createRoot } from 'solid-js'
-import { sleep } from './time.ts'
-import { SERVER_HOST } from '../config.ts'
-import { unwrap } from 'solid-js/store'
-import { trackStore } from '@solid-primitives/deep'
+import {describe, expect, it, test} from 'vitest'
+import {buildTransaction, initSharedStore, newNetwork, SharedStore, SharedStoreProvider} from './sharedStore.ts'
+import {until} from '@solid-primitives/promise'
+import {createEffect, createRoot} from 'solid-js'
+import {sleep} from './time.ts'
+import {SERVER_HOST} from '../config.ts'
+import {unwrap} from 'solid-js/store'
+import {trackStore} from '@solid-primitives/deep'
 
 /**
  * All of the tests below assume that the sharedstore server  is running on localhost:8080
@@ -29,28 +29,29 @@ describe('network provider/shared store', () => {
 		const network = await newNetwork(SERVER_HOST)
 		const provider1 = new SharedStoreProvider(SERVER_HOST, network.networkId)
 		const provider2 = new SharedStoreProvider(SERVER_HOST, network.networkId)
-		let dispose = () => {}
+		let toDispose: (() => void)[] = []
 
 		type T = { ayy: string; lmao?: string }
 		let leaderStore = null as unknown as ReturnType<typeof initSharedStore>
 		let followerStore = null as unknown as ReturnType<typeof initSharedStore>
 
 		createRoot((d) => {
-			dispose = () => {
-				d()
-			}
+			toDispose.push(d)
 			leaderStore = initSharedStore<T>(provider1, {}, { ayy: 'ayy' })
+		})
+		await until(() => leaderStore.initialized())
+		createRoot((d) => {
+			toDispose.push(d)
 			followerStore = initSharedStore<T>(provider2)
 		})
-
-		await until(() => followerStore.initialized() && leaderStore.initialized())
+		await until(() => followerStore.initialized())
 
 		expect(leaderStore.lockstepStore.ayy).toBe('ayy')
 		expect(leaderStore.rollbackStore.ayy).toBe('ayy')
 		expect(followerStore.lockstepStore.ayy).toBe('ayy')
 		expect(followerStore.rollbackStore.ayy).toBe('ayy')
 
-		dispose()
+		toDispose.forEach((d) => d())
 	})
 
 	test('first mutation is always accepted', async () => {
