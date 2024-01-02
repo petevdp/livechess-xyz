@@ -169,16 +169,16 @@ function moveToCandidateMove(move: Move): CandidateMove {
 
 //#region game status
 
-export function inCheck(game: GameState) {
-	return _inCheck(getBoard(game))
+export function inCheck(board: Board) {
+	return _inCheck(board)
 }
 
 export function checkmated(game: GameState) {
-	return inCheck(game) && noMoves(game)
+	return inCheck(getBoard(game)) && noMoves(game)
 }
 
 export function stalemated(game: GameState) {
-	return !inCheck(game) && noMoves(game)
+	return !inCheck(getBoard(game)) && noMoves(game)
 }
 
 export function threefoldRepetition(game: GameState) {
@@ -707,7 +707,7 @@ export function moveToChessNotation(moveIndex: number, state: GameState): string
 	const capture = move.capture ? 'x' : ''
 	const to = move.to
 	const promotion = move.promotion ? '=' + move.promotion.toUpperCase() : ''
-	const check = inCheck(state) ? '+' : ''
+	const check = inCheck(getBoard(state)) ? '+' : ''
 	const checkmate = check && checkmated(state) ? '#' : ''
 
 	if (move.castle) {

@@ -22,9 +22,17 @@ export type PromotionSelection =
 			piece: GL.PromotionPiece
 	  }
 
+type BoardView = {
+	board: GL.Board
+	inCheck: boolean
+	lastMove: GL.Move | null
+}
+
 export class Game {
 	promotion: Accessor<PromotionSelection | null>
 	setPromotion: (p: PromotionSelection | null) => void
+	setViewedMove: (move: number | 'live') => void
+	viewedMoveIndex: Accessor<number>
 	private getOutcome: Accessor<GL.GameOutcome | null>
 	//#region listeners
 	private callWhenDestroyed: (() => void)[] = []
@@ -39,6 +47,10 @@ export class Game {
 		this.promotion = promotion
 
 		this.getOutcome = createMemo(() => GL.getGameOutcome(this.state))
+		const [currentMove, setViewedMove] = createSignal<'live' | number>('live')
+
+		this.viewedMoveIndex = () => (currentMove() === 'live' ? this.rollbackState.moveHistory.length - 1 : (currentMove() as number))
+		this.setViewedMove = setViewedMove
 		this.registerListeners()
 	}
 
@@ -48,11 +60,18 @@ export class Game {
 		return this.getOutcome()
 	}
 
-	get inCheck() {
-		return GL.inCheck(this.rollbackState)
+	get currentBoardView(): BoardView {
+		const lastMove = this.rollbackState.moveHistory[this.viewedMoveIndex()] || null
+		const entry = this.rollbackState.boardHistory[this.viewedMoveIndex() + 1]
+
+		return {
+			board: entry.board,
+			inCheck: GL.inCheck(entry.board),
+			lastMove,
+		}
 	}
 
-	get state() {
+	private get state() {
 		return this.room.state.gameState!
 	}
 
@@ -60,12 +79,8 @@ export class Game {
 		return this.room.rollbackState.gameState!
 	}
 
-	get board() {
+	private get board() {
 		return this.rollbackState.boardHistory[this.rollbackState.boardHistory.length - 1].board
-	}
-
-	get lastMove(): GL.Move | null {
-		return this.rollbackState.moveHistory[this.rollbackState.moveHistory.length - 1] || null
 	}
 
 	get players() {
@@ -97,15 +112,9 @@ export class Game {
 		return this.state.players[playerId]
 	}
 
-	colorPlayer(color: GL.Color) {
-		return this.players.find((p) => p.color === color)!
-	}
-
-	isPlayerTurn(playerId: string) {
-		return this.board.toMove === this.getPlayerColor(playerId)
-	}
-
+	//TODO fix promotions
 	async tryMakeMove(from: string, to: string, promotionPiece?: GL.PromotionPiece) {
+		if (this.viewedMoveIndex() !== this.rollbackState.moveHistory.length - 1) return
 		console.log('trying move', { from, to, promotionPiece })
 		let expectedMoveIndex = this.state.moveHistory.length
 		await this.room.sharedStore.setStoreWithRetries((roomState) => {
@@ -145,6 +154,9 @@ export class Game {
 				{ path: ['gameState', 'drawOffers'], value: { white: false, black: false } },
 			]
 		})
+		if (this.viewedMoveIndex() !== this.rollbackState.moveHistory.length - 1) {
+			this.setViewedMove('live')
+		}
 	}
 
 	//#region draw actions
@@ -283,15 +295,15 @@ function useClock(move$: Observable<GL.Move>, gameConfig: GL.GameConfig) {
 }
 
 function getMoveHistoryAsNotation(state: GL.GameState) {
-	let moves = []
+	let moves: [string, string | null][] = []
 	for (let i = 0; i < Math.ceil(state.moveHistory.length / 2); i++) {
 		const whiteMove = GL.moveToChessNotation(i * 2, state)
 		if (i * 2 + 1 >= state.moveHistory.length) {
-			moves.push(`${i + 1}. ${whiteMove}`)
+			moves.push([whiteMove, null])
 			break
 		}
 		const blackMove = GL.moveToChessNotation(i * 2 + 1, state)
-		moves.push(`${i + 1}. ${whiteMove} ${blackMove}`)
+		moves.push([whiteMove, blackMove])
 	}
 	return moves
 }

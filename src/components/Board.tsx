@@ -1,4 +1,4 @@
-import { batch, createEffect, createSignal, For, Match, onCleanup, onMount, Show, Switch } from 'solid-js'
+import { batch, createEffect, createSignal, For, Match, onCleanup, onMount, ParentProps, Show, Switch } from 'solid-js'
 import * as G from '../systems/game/game.ts'
 import * as GL from '../systems/game/gameLogic.ts'
 import * as Modal from './Modal.tsx'
@@ -43,8 +43,8 @@ export function Board() {
 
 		//#region draw last move highlight
 		const highlightColor = '#aff682'
-		if (game.lastMove) {
-			const highlightedSquares = [game.lastMove.from, game.lastMove.to]
+		if (game.currentBoardView.lastMove) {
+			const highlightedSquares = [game.currentBoardView.lastMove.from, game.currentBoardView.lastMove.to]
 			for (let square of highlightedSquares) {
 				if (!square) continue
 				let x = square[0].charCodeAt(0) - 'a'.charCodeAt(0)
@@ -60,7 +60,7 @@ export function Board() {
 		//#endregion
 
 		//#region draw pieces
-		for (let [square, piece] of Object.entries(game.board.pieces)) {
+		for (let [square, piece] of Object.entries(game.currentBoardView.board.pieces)) {
 			if (square === grabbedSquare()) {
 				continue
 			}
@@ -88,7 +88,7 @@ export function Board() {
 			let x = grabbedSquareMousePos()!.x
 			let y = grabbedSquareMousePos()!.y
 			ctx.drawImage(
-				imageCache[resolvePieceImagePath(game.board.pieces[grabbedSquare()!]!)],
+				imageCache[resolvePieceImagePath(game.currentBoardView.board.pieces[grabbedSquare()!]!)],
 				x - squareSize / 2,
 				y - squareSize / 2,
 				squareSize,
@@ -104,7 +104,7 @@ export function Board() {
 	// preload piece images
 	onMount(async () => {
 		await Promise.all(
-			Object.values(game.board.pieces).map(async (piece) => {
+			Object.values(game.currentBoardView.board.pieces).map(async (piece) => {
 				const src = resolvePieceImagePath(piece)
 				imageCache[src] = await loadImage(src)
 			})
@@ -122,7 +122,11 @@ export function Board() {
 	createEffect(() => {
 		if (grabbedSquare()) {
 			canvas.style.cursor = 'grabbing'
-		} else if (hoveredSquare() && game.board.pieces[hoveredSquare()!] && game.board.pieces[hoveredSquare()!]!.color === game.player.color) {
+		} else if (
+			hoveredSquare() &&
+			game.currentBoardView.board.pieces[hoveredSquare()!] &&
+			game.currentBoardView.board.pieces[hoveredSquare()!]!.color === game.player.color
+		) {
 			canvas.style.cursor = 'grab'
 		} else {
 			canvas.style.cursor = 'default'
@@ -166,8 +170,8 @@ export function Board() {
 					setClickedSquare(null)
 				} else if (
 					hoveredSquare() &&
-					game.board.pieces[hoveredSquare()!] &&
-					game.board.pieces[hoveredSquare()!]!.color === game.player.color
+					game.currentBoardView.board.pieces[hoveredSquare()!] &&
+					game.currentBoardView.board.pieces[hoveredSquare()!]!.color === game.player.color
 				) {
 					setGrabbedSquare(hoveredSquare)
 					const rect = canvas.getBoundingClientRect()
@@ -237,9 +241,9 @@ export function Board() {
 			false,
 			isGameOverModalDisposed
 		)
-		await until(() => game.room.state.status === 'pregame')
-		setIsGameOverModalDisposed(true)
-	})().catch((err) => console.error(err))
+		await until(() => game.room.state.status === 'pregame' || isGameOverModalDisposed())
+		!isGameOverModalDisposed() && setIsGameOverModalDisposed(true)
+	})().catch()
 	//#endregion
 
 	return (
@@ -248,15 +252,13 @@ export function Board() {
 			{canvas}
 			<PlayerDisplay player={game.player} class={styles.player} clock={game.clock[game.player.color]} />
 			<div class={styles.leftPanel}>
-				<GameStateDisplay inCheck={game.inCheck} toMove={game.board.toMove} outcome={game.outcome} />
+				<GameStateDisplay inCheck={game.currentBoardView.inCheck} toMove={game.currentBoardView.board.toMove} outcome={game.outcome} />
 				<Show when={game.room.state.status === 'postgame'}>
 					<Button kind="primary" onClick={() => game.room.configureNewGame()}>
 						Play Again
 					</Button>
 				</Show>
-				<div class="align-center flex flex-col">
-					<For each={game.moveHistoryAsNotation}>{(move) => <code class="text-neutral-400">{move}</code>}</For>
-				</div>
+				<MoveHistory />
 			</div>
 			<div class={styles.rightPanel}>
 				<Button kind="secondary" onclick={() => setBoardFlipped((f) => !f)} class="mb-1">
@@ -326,10 +328,99 @@ function DrawOffers(props: {
 
 function GameStateDisplay(props: { toMove: GL.Color; outcome: GL.GameOutcome | null; inCheck: boolean }) {
 	return (
-		<span>
+		<span class="w-full">
 			{!props.outcome ? `${props.toMove} to move` : <GameOutcomeDisplay outcome={props.outcome} />}
 			{props.inCheck && <span class="text-red-400">Check!</span>}
 		</span>
+	)
+}
+
+function MoveHistory() {
+	const game = G.game()!
+	return (
+		<div class="align-center flex w-full flex-col space-y-1">
+			<div class="flex justify-evenly">
+				<button disabled={game.viewedMoveIndex() === -1} onClick={() => game.setViewedMove(-1)}>
+					<FirstStepSvg />
+				</button>
+				<button disabled={game.viewedMoveIndex() === -1} onClick={() => game.setViewedMove(game.viewedMoveIndex() - 1)}>
+					<PrevStepSvg />
+				</button>
+				<button onClick={() => game.setViewedMove(game.viewedMoveIndex() + 1)}>
+					<NextStepSvg />
+				</button>
+				<button disabled={game.viewedMoveIndex() === game.rollbackState.moveHistory.length - 1} onClick={() => game.setViewedMove('live')}>
+					<LastStepSvg />
+				</button>
+			</div>
+			<MoveHistoryButton active={game.viewedMoveIndex() === -1} onClick={() => game.setViewedMove(-1)}>
+				Start
+			</MoveHistoryButton>
+			<For each={game.moveHistoryAsNotation}>
+				{(move, index) => (
+					<code class="text-neutral-400">
+						{index()}.{' '}
+						<MoveHistoryButton active={game.viewedMoveIndex() === index() * 2} onClick={() => game.setViewedMove(index() * 2)}>
+							{move[0]}
+						</MoveHistoryButton>{' '}
+						<Show when={move[1]}>
+							<MoveHistoryButton active={game.viewedMoveIndex() === index() * 2 + 1} onClick={() => game.setViewedMove(index() * 2 + 1)}>
+								{move[1]}
+							</MoveHistoryButton>
+						</Show>
+					</code>
+				)}
+			</For>
+		</div>
+	)
+}
+
+function NextStepSvg() {
+	return (
+		<svg fill="rgb(212 212 212 / var(--tw-text-opacity))" xmlns="http://www.w3.org/2000/svg" height="16" width="10" viewBox="0 0 320 512">
+			<path d="M52.5 440.6c-9.5 7.9-22.8 9.7-34.1 4.4S0 428.4 0 416V96C0 83.6 7.2 72.3 18.4 67s24.5-3.6 34.1 4.4l192 160L256 241V96c0-17.7 14.3-32 32-32s32 14.3 32 32V416c0 17.7-14.3 32-32 32s-32-14.3-32-32V271l-11.5 9.6-192 160z" />
+		</svg>
+	)
+}
+
+const svgFill = 'rgb(212 212 212 / var(--tw-text-opacity))'
+
+function PrevStepSvg() {
+	return (
+		<svg fill={svgFill} xmlns="http://www.w3.org/2000/svg" height="16" width="10" viewBox="0 0 320 512">
+			<path d="M267.5 440.6c9.5 7.9 22.8 9.7 34.1 4.4s18.4-16.6 18.4-29V96c0-12.4-7.2-23.7-18.4-29s-24.5-3.6-34.1 4.4l-192 160L64 241V96c0-17.7-14.3-32-32-32S0 78.3 0 96V416c0 17.7 14.3 32 32 32s32-14.3 32-32V271l11.5 9.6 192 160z" />
+		</svg>
+	)
+}
+
+function LastStepSvg() {
+	return (
+		<svg fill={svgFill} xmlns="http://www.w3.org/2000/svg" height="16" width="16" viewBox="0 0 512 512">
+			<path d="M52.5 440.6c-9.5 7.9-22.8 9.7-34.1 4.4S0 428.4 0 416V96C0 83.6 7.2 72.3 18.4 67s24.5-3.6 34.1 4.4L224 214.3V256v41.7L52.5 440.6zM256 352V256 128 96c0-12.4 7.2-23.7 18.4-29s24.5-3.6 34.1 4.4l192 160c7.3 6.1 11.5 15.1 11.5 24.6s-4.2 18.5-11.5 24.6l-192 160c-9.5 7.9-22.8 9.7-34.1 4.4s-18.4-16.6-18.4-29V352z" />
+		</svg>
+	)
+}
+
+function FirstStepSvg() {
+	return (
+		<svg fill={svgFill} xmlns="http://www.w3.org/2000/svg" height="16" width="16" viewBox="0 0 512 512">
+			<path d="M459.5 440.6c9.5 7.9 22.8 9.7 34.1 4.4s18.4-16.6 18.4-29V96c0-12.4-7.2-23.7-18.4-29s-24.5-3.6-34.1 4.4L288 214.3V256v41.7L459.5 440.6zM256 352V256 128 96c0-12.4-7.2-23.7-18.4-29s-24.5-3.6-34.1 4.4l-192 160C4.2 237.5 0 246.5 0 256s4.2 18.5 11.5 24.6l192 160c9.5 7.9 22.8 9.7 34.1 4.4s18.4-16.6 18.4-29V352z" />
+		</svg>
+	)
+}
+
+export function MoveHistoryButton(props: ParentProps<{ active: boolean; onClick: () => void }>) {
+	return (
+		<button
+			onClick={props.onClick}
+			class="rounded p-1 text-xs text-neutral-300"
+			classList={{
+				['bg-neutral-700']: props.active,
+				['cursor-default']: props.active,
+			}}
+		>
+			{props.children}
+		</button>
 	)
 }
 
