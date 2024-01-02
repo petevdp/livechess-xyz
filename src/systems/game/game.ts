@@ -31,6 +31,7 @@ export class Game {
 	promotion: Accessor<PromotionSelection | null>
 	setPromotion: (p: PromotionSelection | null) => void
 	setViewedMove: (move: number | 'live') => void
+	destroyed = false
 	viewedMoveIndex: Accessor<number>
 	private getOutcome: Accessor<GL.GameOutcome | null>
 	//#region listeners
@@ -41,10 +42,12 @@ export class Game {
 		public playerId: string,
 		public gameConfig: GL.GameConfig
 	) {
+		console.log({ destroyed: this.destroyed })
 		const [promotion, setPromotion] = createSignal(null)
 		this.setPromotion = setPromotion
 		this.promotion = promotion
 
+		// use non rollback state because we don't want to display a false outcome
 		this.getOutcome = createMemo(() => GL.getGameOutcome(this.state))
 		const [currentMove, setViewedMove] = createSignal<'live' | number>('live')
 
@@ -107,13 +110,13 @@ export class Game {
 	}
 
 	getPlayerColor(playerId: string) {
-		return this.state.players[playerId]
+		return this.rollbackState.players[playerId]
 	}
 
 	async tryMakeMove(from: string, to: string, promotionPiece?: GL.PromotionPiece) {
 		if (this.viewedMoveIndex() !== this.rollbackState.moveHistory.length - 1) return
 		console.log('trying move', { from, to, promotionPiece })
-		let expectedMoveIndex = this.state.moveHistory.length
+		let expectedMoveIndex = this.rollbackState.moveHistory.length
 		await this.room.sharedStore.setStoreWithRetries((roomState) => {
 			const state = roomState.gameState!
 			// check that we're still on the same move
@@ -131,7 +134,7 @@ export class Game {
 				return
 			}
 
-			const newBoardIndex = this.state.boardHistory.length
+			const newBoardIndex = this.rollbackState.boardHistory.length
 
 			const newBoardHistoryEntry: BoardHistoryEntry = {
 				board: result!.board,
@@ -144,7 +147,7 @@ export class Game {
 					path: ['gameState', 'boardHistory', newBoardIndex],
 					value: newBoardHistoryEntry,
 				},
-				{ path: ['gameState', 'moveHistory', this.state.moveHistory.length], value: result.move },
+				{ path: ['gameState', 'moveHistory', '__push__'], value: result.move },
 				{ path: ['gameState', 'drawDeclinedBy'], value: null },
 				{ path: ['gameState', 'drawOffers'], value: { white: false, black: false } },
 			]
@@ -206,6 +209,7 @@ export class Game {
 	}
 
 	destroy() {
+		this.destroyed = true
 		this.callWhenDestroyed.forEach((c) => c())
 	}
 
@@ -216,7 +220,7 @@ export class Game {
 		createRoot((d) => {
 			this.callWhenDestroyed.push(d)
 
-			const move$ = observeMoves(this.state)
+			const move$ = observeMoves(this.rollbackState)
 			this.getClocks = useClock(move$, this.gameConfig)
 		})
 	}
@@ -308,8 +312,7 @@ function getMoveHistoryAsNotation(state: GL.GameState) {
 	return moves
 }
 
-const [_game, setGame] = createSignal<Game | null>(null)
-export const game = _game
+export const [game, setGame] = createSignal<Game | null>(null)
 
 createRoot(() => {
 	createEffect(() => {

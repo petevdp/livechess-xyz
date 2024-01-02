@@ -25,14 +25,14 @@ export function Board() {
 	// TODO explore using dirty checking for partial rendering instead of brute force
 	//#region rendering
 	function render() {
+		if (game.destroyed || !canvas) return
 		const ctx = canvas.getContext('2d')!
 		//#region draw board
 
-		// set background to light brown
+		// fill in light squares as background
 		ctx.fillStyle = '#eaaa69'
 		ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-		// fill in squars as dark brown
 
 		// fill in dark squares
 		ctx.fillStyle = '#a05a2c'
@@ -244,23 +244,21 @@ export function Board() {
 	onCleanup(() => {
 		setIsGameOverModalDisposed(true)
 	})
+
 	;(async function handleGameEnd() {
 		const outcome = await until(() => game.outcome)
 		Modal.prompt(
 			(_props) => {
 				console.log('rendering outocme')
 				return (
-					<div>
+					<div class="space-y-1 flex flex-col items-center">
 						<GameOutcomeDisplay outcome={outcome} />
-						<Button
-							kind="primary"
-							onclick={() => {
-								_props.onCompleted(true)
-								game.room.configureNewGame()
-							}}
-						>
-							Play Again
-						</Button>
+						<div class="space-x-1">
+							<NewGameButton/>
+							<Button kind="secondary" onclick={() => _props.onCompleted(false)}>
+								Continue
+							</Button>
+						</div>
 					</div>
 				)
 			},
@@ -271,6 +269,11 @@ export function Board() {
 		!isGameOverModalDisposed() && setIsGameOverModalDisposed(true)
 	})().catch()
 	//#endregion
+
+	onCleanup(() => {
+		game.destroy()
+		G.setGame(null)
+	})
 
 	return (
 		<div class={styles.boardContainer}>
@@ -306,9 +309,18 @@ export function Board() {
 						declineDraw={() => game.declineDraw()}
 					/>
 				</Show>
+				<Show when={game.outcome}>
+					<NewGameButton/>
+				</Show>
 			</div>
 		</div>
 	)
+}
+
+// TODO use a "ready up" system here instead
+function NewGameButton() {
+	const game = G.game()!
+	return <Button kind="primary" onclick={() => game.room.configureNewGame()}>New Game</Button>
 }
 
 function DrawOffers(props: {

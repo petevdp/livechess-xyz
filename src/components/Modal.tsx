@@ -28,6 +28,7 @@ export function ModalContainer() {
 			class="left-0 top-0 z-[1000] h-full w-full overflow-y-auto outline-none"
 			classList={{
 				[activeModal() ? 'absolute' : 'hidden']: true,
+				[activeModal()?.closeOnOutsideClick ? 'pointer-events-auto' : 'pointer-events-none']: true,
 			}}
 			id="modal-container"
 			tabindex="-1"
@@ -36,9 +37,9 @@ export function ModalContainer() {
 			aria-hidden={!activeModal()}
 		>
 			<div
-				class="activeModal transform[-translate-x-1/2_-translate-y-1/2] pointer-events-none relative left-[50%] top-[50%] flex w-max items-center"
+				class="activeModal pointer-events-auto flex w-max items-center"
 				classList={{
-					['transform[-translate-x-1/2_-translate-y-1/2] left-[50%] top-[50%]']: !activeModal()?.position(),
+					['absolute -translate-x-1/2 -translate-y-1/2 left-[50%] top-[50%]']: !activeModal()?.position(),
 				}}
 				style={{
 					position: activeModal()?.position() ? 'absolute' : undefined,
