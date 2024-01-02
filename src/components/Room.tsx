@@ -1,4 +1,4 @@
-import { createEffect, createSignal, For, Match, on, onMount, Show, Switch } from 'solid-js'
+import { createEffect, createSignal, For, Match, on, onCleanup, onMount, Show, Switch } from 'solid-js'
 import * as P from '../systems/player.ts'
 import { useNavigate, useParams } from '@solidjs/router'
 import { ConnectionStatus } from '../utils/yjs.ts'
@@ -17,15 +17,19 @@ export function RoomGuard() {
 	const navigate = useNavigate()
 
 	createEffect(async () => {
-		if (!R.room() || R.room()!.roomId !== params.id) {
+		if (!R.room() || (R.room()!.roomId !== params.id && P.playerId() && P.playerName())) {
 			setConnectionStatus('connecting')
-			await until(() => P.player() != null && P.player()!.name != null)
-			await R.connectToRoom(params.id, () => navigate('/'))
+			await R.connectToRoom(params.id, { id: P.playerId()!, name: P.playerName()! }, () => navigate('/'))
 			setConnectionStatus('connected')
 		}
 	})
+
 	createEffect(() => {
 		console.log('connection status', connectionStatus())
+	})
+
+	onCleanup(() => {
+		R.room()?.destroy()
 	})
 
 	return (
@@ -33,7 +37,7 @@ export function RoomGuard() {
 			<div class="grid h-[calc(100vh_-_4rem)] place-items-center">
 				<div class="rounded bg-gray-900 p-2">
 					<Switch>
-						<Match when={!P.player()?.name}>
+						<Match when={!P.playerName()}>
 							<NickForm />
 						</Match>
 						<Match when={!R.room() || connectionStatus() === 'connecting'}>
@@ -72,7 +76,7 @@ function Room() {
 }
 
 function Lobby() {
-	const room = R.room()
+	const room = R.room()!
 	if (!room) throw new Error('room is not initialized')
 
 	const copyInviteLink = () => {
@@ -89,10 +93,10 @@ function Lobby() {
 				<Button kind="primary" class="whitespace-nowrap" onclick={copyInviteLink}>
 					Copy Invite Link
 				</Button>
-				<Show when={P.player() && room!.sharedStore.isLeader()}>
+				<Show when={room!.sharedStore.isLeader()}>
 					<Button
 						kind="primary"
-						disabled={!R.room()!.canStartGame}
+						disabled={!room.canStartGame}
 						class="ml-1 w-full rounded"
 						onClick={async () => {
 							// change this to a "set ready" pattern
@@ -219,8 +223,8 @@ function NickForm() {
 	const [displayName, setDisplayName] = createSignal<string>('')
 	const [initialized, setInitialized] = createSignal(false)
 	onMount(async () => {
-		await until(() => P.player() != null)
-		setDisplayName(P.player()!.name || '')
+		await until(() => P.playerId())
+		setDisplayName(P.playerName() || '')
 		setInitialized(true)
 	})
 	const onSubmit = (e: SubmitEvent) => {

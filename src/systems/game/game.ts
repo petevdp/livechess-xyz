@@ -304,7 +304,7 @@ createRoot(() => {
 		untrack(() => {
 			game()?.destroy()
 			const gameConfig = unwrap(room.state.gameConfig)
-			setGame(new Game(room, P.player()!.id, gameConfig))
+			setGame(new Game(room, P.playerId()!, gameConfig))
 		})
 	})
 })

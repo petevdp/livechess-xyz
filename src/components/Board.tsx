@@ -213,8 +213,7 @@ export function Board() {
 
 	onCleanup(() => {
 		setIsGameOverModalDisposed(true)
-	})
-	;(async function handleGameEnd() {
+	})(async function handleGameEnd() {
 		const outcome = await until(() => game.outcome)
 		Modal.prompt(
 			(_props) => {

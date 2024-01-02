@@ -215,7 +215,7 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 		await until(initialized)
 		for (let i = 0; i < numRetries + 1; i++) {
 			const res = fn(rollbackStore)
-			if (!res) return false
+			if (!res) return true
 			const transaction: NewSharedStoreOrderedTransaction = {
 				mutations: res,
 				index: appliedTransactions.length,
@@ -455,6 +455,10 @@ function interpolatePath(path: (string | number)[], store: any) {
 			if (i !== _path.length - 1) throw new Error("can't push to non-terminal path")
 			_path[i] = current.length
 			break
+		}
+		if (!current) {
+			console.error('attempted to resolve invalid path for store', path, store)
+			throw new Error('invalid path')
 		}
 		current = current[_path[i]]
 	}

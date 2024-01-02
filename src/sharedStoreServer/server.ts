@@ -1,7 +1,20 @@
 import * as ws from 'ws'
 import * as http from 'http'
 import { Base64String, ClientConfig, encodeContent, NewNetworkResponse, SharedStoreMessage } from '../utils/sharedStore.ts'
-import { BehaviorSubject, concatMap, EMPTY, endWith, firstValueFrom, from, interval, mergeAll, Observable, share, switchMap } from 'rxjs'
+import {
+	BehaviorSubject,
+	concatMap,
+	EMPTY,
+	endWith,
+	first,
+	firstValueFrom,
+	from,
+	interval,
+	mergeAll,
+	Observable,
+	share,
+	switchMap,
+} from 'rxjs'
 import { map } from 'rxjs/operators'
 
 // TODO add tld support
@@ -303,7 +316,7 @@ export function startServer(port: number) {
 		//#endregion
 
 		//#region client cleanup
-		socket.on('close', () => {
+		socket.on('close', async () => {
 			console.log(`socket closed for network ${networkId} with clientId ${client.clientId}`)
 			subscription.unsubscribe()
 			console.log(`network before ws closed: ${client.clientId}`, printNetwork(network))
@@ -321,6 +334,10 @@ export function startServer(port: number) {
 				network.cleanupAt = thirtySecondsFromNow()
 			} else {
 				// asks clients to remove the disconnected client from their copy of client-controlled-states
+
+				// wait for the new leader to be elected, otherwise we may throw off userspace logic that depends on a leader being set at all times
+				// TODO check if we should do this sort of validation elsewhere
+				await firstValueFrom(network.leader$.pipe(first((l) => !!l)))
 				console.log(`nulling out client-controlled-states for disconnected client (${client.clientId})`)
 				const states = encodeContent({ [client.clientId]: null })
 				const message: SharedStoreMessage = { type: 'client-controlled-states', states }
