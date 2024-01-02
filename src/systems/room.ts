@@ -103,12 +103,21 @@ export async function connectToRoom(roomId: string, abort?: () => void) {
 }
 
 export class Room {
+	get canStartGame() {
+		// check both states because reasons
+		for (let state of [this.sharedStore.lockstepStore, this.sharedStore.rollbackStore]) {
+			if (state.status !== 'pregame' || this.connectedPlayers.length < 2) return false
+		}
+		return true
+	}
 	constructor(
 		public sharedStore: SharedStore<RoomState, ClientOwnedState>,
 		public provider: SharedStoreProvider
 	) {
 		this.setupListeners()
 	}
+
+	//#region helpers
 
 	get roomId() {
 		return this.provider.networkId
@@ -148,6 +157,10 @@ export class Room {
 
 	dispose: Function = () => {}
 
+	//#endregion
+
+	//#region actions
+
 	async startGame() {
 		let errors: string[] = []
 		await this.sharedStore.setStoreWithRetries((state: RoomState) => {
@@ -181,14 +194,6 @@ export class Room {
 		this.sharedStore.setStore({ path: ['gameConfig'], value: config })
 	}
 
-	canStart() {
-		// check both states because reasons
-		for (let state of [this.sharedStore.lockstepStore, this.sharedStore.rollbackStore]) {
-			if (state.status !== 'pregame' || this.connectedPlayers.length < 2) return false
-		}
-		return true
-	}
-
 	async ensurePlayerAdded(player: P.Player) {
 		await this.sharedStore.setClientControlledState({ playerId: player.id })
 		return await this.sharedStore.setStoreWithRetries((state: RoomState) => {
@@ -213,6 +218,8 @@ export class Room {
 	configureNewGame() {
 		this.setState({ path: ['status'], value: 'pregame' })
 	}
+
+	//#endregion
 
 	private setupListeners() {
 		createRoot((dispose) => {

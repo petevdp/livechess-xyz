@@ -43,7 +43,7 @@ export function RoomGuard() {
 							<div>disconnected</div>
 						</Match>
 						<Match when={connectionStatus() === 'connected'}>
-							<Room room={R.room()!} />
+							<Room />
 						</Match>
 					</Switch>
 				</div>
@@ -52,10 +52,13 @@ export function RoomGuard() {
 	)
 }
 
-function Room(props: { room: R.Room }) {
+function Room() {
+	const room = R.room()
+	if (!room) throw new Error('room is not initialized')
+
 	return (
 		<Switch>
-			<Match when={props.room.state.status === 'pregame'}>
+			<Match when={room.state.status === 'pregame'}>
 				<Lobby />
 			</Match>
 			<Match when={G.game()}>
@@ -69,6 +72,9 @@ function Room(props: { room: R.Room }) {
 }
 
 function Lobby() {
+	const room = R.room()
+	if (!room) throw new Error('room is not initialized')
+
 	const copyInviteLink = () => {
 		navigator.clipboard.writeText(window.location.href)
 	}
@@ -83,18 +89,18 @@ function Lobby() {
 				<Button kind="primary" class="whitespace-nowrap" onclick={copyInviteLink}>
 					Copy Invite Link
 				</Button>
-				<Show when={P.player() && R.room()!.sharedStore.isLeader()}>
+				<Show when={P.player() && room!.sharedStore.isLeader()}>
 					<Button
 						kind="primary"
-						disabled={!R.room()!.canStart()}
+						disabled={!R.room()!.canStartGame}
 						class="ml-1 w-full rounded"
 						onClick={async () => {
 							// change this to a "set ready" pattern
-							if (!R.room()!.canStart()) return
-							R.room()!.startGame()
+							if (!room.canStartGame) return
+							room.startGame()
 						}}
 					>
-						{!R.room()!.canStart() ? '(Waiting for opponent to connect...)' : 'Start'}
+						{!room.canStartGame ? '(Waiting for opponent to connect...)' : 'Start'}
 					</Button>
 				</Show>
 			</div>
@@ -103,7 +109,9 @@ function Lobby() {
 }
 
 function GameConfigForm() {
-	const gameConfig = () => R.room()!.rollbackState.gameConfig
+	const room = R.room()
+	if (!room) throw new Error('room is not initialized')
+	const gameConfig = () => room!.rollbackState.gameConfig
 
 	return (
 		<div>
@@ -119,7 +127,7 @@ function GameConfigForm() {
 					}}
 					choices={GL.VARIANTS.map((c) => ({ label: c, id: c }) satisfies Choice<GL.Variant>)}
 					selected={gameConfig().variant}
-					onChange={(v) => R.room()!.setGameConfig({ variant: v })}
+					onChange={(v) => room!.setGameConfig({ variant: v })}
 				/>
 				<MultiChoiceButton
 					classList={{
@@ -132,7 +140,7 @@ function GameConfigForm() {
 					label="Time Control"
 					choices={GL.TIME_CONTROLS.map((tc) => ({ label: tc, id: tc }) satisfies Choice<GL.TimeControl>)}
 					selected={gameConfig().timeControl}
-					onChange={(v) => R.room()!.setGameConfig({ timeControl: v })}
+					onChange={(v) => room!.setGameConfig({ timeControl: v })}
 				/>
 				<MultiChoiceButton
 					label="Increment"
@@ -144,7 +152,7 @@ function GameConfigForm() {
 					}}
 					choices={GL.INCREMENTS.map((i) => ({ label: `${i}s`, id: i }) satisfies Choice<GL.Increment>)}
 					selected={gameConfig().increment}
-					onChange={(v) => R.room()!.setGameConfig({ increment: v })}
+					onChange={(v) => room!.setGameConfig({ increment: v })}
 				/>
 			</div>
 		</div>
@@ -152,14 +160,15 @@ function GameConfigForm() {
 }
 
 function ChatBox() {
-	// individual messages are not mutated
-	const messages = () => R.room()!.chatMessages
+	const room = R.room()
+	if (!room) throw new Error('room is not initialized')
+	const messages = () => room!.chatMessages
 	const [message, setMessage] = createSignal('')
 	const sendMessage = (e: SubmitEvent) => {
 		e.preventDefault()
 		const _message = message().trim()
 		if (!_message) return
-		R.room()!.sendMessage(_message.trim(), false)
+		room!.sendMessage(_message.trim(), false)
 		setMessage('')
 	}
 
