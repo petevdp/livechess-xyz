@@ -17,7 +17,7 @@ export function RoomGuard() {
 	const navigate = useNavigate()
 
 	createEffect(async () => {
-		if (!R.room() || (R.room()!.roomId !== params.id && P.playerId() && P.playerName())) {
+		if ((!R.room() || R.room()!.roomId !== params.id) && P.playerId() && P.playerName()) {
 			setConnectionStatus('connecting')
 			const room = await R.connectToRoom(params.id, { id: P.playerId()!, name: P.playerName()! }, () => navigate('/'))
 			R.setRoom(room)
