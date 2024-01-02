@@ -103,7 +103,6 @@ export class Game {
 		return GL.getDrawIsOfferedBy(this.rollbackState)
 	}
 
-	//TODO I don't think we handle pins correctly
 	get moveHistoryAsNotation() {
 		return getMoveHistoryAsNotation(this.rollbackState)
 	}
@@ -112,7 +111,6 @@ export class Game {
 		return this.state.players[playerId]
 	}
 
-	//TODO fix promotions
 	async tryMakeMove(from: string, to: string, promotionPiece?: GL.PromotionPiece) {
 		if (this.viewedMoveIndex() !== this.rollbackState.moveHistory.length - 1) return
 		console.log('trying move', { from, to, promotionPiece })
@@ -129,9 +127,7 @@ export class Game {
 				return
 			}
 
-			if (this.promotion()?.status === 'selecting') return
-
-			if (result.promoted && !this.promotion() && !promotionPiece) {
+			if (result.promoted && !promotionPiece) {
 				this.setPromotion({ status: 'selecting', from, to })
 				return
 			}
@@ -294,6 +290,8 @@ function useClock(move$: Observable<GL.Move>, gameConfig: GL.GameConfig) {
 	return clocks
 }
 
+//TODO is promotion handled correctly?
+//TODO I don't think we handle pins correctly
 function getMoveHistoryAsNotation(state: GL.GameState) {
 	let moves: [string, string | null][] = []
 	for (let i = 0; i < Math.ceil(state.moveHistory.length / 2); i++) {

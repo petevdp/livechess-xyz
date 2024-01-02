@@ -8,12 +8,14 @@ import { until } from '@solid-primitives/promise'
 
 //TODO provide some method to view the current game's config
 
+const BOARD_SIZE = 600
+const SQUARE_SIZE = BOARD_SIZE / 8
+
 export function Board() {
 	const game = G.game()!
 	//#region board rendering and mouse events
 	const imageCache: Record<string, HTMLImageElement> = {}
-	const canvas = (<canvas class={styles.board} width={600} height={600} />) as HTMLCanvasElement
-	const squareSize = canvas.width / 8
+	const canvas = (<canvas class={styles.board} width={BOARD_SIZE} height={BOARD_SIZE} />) as HTMLCanvasElement
 	const [boardFlipped, setBoardFlipped] = createSignal(false)
 	const [hoveredSquare, setHoveredSquare] = createSignal(null as null | string)
 	const [grabbedSquare, setGrabbedSquare] = createSignal(null as null | string)
@@ -36,7 +38,7 @@ export function Board() {
 		ctx.fillStyle = '#a05a2c'
 		for (let i = 0; i < 8; i++) {
 			for (let j = (i + 1) % 2; j < 8; j += 2) {
-				ctx.fillRect(j * squareSize, i * squareSize, squareSize, squareSize)
+				ctx.fillRect(j * SQUARE_SIZE, i * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE)
 			}
 		}
 		//#endregion
@@ -47,14 +49,9 @@ export function Board() {
 			const highlightedSquares = [game.currentBoardView.lastMove.from, game.currentBoardView.lastMove.to]
 			for (let square of highlightedSquares) {
 				if (!square) continue
-				let x = square[0].charCodeAt(0) - 'a'.charCodeAt(0)
-				let y = 8 - parseInt(square[1])
-				if (boardFlipped()) {
-					x = 7 - x
-					y = 7 - y
-				}
+				const [x, y] = squareToCoords(square, boardFlipped())
 				ctx.fillStyle = highlightColor
-				ctx.fillRect(x * squareSize, y * squareSize, squareSize, squareSize)
+				ctx.fillRect(x, y, SQUARE_SIZE, SQUARE_SIZE)
 			}
 		}
 		//#endregion
@@ -79,7 +76,7 @@ export function Board() {
 				x = 7 - x
 				y = 7 - y
 			}
-			ctx.drawImage(imageCache[resolvePieceImagePath(piece)], x * squareSize, y * squareSize, squareSize, squareSize)
+			ctx.drawImage(imageCache[resolvePieceImagePath(piece)], x * SQUARE_SIZE, y * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE)
 		}
 		//#endregion
 
@@ -89,10 +86,10 @@ export function Board() {
 			let y = grabbedSquareMousePos()!.y
 			ctx.drawImage(
 				imageCache[resolvePieceImagePath(game.currentBoardView.board.pieces[grabbedSquare()!]!)],
-				x - squareSize / 2,
-				y - squareSize / 2,
-				squareSize,
-				squareSize
+				x - SQUARE_SIZE / 2,
+				y - SQUARE_SIZE / 2,
+				SQUARE_SIZE,
+				SQUARE_SIZE
 			)
 		}
 		//#endregion
@@ -138,8 +135,8 @@ export function Board() {
 	//#region mouse events
 	onMount(() => {
 		function getSquareFromCoords(x: number, y: number) {
-			let col = Math.floor(x / squareSize)
-			let row = Math.floor(y / squareSize)
+			let col = Math.floor(x / SQUARE_SIZE)
+			let row = Math.floor(y / SQUARE_SIZE)
 			if (boardFlipped()) {
 				col = 7 - col
 				row = 7 - row
@@ -204,13 +201,42 @@ export function Board() {
 	//#endregion
 
 	// @ts-ignore
-	const setPromotion = (piece: GL.PromotionPiece) =>
-		game.setPromotion({
-			status: 'selected',
-			piece,
-			from: game.promotion()!.from,
-			to: game.promotion()!.to,
-		})
+
+	//#region promotion
+	const setPromotion = (piece: GL.PromotionPiece) => {
+		game.tryMakeMove(game.promotion()!.from, game.promotion()!.to, piece)
+		game.setPromotion(null)
+	}
+
+	const promoteModalPosition = () => {
+		if (!game.promotion()) return undefined
+		let coordsInt = squareToCoords(game.promotion()!.to, boardFlipped())
+		coordsInt[0] = coordsInt[0] + canvas.getBoundingClientRect().left
+		coordsInt[1] = coordsInt[1] + canvas.getBoundingClientRect().top
+
+		return coordsInt.map((c) => `${c}px`) as [string, string]
+	}
+
+	Modal.addModal({
+		title: null,
+		render: () => (
+			<div class="flex flex-row">
+				<For each={GL.PROMOTION_PIECES}>
+					{(pp) => (
+						<button onclick={() => setPromotion(pp)}>
+							<img src={resolvePieceImagePath({ color: game.player.color, type: pp })} />
+						</button>
+					)}
+				</For>
+			</div>
+		),
+		position: promoteModalPosition,
+		visible: () => !!game.promotion() && game.promotion()!.status === 'selecting',
+		closeOnEscape: false,
+		closeOnOutsideClick: false,
+		setVisible: () => {},
+	})
+	//#endregion
 
 	//#region game over modal
 	const [isGameOverModalDisposed, setIsGameOverModalDisposed] = createSignal(false)
@@ -281,15 +307,6 @@ export function Board() {
 					/>
 				</Show>
 			</div>
-			<Show when={game.promotion()?.status === 'selecting'}>
-				{GL.PROMOTION_PIECES.map((piece) => {
-					return (
-						<Button kind={'secondary'} onclick={() => setPromotion(piece)}>
-							{piece}
-						</Button>
-					)
-				})}
-			</Show>
 		</div>
 	)
 }
@@ -474,4 +491,14 @@ function loadImage(src: string) {
 			resolve(img)
 		}
 	})
+}
+
+function squareToCoords(square: string, boardFlipped: boolean) {
+	let x = square[0].charCodeAt(0) - 'a'.charCodeAt(0)
+	let y = 8 - parseInt(square[1])
+	if (boardFlipped) {
+		x = 7 - x
+		y = 7 - y
+	}
+	return [x * SQUARE_SIZE, y * SQUARE_SIZE] as [number, number]
 }

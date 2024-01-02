@@ -243,7 +243,7 @@ export function validateAndPlayMove(from: string, to: string, game: GameState, p
 		return
 	}
 	const candidateMoves = getLegalMoves([coordsFromNotation(from)], game)
-	const candidate = candidateMoves.find((m) => notationFromCoords(m.to) === to && m.promotion === promotionPiece)
+	const candidate = candidateMoves.find((m) => notationFromCoords(m.to) === to && (promotionPiece ? m.promotion === promotionPiece : true))
 	if (!candidate) {
 		return
 	}
