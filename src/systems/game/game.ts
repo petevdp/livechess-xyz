@@ -7,7 +7,6 @@ import { Observable, ReplaySubject } from 'rxjs'
 import { unwrap } from 'solid-js/store'
 
 export type PlayerWithColor = P.Player & { color: GL.Color }
-export type Clock = Record<GL.Color, number>
 
 export type PromotionSelection =
 	| {
@@ -279,7 +278,10 @@ function useClock(move$: Observable<GL.Move>, gameConfig: GL.GameConfig) {
 			black: black(),
 		}
 		times[toPlay] -= elapsedSinceLastMove()
-		return times
+		return {
+			white: Math.max(times.white, 0),
+			black: Math.max(times.black, 0),
+		}
 	}
 
 	onCleanup(() => {
