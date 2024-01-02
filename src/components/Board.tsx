@@ -354,34 +354,41 @@ function GameStateDisplay(props: { toMove: GL.Color; outcome: GL.GameOutcome | n
 
 function MoveHistory() {
 	const game = G.game()!
+	const setViewedMove = (move: number | 'live') => {
+		if (move === 'live') {
+			game.setViewedMove(game.rollbackState.moveHistory.length - 1)
+		} else if (move >= -1 && move < game.rollbackState.moveHistory.length) {
+			game.setViewedMove(move)
+		}
+	}
 	return (
 		<div class="align-center flex w-full flex-col space-y-1">
 			<div class="flex justify-evenly">
-				<button disabled={game.viewedMoveIndex() === -1} onClick={() => game.setViewedMove(-1)}>
+				<button disabled={game.viewedMoveIndex() === -1} onClick={() => setViewedMove(-1)}>
 					<FirstStepSvg />
 				</button>
-				<button disabled={game.viewedMoveIndex() === -1} onClick={() => game.setViewedMove(game.viewedMoveIndex() - 1)}>
+				<button disabled={game.viewedMoveIndex() === -1} onClick={() => setViewedMove(game.viewedMoveIndex() - 1)}>
 					<PrevStepSvg />
 				</button>
-				<button onClick={() => game.setViewedMove(game.viewedMoveIndex() + 1)}>
+				<button onClick={() => setViewedMove(game.viewedMoveIndex() + 1)}>
 					<NextStepSvg />
 				</button>
-				<button disabled={game.viewedMoveIndex() === game.rollbackState.moveHistory.length - 1} onClick={() => game.setViewedMove('live')}>
+				<button disabled={game.viewedMoveIndex() === game.rollbackState.moveHistory.length - 1} onClick={() => setViewedMove('live')}>
 					<LastStepSvg />
 				</button>
 			</div>
-			<MoveHistoryButton active={game.viewedMoveIndex() === -1} onClick={() => game.setViewedMove(-1)}>
+			<MoveHistoryButton active={game.viewedMoveIndex() === -1} onClick={() => setViewedMove(-1)}>
 				Start
 			</MoveHistoryButton>
 			<For each={game.moveHistoryAsNotation}>
 				{(move, index) => (
 					<code class="text-neutral-400">
 						{index()}.{' '}
-						<MoveHistoryButton active={game.viewedMoveIndex() === index() * 2} onClick={() => game.setViewedMove(index() * 2)}>
+						<MoveHistoryButton active={game.viewedMoveIndex() === index() * 2} onClick={() => setViewedMove(index() * 2)}>
 							{move[0]}
 						</MoveHistoryButton>{' '}
 						<Show when={move[1]}>
-							<MoveHistoryButton active={game.viewedMoveIndex() === index() * 2 + 1} onClick={() => game.setViewedMove(index() * 2 + 1)}>
+							<MoveHistoryButton active={game.viewedMoveIndex() === index() * 2 + 1} onClick={() => setViewedMove(index() * 2 + 1)}>
 								{move[1]}
 							</MoveHistoryButton>
 						</Show>
