@@ -279,17 +279,14 @@ export class Room {
 
 				// make sure we're the only client sending these messages
 				if (!this.sharedStore.isLeader()) return
-				console.log({ active: this.activePlayers })
 				for (let player of this.activePlayers) {
 					if (!prevActivePlayers.has(player.id) && hasPreviouslyDisconnected(player, this.state)) {
 						this.sendMessage(`${player.name} has reconnected`, true)
 					}
 					prevActivePlayers.add(player.id)
 				}
-				console.log([...prevActivePlayers.values()])
 				for (let playerId of prevActivePlayers.values()) {
 					const player = this.players.find((p) => p.id === playerId)!
-					console.log({ player })
 					if (!this.activePlayers.some((p) => p.id === playerId)) {
 						prevActivePlayers.delete(playerId)
 						this.sendMessage(`${player.name} has disconnected`, true)
