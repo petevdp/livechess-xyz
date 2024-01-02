@@ -6,7 +6,6 @@ import styles from './Board.module.css'
 import { Button } from './Button.tsx'
 import { until } from '@solid-primitives/promise'
 
-
 //TODO provide some method to view the current game's config
 
 export function Board() {
@@ -130,7 +129,6 @@ export function Board() {
 		}
 	})
 
-
 	//#endregion
 
 	//#region mouse events
@@ -166,7 +164,11 @@ export function Board() {
 				if (clickedSquare() && hoveredSquare() && clickedSquare() !== hoveredSquare()) {
 					game.tryMakeMove(clickedSquare()!, hoveredSquare()!)
 					setClickedSquare(null)
-				} else if (hoveredSquare() && game.board.pieces[hoveredSquare()!] && game.board.pieces[hoveredSquare()!]!.color === game.player.color) {
+				} else if (
+					hoveredSquare() &&
+					game.board.pieces[hoveredSquare()!] &&
+					game.board.pieces[hoveredSquare()!]!.color === game.player.color
+				) {
 					setGrabbedSquare(hoveredSquare)
 					const rect = canvas.getBoundingClientRect()
 					setGrabbedSquareMousePos({
@@ -195,8 +197,6 @@ export function Board() {
 
 	//#endregion
 
-
-
 	//#endregion
 
 	// @ts-ignore
@@ -213,7 +213,8 @@ export function Board() {
 
 	onCleanup(() => {
 		setIsGameOverModalDisposed(true)
-	})(async function handleGameEnd() {
+	})
+	;(async function handleGameEnd() {
 		const outcome = await until(() => game.outcome)
 		Modal.prompt(
 			(_props) => {
@@ -243,11 +244,11 @@ export function Board() {
 
 	return (
 		<div class={styles.boardContainer}>
-			<PlayerDisplay player={game.opponent} class={styles.opponent} clock={game.clock[game.opponent.color]}/>
+			<PlayerDisplay player={game.opponent} class={styles.opponent} clock={game.clock[game.opponent.color]} />
 			{canvas}
-			<PlayerDisplay player={game.player} class={styles.player} clock={game.clock[game.player.color]}/>
+			<PlayerDisplay player={game.player} class={styles.player} clock={game.clock[game.player.color]} />
 			<div class={styles.leftPanel}>
-				<GameStateDisplay inCheck={game.inCheck} toMove={game.board.toMove} outcome={game.outcome}/>
+				<GameStateDisplay inCheck={game.inCheck} toMove={game.board.toMove} outcome={game.outcome} />
 				<Show when={game.room.state.status === 'postgame'}>
 					<Button kind="primary" onClick={() => game.room.configureNewGame()}>
 						Play Again
@@ -326,7 +327,7 @@ function DrawOffers(props: {
 function GameStateDisplay(props: { toMove: GL.Color; outcome: GL.GameOutcome | null; inCheck: boolean }) {
 	return (
 		<span>
-			{!props.outcome ? `${props.toMove} to move` : <GameOutcomeDisplay outcome={props.outcome}/>}
+			{!props.outcome ? `${props.toMove} to move` : <GameOutcomeDisplay outcome={props.outcome} />}
 			{props.inCheck && <span class="text-red-400">Check!</span>}
 		</span>
 	)
