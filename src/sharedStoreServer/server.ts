@@ -68,6 +68,7 @@ class Client {
 					console.log(`${this.network.id}:${clientId} sent by client`, message)
 					s.next(message)
 				} else {
+					console.log(`${this.network.id}:${clientId} sent by client buffered`, message)
 					msgBuffer.push(message)
 				}
 			})
@@ -89,6 +90,7 @@ class Client {
 		} else if (NO_LEADER_MSG_WHITELIST.includes(msg.type)) {
 			this.socket.send(JSON.stringify(msg))
 		} else {
+			console.log(`sending to client from message buffer to ${this.network.id}:${this.clientId}`, msg)
 			this.messageToSendBuffer.push(msg)
 		}
 	}
@@ -170,7 +172,7 @@ export function startServer(port: number) {
 
 		network.cleanupAt = null
 
-		const client = new Client(socket, createId(6), networkId)
+		const client = new Client(socket, createId(6), network)
 
 		console.log(`new socket connected to network ${networkId} with clientId ${client.clientId}`)
 		console.log(`network before client init: ${client.clientId}`, printNetwork(network))
