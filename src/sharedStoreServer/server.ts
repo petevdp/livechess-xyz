@@ -1,20 +1,7 @@
 import * as ws from 'ws'
 import * as http from 'http'
 import { Base64String, ClientConfig, encodeContent, NewNetworkResponse, SharedStoreMessage } from '../utils/sharedStore.ts'
-import {
-	BehaviorSubject,
-	concatMap,
-	EMPTY,
-	endWith,
-	first,
-	firstValueFrom,
-	from,
-	interval,
-	mergeAll,
-	Observable,
-	share,
-	switchMap,
-} from 'rxjs'
+import { BehaviorSubject, concatMap, EMPTY, endWith, firstValueFrom, from, interval, mergeAll, Observable, share, switchMap } from 'rxjs'
 import { map } from 'rxjs/operators'
 
 // TODO add tld support
@@ -22,9 +9,9 @@ import { map } from 'rxjs/operators'
 const networks = new Map<string, Network>()
 type Network = {
 	cleanupAt: number | null
-	leader$: BehaviorSubject<Client | undefined>
+	leader$: BehaviorSubject<Client | null>
 	nextLeader?: Client
-	leader?: Client
+	leader: Client | null
 	clients: Client[]
 	followers: Client[]
 }
@@ -93,7 +80,7 @@ export function startServer(port: number) {
 			networks.set(networkId, {
 				cleanupAt: thirtySecondsFromNow(),
 				followers: [],
-				leader$: new BehaviorSubject<Client | undefined>(undefined),
+				leader$: new BehaviorSubject<Client | null>(null),
 				get leader() {
 					return this.leader$.value
 				},
@@ -322,7 +309,7 @@ export function startServer(port: number) {
 			console.log(`network before ws closed: ${client.clientId}`, printNetwork(network))
 			network.followers = network.followers.filter((c) => c.clientId !== client.clientId)
 			if (network.leader?.clientId === client.clientId) {
-				network.leader$.next(undefined)
+				network.leader$.next(null)
 				network.nextLeader = network.followers[0]
 				network.nextLeader?.send({ type: 'promote-to-leader' })
 			} else if (network.nextLeader?.clientId === client.clientId) {
@@ -355,7 +342,7 @@ export function startServer(port: number) {
 			if (network.cleanupAt && network.cleanupAt < Date.now()) {
 				const sockets = [network.leader, ...network.followers]
 				sockets.forEach((s) => s?.socket.close())
-				network.leader$.complete()
+				network.leader$.next(null)
 				networks.delete(networkId)
 			}
 		}

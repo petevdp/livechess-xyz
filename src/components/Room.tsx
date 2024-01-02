@@ -1,11 +1,11 @@
 import { createEffect, createSignal, For, Match, on, onMount, Show, Switch } from 'solid-js'
 import * as P from '../systems/player.ts'
-import {useNavigate, useParams} from '@solidjs/router'
+import { useNavigate, useParams } from '@solidjs/router'
 import { ConnectionStatus } from '../utils/yjs.ts'
 import { Board } from './Board.tsx'
 import { AppContainer } from './AppContainer.tsx'
 import { Choice, MultiChoiceButton } from '../MultiChoiceButton.tsx'
-import * as G from '../systems/game/newGame.ts'
+import * as G from '../systems/game/game.ts'
 import * as GL from '../systems/game/gameLogic.ts'
 import * as R from '../systems/room.ts'
 import { Button } from './Button.tsx'
@@ -72,13 +72,6 @@ function Lobby() {
 	const copyInviteLink = () => {
 		navigator.clipboard.writeText(window.location.href)
 	}
-
-	createEffect(() => {
-		console.log({ isLeader: R.room()!.sharedStore.isLeader() })
-	})
-	createEffect(() => {
-		console.log(JSON.stringify(R.room()!.connectedPlayers, null, 2))
-	})
 
 	return (
 		<div class="grid grid-cols-[60%_auto] gap-2">

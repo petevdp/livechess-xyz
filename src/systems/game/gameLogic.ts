@@ -90,8 +90,8 @@ export type GameState = {
 	players: { [id: string]: Color }
 	boardHistory: BoardHistoryEntry[]
 	moveHistory: MoveHistory
-	whiteOfferingDraw: boolean
-	blackOfferingDraw: boolean
+	drawOffers: Record<Color, boolean>
+	drawDeclinedBy: null | Color
 	resigned?: Color
 }
 
@@ -121,8 +121,11 @@ export function newGameState(config: GameConfig, players: GameState['players']):
 		players,
 		boardHistory: [startingBoard],
 		moveHistory: [],
-		whiteOfferingDraw: false,
-		blackOfferingDraw: false,
+		drawOffers: {
+			white: false,
+			black: false,
+		},
+		drawDeclinedBy: null,
 	}
 }
 
@@ -194,7 +197,7 @@ export function insufficientMaterial(game: GameState) {
 	return true
 }
 
-function getBoard(game: GameState) {
+export function getBoard(game: GameState) {
 	return game.boardHistory[game.boardHistory.length - 1].board
 }
 
@@ -204,7 +207,7 @@ export function getGameOutcome(state: GameState) {
 	if (state.resigned) {
 		winner = state.resigned === 'white' ? 'black' : 'white'
 		reason = 'resigned'
-	} else if (state.whiteOfferingDraw && state.blackOfferingDraw) {
+	} else if (!Object.values(state.drawOffers).includes(false)) {
 		winner = null
 		reason = 'draw-accepted'
 	} else if (checkmated(state)) {
@@ -254,7 +257,7 @@ export function validateAndPlayMove(from: string, to: string, game: GameState, p
 	}
 }
 
-// uncritically apply a move to a board
+// Uncritically apply a move to the board. Does not mutate input.
 export function applyMoveToBoard(move: CandidateMove | Move, board: Board) {
 	const _move = (typeof move.from === 'string' ? moveToCandidateMove(move as Move) : move) as CandidateMove
 	const piece = board.pieces[notationFromCoords(_move.from)]
@@ -710,4 +713,15 @@ export function moveToChessNotation(moveIndex: number, state: GameState): string
 		return move.to[0] === 'c' ? 'O-O-O' : 'O-O'
 	}
 	return piece + capture + to + promotion + check + checkmate
+}
+
+export function getDrawIsOfferedBy(state: GameState) {
+	for (let [color, draw] of Object.entries(state.drawOffers)) {
+		if (draw) return color as GL.Color
+	}
+	return null
+}
+
+export function isPlayerTurn(board: Board, color: Color) {
+	return board.toMove === color
 }

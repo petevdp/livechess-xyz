@@ -5,6 +5,7 @@ import { initSharedStore, newNetwork, SharedStore, SharedStoreProvider, StoreMut
 import { createEffect, createRoot, createSignal } from 'solid-js'
 import { until } from '@solid-primitives/promise'
 import { trackStore } from '@solid-primitives/deep'
+import { isEqual } from 'lodash'
 
 export type RoomState = {
 	players: P.Player[]
@@ -54,7 +55,7 @@ export async function connectToRoom(roomId: string, abort?: () => void) {
 		lastSnaphotTs = Date.now()
 	} else {
 		state = {
-			players: [player],
+			players: [],
 			status: 'pregame',
 			gameConfig: GL.defaultGameConfig,
 			messages: [],
@@ -93,12 +94,12 @@ export async function connectToRoom(roomId: string, abort?: () => void) {
 	})
 	await until(() => store.initialized())
 	let room = new Room(store, provider)
-	setRoom(room)
-	until(() => P.player()?.name).then(() => {
-		room.ensurePlayerAdded(P.player()!).then(() => {
-			room.sendMessage(`${P.player()!.name} has joined the room`, true)
-		})
+	await until(() => P.player()?.name).then(async () => {
+		const success = await room.ensurePlayerAdded(P.player()!)
+		if (!success) throw new Error('Failed to add player to room')
+		room.sendMessage(`${P.player()!.name} has joined the room`, true)
 	})
+	setRoom(room)
 }
 
 export class Room {
@@ -190,9 +191,11 @@ export class Room {
 
 	async ensurePlayerAdded(player: P.Player) {
 		await this.sharedStore.setClientControlledState({ playerId: player.id })
-		await this.sharedStore.setStoreWithRetries((state: RoomState) => {
-			if (state.players.find((p) => p.id === player.id)) return []
-			return [{ path: ['players', '__push__'], value: player }] as StoreMutation[]
+		return await this.sharedStore.setStoreWithRetries((state: RoomState) => {
+			let index: number | '__push__' = state.players.findIndex((p) => p.id === player.id)
+			if (index !== -1 && isEqual(state.players[index], player)) return []
+			if (index === -1) index = '__push__'
+			return [{ path: ['players', index], value: player }] as StoreMutation[]
 		})
 	}
 

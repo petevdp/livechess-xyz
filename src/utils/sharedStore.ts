@@ -1,5 +1,5 @@
 import { createStore, produce, unwrap } from 'solid-js/store'
-import { concatMap, endWith, firstValueFrom, merge, Observable, share, Subject, Subscription, tap } from 'rxjs'
+import { concatMap, endWith, firstValueFrom, merge, Observable, share, Subject, Subscription } from 'rxjs'
 import _ from 'lodash'
 import { batch, createSignal, onCleanup } from 'solid-js'
 import { until } from '@solid-primitives/promise'
@@ -211,11 +211,13 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 		}
 	}
 
-	const setStoreWithRetries = async (fn: (s: S) => StoreMutation[], numRetries = 5) => {
+	const setStoreWithRetries = async (fn: (s: S) => StoreMutation[] | void, numRetries = 5) => {
 		await until(initialized)
 		for (let i = 0; i < numRetries + 1; i++) {
+			const res = fn(rollbackStore)
+			if (!res) return false
 			const transaction: NewSharedStoreOrderedTransaction = {
-				mutations: fn(rollbackStore),
+				mutations: res,
 				index: appliedTransactions.length,
 			}
 			if (transaction.mutations.length === 0) return true
@@ -652,7 +654,7 @@ export class SharedStoreProvider {
 	}
 
 	send(message: SharedStoreMessage) {
-		console.trace(`${this.clientId} sending message`, message)
+		console.debug(`${this.clientId} sending message`, message)
 		this.ws.send(JSON.stringify(message))
 	}
 }
