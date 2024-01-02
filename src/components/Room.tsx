@@ -19,7 +19,8 @@ export function RoomGuard() {
 	createEffect(async () => {
 		if (!R.room() || (R.room()!.roomId !== params.id && P.playerId() && P.playerName())) {
 			setConnectionStatus('connecting')
-			await R.connectToRoom(params.id, { id: P.playerId()!, name: P.playerName()! }, () => navigate('/'))
+			const room = await R.connectToRoom(params.id, { id: P.playerId()!, name: P.playerName()! }, () => navigate('/'))
+			R.setRoom(room)
 			setConnectionStatus('connected')
 		}
 	})
