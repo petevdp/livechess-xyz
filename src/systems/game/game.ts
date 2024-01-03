@@ -27,6 +27,7 @@ type BoardView = {
 	lastMove: GL.Move | null
 }
 
+
 export class Game {
 	promotion: Accessor<PromotionSelection | null>
 	setPromotion: (p: PromotionSelection | null) => void
@@ -49,10 +50,12 @@ export class Game {
 
 		// use non rollback state because we don't want to display a false outcome
 		this.getOutcome = createMemo(() => GL.getGameOutcome(this.state))
+		//#region view history
 		const [currentMove, setViewedMove] = createSignal<'live' | number>('live')
-
 		this.viewedMoveIndex = () => (currentMove() === 'live' ? this.rollbackState.moveHistory.length - 1 : (currentMove() as number))
 		this.setViewedMove = setViewedMove
+		//#endregion
+
 		this.registerListeners()
 	}
 

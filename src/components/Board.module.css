@@ -2,27 +2,46 @@
 	display: grid;
 	grid-template-columns: repeat(3, max-content);
 	grid-template-rows: repeat(3, max-content);
-	gap: 0.5rem;
+	gap: 0.25rem;
 
 	grid-template-areas:
-		'. opponent .'
+		'. opponent right-panel'
 		'left-panel board right-panel'
-		'. player .';
+		'move-nav player right-panel';
 }
 
 .board {
 	grid-area: board;
 }
 
-.opponent {
+.moveNav {
+	grid-area: move-nav;
+	align-self: center;
 	justify-self: center;
+	width: 100%;
+}
+
+.opponent {
 	grid-area: opponent;
 }
 
 .player {
-	justify-self: center;
-	grid-area: player;
+	margin: auto;
 }
+
+.playerContainer {
+	grid-area: player;
+	display: grid;
+	grid-template-columns: 1fr 200px 1fr;
+}
+
+.actionsPanel {
+	@apply space-x-1;
+	display: flex;
+	justify-content: flex-end;
+	font-size: small;
+}
+
 
 .leftPanel {
 	grid-area: left-panel;
@@ -36,4 +55,5 @@
 	grid-area: right-panel;
 	display: flex;
 	flex-direction: column;
+	align-items: flex-end;
 }

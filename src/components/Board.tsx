@@ -4,7 +4,6 @@ import * as GL from '../systems/game/gameLogic.ts'
 import * as Modal from './Modal.tsx'
 import styles from './Board.module.css'
 import { Button } from './Button.tsx'
-import { until } from '@solid-primitives/promise'
 
 //TODO provide some method to view the current game's config
 
@@ -13,6 +12,7 @@ const SQUARE_SIZE = BOARD_SIZE / 8
 
 export function Board() {
 	const game = G.game()!
+	if (!game) return
 	//#region board rendering and mouse events
 	const imageCache: Record<string, HTMLImageElement> = {}
 	const canvas = (<canvas class={styles.board} width={BOARD_SIZE} height={BOARD_SIZE} />) as HTMLCanvasElement
@@ -22,17 +22,16 @@ export function Board() {
 	const [clickedSquare, setClickedSquare] = createSignal(null as null | string)
 	const [grabbedSquareMousePos, setGrabbedSquareMousePos] = createSignal(null as null | { x: number; y: number })
 
-	// TODO explore using dirty checking for partial rendering instead of brute force
+	// TODO Lots of optimization to be done here
 	//#region rendering
 	function render() {
-		if (game.destroyed || !canvas) return
+		if (game.destroyed || !canvas || !game.rollbackState) return
 		const ctx = canvas.getContext('2d')!
 		//#region draw board
 
 		// fill in light squares as background
 		ctx.fillStyle = '#eaaa69'
 		ctx.fillRect(0, 0, canvas.width, canvas.height)
-
 
 		// fill in dark squares
 		ctx.fillStyle = '#a05a2c'
@@ -224,7 +223,7 @@ export function Board() {
 				<For each={GL.PROMOTION_PIECES}>
 					{(pp) => (
 						<button onclick={() => setPromotion(pp)}>
-							<img src={resolvePieceImagePath({ color: game.player.color, type: pp })} />
+							<img alt={pp} src={resolvePieceImagePath({ color: game.player.color, type: pp })} />
 						</button>
 					)}
 				</For>
@@ -239,23 +238,30 @@ export function Board() {
 	//#endregion
 
 	//#region game over modal
-	const [isGameOverModalDisposed, setIsGameOverModalDisposed] = createSignal(false)
 
+	const [shouldShowGameOverModal, setShouldShowGameOverModal] = createSignal(!game.outcome)
+	const [isGameOverModalDisposed, setIsGameOverModalDisposed] = createSignal(false)
+	let startingMoveHistoryLength = game.rollbackState.moveHistory.length
 	onCleanup(() => {
 		setIsGameOverModalDisposed(true)
 	})
+	createEffect(() => {
+		if (game.rollbackState.moveHistory.length !== startingMoveHistoryLength) {
+			// move has been made
+			setShouldShowGameOverModal(true)
+		}
+	})
 
-	;(async function handleGameEnd() {
-		const outcome = await until(() => game.outcome)
-		Modal.prompt(
+	createEffect(async () => {
+		if (!game.outcome || !shouldShowGameOverModal() || isGameOverModalDisposed()) return
+		await Modal.prompt(
 			(_props) => {
-				console.log('rendering outocme')
 				return (
-					<div class="space-y-1 flex flex-col items-center">
-						<GameOutcomeDisplay outcome={outcome} />
+					<div class="flex flex-col items-center space-y-1">
+						<GameOutcomeDisplay outcome={game.outcome!} />
 						<div class="space-x-1">
-							<NewGameButton/>
-							<Button kind="secondary" onclick={() => _props.onCompleted(false)}>
+							<NewGameButton />
+							<Button size="medium" kind="secondary" onclick={() => _props.onCompleted(false)}>
 								Continue
 							</Button>
 						</div>
@@ -265,9 +271,9 @@ export function Board() {
 			false,
 			isGameOverModalDisposed
 		)
-		await until(() => game.room.state.status === 'pregame' || isGameOverModalDisposed())
-		!isGameOverModalDisposed() && setIsGameOverModalDisposed(true)
-	})().catch()
+		setIsGameOverModalDisposed(true)
+	})
+
 	//#endregion
 
 	onCleanup(() => {
@@ -279,39 +285,48 @@ export function Board() {
 		<div class={styles.boardContainer}>
 			<PlayerDisplay player={game.opponent} class={styles.opponent} clock={game.clock[game.opponent.color]} />
 			{canvas}
-			<PlayerDisplay player={game.player} class={styles.player} clock={game.clock[game.player.color]} />
+			<div class={styles.playerContainer}>
+				<span>
+					<Switch>
+						<Match when={!game.outcome}>
+							<Button title="Offer Draw" size="small" kind="tertiary" onclick={() => game.offerDraw()} class="mb-1">
+								<OfferDrawSvg />
+							</Button>
+							<Button title="Resign" kind="tertiary" size="small" onclick={() => game.resign()} class="mb-1">
+								<ResignSvg />
+							</Button>
+						</Match>
+						<Match when={game.outcome}>
+							<Button size="small" kind="primary" onclick={() => game.room.configureNewGame()}>
+								New Game
+							</Button>
+						</Match>
+					</Switch>
+				</span>
+				<PlayerDisplay player={game.player} class={styles.player} clock={game.clock[game.player.color]} />
+				<div class={styles.actionsPanelLeft}>
+					<Show when={game.drawIsOfferedBy}>
+						<DrawOffers
+							offeredBy={game.drawIsOfferedBy}
+							player={game.player}
+							opponent={game.opponent}
+							cancelDraw={() => game.cancelDraw()}
+							acceptDraw={() => game.offerDraw()}
+							declineDraw={() => game.declineDraw()}
+						/>
+					</Show>
+				</div>
+			</div>
 			<div class={styles.leftPanel}>
-				<GameStateDisplay inCheck={game.currentBoardView.inCheck} toMove={game.currentBoardView.board.toMove} outcome={game.outcome} />
-				<Show when={game.room.state.status === 'postgame'}>
-					<Button kind="primary" onClick={() => game.room.configureNewGame()}>
-						Play Again
-					</Button>
-				</Show>
 				<MoveHistory />
 			</div>
+			<div class={styles.moveNav}>
+				<MoveNav />
+			</div>
 			<div class={styles.rightPanel}>
-				<Button kind="secondary" onclick={() => setBoardFlipped((f) => !f)} class="mb-1">
-					flip
+				<Button kind="tertiary" size="small" onclick={() => setBoardFlipped((f) => !f)} class="mb-1">
+					<FlipSvg />
 				</Button>
-				<Button kind="secondary" onclick={() => game.offerDraw()} class="mb-1">
-					offer draw
-				</Button>
-				<Button kind="secondary" onclick={() => game.resign()} class="mb-1">
-					resign
-				</Button>
-				<Show when={game.drawIsOfferedBy}>
-					<DrawOffers
-						offeredBy={game.drawIsOfferedBy}
-						player={game.player}
-						opponent={game.opponent}
-						cancelDraw={() => game.cancelDraw()}
-						acceptDraw={() => game.offerDraw()}
-						declineDraw={() => game.declineDraw()}
-					/>
-				</Show>
-				<Show when={game.outcome}>
-					<NewGameButton/>
-				</Show>
 			</div>
 		</div>
 	)
@@ -320,7 +335,11 @@ export function Board() {
 // TODO use a "ready up" system here instead
 function NewGameButton() {
 	const game = G.game()!
-	return <Button kind="primary" onclick={() => game.room.configureNewGame()}>New Game</Button>
+	return (
+		<Button size="medium" kind="primary" onclick={() => game.room.configureNewGame()}>
+			New Game
+		</Button>
+	)
 }
 
 function DrawOffers(props: {
@@ -335,8 +354,7 @@ function DrawOffers(props: {
 	return (
 		<Switch>
 			<Match when={isPlayer()}>
-				<div>You have Offered a draw</div>
-				<Button onClick={props.cancelDraw} kind="primary">
+				<Button onClick={props.cancelDraw} kind="primary" size="small">
 					Cancel
 				</Button>
 			</Match>
@@ -344,10 +362,10 @@ function DrawOffers(props: {
 				<div>
 					<i>{props.opponent.name}</i> has offered a draw
 				</div>
-				<Button onClick={props.acceptDraw} kind="primary">
+				<Button onClick={props.acceptDraw} kind="primary" size="small">
 					Accept
 				</Button>
-				<Button kind={'secondary'} onClick={props.declineDraw}>
+				<Button kind={'secondary'} onClick={props.declineDraw} size="small">
 					Decline
 				</Button>
 			</Match>
@@ -355,59 +373,105 @@ function DrawOffers(props: {
 	)
 }
 
-function GameStateDisplay(props: { toMove: GL.Color; outcome: GL.GameOutcome | null; inCheck: boolean }) {
+function MoveHistory() {
+	const game = G.game()!
+	const _setViewedMove = setViewedMove(game)
 	return (
-		<span class="w-full">
-			{!props.outcome ? `${props.toMove} to move` : <GameOutcomeDisplay outcome={props.outcome} />}
-			{props.inCheck && <span class="text-red-400">Check!</span>}
-		</span>
+		<div class="align-center flex h-full w-full flex-col justify-between space-y-1">
+			<div>
+				<Button size="small" kind={game.viewedMoveIndex() === 0 ? 'secondary' : 'tertiary'} onClick={() => _setViewedMove(-1)}>
+					Start
+				</Button>
+				<For each={game.moveHistoryAsNotation}>
+					{(move, index) => (
+						<code class="text-neutral-400">
+							{index()}.{' '}
+							<Button
+								size="small"
+								kind={game.viewedMoveIndex() === index() * 2 ? 'secondary' : 'tertiary'}
+								onClick={() => _setViewedMove(index() * 2)}
+							>
+								{move[0]}
+							</Button>{' '}
+							<Show when={move[1]}>
+								<Button
+									size="small"
+									kind={game.viewedMoveIndex() === index() * 2 + 1 ? 'secondary' : 'tertiary'}
+									onClick={() => _setViewedMove(index() * 2 + 1)}
+								>
+									{move[1]}
+								</Button>
+							</Show>
+						</code>
+					)}
+				</For>
+			</div>
+		</div>
 	)
 }
 
-function MoveHistory() {
-	const game = G.game()!
-	const setViewedMove = (move: number | 'live') => {
-		if (move === 'live') {
-			game.setViewedMove(game.rollbackState.moveHistory.length - 1)
-		} else if (move >= -1 && move < game.rollbackState.moveHistory.length) {
-			game.setViewedMove(move)
-		}
+const setViewedMove = (game: G.Game) => (move: number | 'live') => {
+	if (move === 'live') {
+		game.setViewedMove(game.rollbackState.moveHistory.length - 1)
+	} else if (move >= -1 && move < game.rollbackState.moveHistory.length) {
+		game.setViewedMove(move)
 	}
+}
+
+function MoveNav() {
+	const game = G.game()!
+	const _setViewedMove = setViewedMove(game)
 	return (
-		<div class="align-center flex w-full flex-col space-y-1">
-			<div class="flex justify-evenly">
-				<button disabled={game.viewedMoveIndex() === -1} onClick={() => setViewedMove(-1)}>
-					<FirstStepSvg />
-				</button>
-				<button disabled={game.viewedMoveIndex() === -1} onClick={() => setViewedMove(game.viewedMoveIndex() - 1)}>
-					<PrevStepSvg />
-				</button>
-				<button onClick={() => setViewedMove(game.viewedMoveIndex() + 1)}>
-					<NextStepSvg />
-				</button>
-				<button disabled={game.viewedMoveIndex() === game.rollbackState.moveHistory.length - 1} onClick={() => setViewedMove('live')}>
-					<LastStepSvg />
-				</button>
-			</div>
-			<MoveHistoryButton active={game.viewedMoveIndex() === -1} onClick={() => setViewedMove(-1)}>
-				Start
-			</MoveHistoryButton>
-			<For each={game.moveHistoryAsNotation}>
-				{(move, index) => (
-					<code class="text-neutral-400">
-						{index()}.{' '}
-						<MoveHistoryButton active={game.viewedMoveIndex() === index() * 2} onClick={() => setViewedMove(index() * 2)}>
-							{move[0]}
-						</MoveHistoryButton>{' '}
-						<Show when={move[1]}>
-							<MoveHistoryButton active={game.viewedMoveIndex() === index() * 2 + 1} onClick={() => setViewedMove(index() * 2 + 1)}>
-								{move[1]}
-							</MoveHistoryButton>
-						</Show>
-					</code>
-				)}
-			</For>
+		<div class="flex justify-evenly">
+			<Button kind="tertiary" size="small" disabled={game.viewedMoveIndex() === -1} onClick={() => _setViewedMove(-1)}>
+				<FirstStepSvg />
+			</Button>
+			<Button
+				kind="tertiary"
+				size="small"
+				disabled={game.viewedMoveIndex() === -1}
+				onClick={() => _setViewedMove(game.viewedMoveIndex() - 1)}
+			>
+				<PrevStepSvg />
+			</Button>
+			<Button kind="tertiary" size="small" onClick={() => _setViewedMove(game.viewedMoveIndex() + 1)}>
+				<NextStepSvg />
+			</Button>
+			<Button
+				kind="tertiary"
+				size="small"
+				disabled={game.viewedMoveIndex() === game.rollbackState.moveHistory.length - 1}
+				onClick={() => _setViewedMove('live')}
+			>
+				<LastStepSvg />
+			</Button>
 		</div>
+	)
+}
+
+//#region ugly svgs
+
+function OfferDrawSvg() {
+	return (
+		<svg xmlns="http://www.w3.org/2000/svg" height="16" width="20" fill="white" viewBox="0 0 640 512">
+			<path d="M323.4 85.2l-96.8 78.4c-16.1 13-19.2 36.4-7 53.1c12.9 17.8 38 21.3 55.3 7.8l99.3-77.2c7-5.4 17-4.2 22.5 2.8s4.2 17-2.8 22.5l-20.9 16.2L512 316.8V128h-.7l-3.9-2.5L434.8 79c-15.3-9.8-33.2-15-51.4-15c-21.8 0-43 7.5-60 21.2zm22.8 124.4l-51.7 40.2C263 274.4 217.3 268 193.7 235.6c-22.2-30.5-16.6-73.1 12.7-96.8l83.2-67.3c-11.6-4.9-24.1-7.4-36.8-7.4C234 64 215.7 69.6 200 80l-72 48V352h28.2l91.4 83.4c19.6 17.9 49.9 16.5 67.8-3.1c5.5-6.1 9.2-13.2 11.1-20.6l17 15.6c19.5 17.9 49.9 16.6 67.8-2.9c4.5-4.9 7.8-10.6 9.9-16.5c19.4 13 45.8 10.3 62.1-7.5c17.9-19.5 16.6-49.9-2.9-67.8l-134.2-123zM16 128c-8.8 0-16 7.2-16 16V352c0 17.7 14.3 32 32 32H64c17.7 0 32-14.3 32-32V128H16zM48 320a16 16 0 1 1 0 32 16 16 0 1 1 0-32zM544 128V352c0 17.7 14.3 32 32 32h32c17.7 0 32-14.3 32-32V144c0-8.8-7.2-16-16-16H544zm32 208a16 16 0 1 1 32 0 16 16 0 1 1 -32 0z" />
+		</svg>
+	)
+}
+
+function ResignSvg() {
+	return (
+		<svg fill="white" xmlns="http://www.w3.org/2000/svg" height="16" width="14" viewBox="0 0 448 512">
+			<path d="M64 32C64 14.3 49.7 0 32 0S0 14.3 0 32V64 368 480c0 17.7 14.3 32 32 32s32-14.3 32-32V352l64.3-16.1c41.1-10.3 84.6-5.5 122.5 13.4c44.2 22.1 95.5 24.8 141.7 7.4l34.7-13c12.5-4.7 20.8-16.6 20.8-30V66.1c0-23-24.2-38-44.8-27.7l-9.6 4.8c-46.3 23.2-100.8 23.2-147.1 0c-35.1-17.6-75.4-22-113.5-12.5L64 48V32z" />
+		</svg>
+	)
+}
+
+function FlipSvg() {
+	return (
+		<svg xmlns="http://www.w3.org/2000/svg" height="16" width="16" fill="white" viewBox="0 0 512 512">
+			<path d="M256 96c38.4 0 73.7 13.5 101.3 36.1l-32.6 32.6c-4.6 4.6-5.9 11.5-3.5 17.4s8.3 9.9 14.8 9.9H448c8.8 0 16-7.2 16-16V64c0-6.5-3.9-12.3-9.9-14.8s-12.9-1.1-17.4 3.5l-34 34C363.4 52.6 312.1 32 256 32c-10.9 0-21.5 .8-32 2.3V99.2c10.3-2.1 21-3.2 32-3.2zM132.1 154.7l32.6 32.6c4.6 4.6 11.5 5.9 17.4 3.5s9.9-8.3 9.9-14.8V64c0-8.8-7.2-16-16-16H64c-6.5 0-12.3 3.9-14.8 9.9s-1.1 12.9 3.5 17.4l34 34C52.6 148.6 32 199.9 32 256c0 10.9 .8 21.5 2.3 32H99.2c-2.1-10.3-3.2-21-3.2-32c0-38.4 13.5-73.7 36.1-101.3zM477.7 224H412.8c2.1 10.3 3.2 21 3.2 32c0 38.4-13.5 73.7-36.1 101.3l-32.6-32.6c-4.6-4.6-11.5-5.9-17.4-3.5s-9.9 8.3-9.9 14.8V448c0 8.8 7.2 16 16 16H448c6.5 0 12.3-3.9 14.8-9.9s1.1-12.9-3.5-17.4l-34-34C459.4 363.4 480 312.1 480 256c0-10.9-.8-21.5-2.3-32zM256 416c-38.4 0-73.7-13.5-101.3-36.1l32.6-32.6c4.6-4.6 5.9-11.5 3.5-17.4s-8.3-9.9-14.8-9.9H64c-8.8 0-16 7.2-16 16l0 112c0 6.5 3.9 12.3 9.9 14.8s12.9 1.1 17.4-3.5l34-34C148.6 459.4 199.9 480 256 480c10.9 0 21.5-.8 32-2.3V412.8c-10.3 2.1-21 3.2-32 3.2z" />
+		</svg>
 	)
 }
 
@@ -444,6 +508,8 @@ function FirstStepSvg() {
 		</svg>
 	)
 }
+
+//#endregion
 
 export function MoveHistoryButton(props: ParentProps<{ active: boolean; onClick: () => void }>) {
 	return (
@@ -483,7 +549,7 @@ function PlayerDisplay(props: { player: G.PlayerWithColor; class: string; clock:
 	}
 	return (
 		<div class={props.class}>
-			{props.player.name} <i class="text-neutral-400">({props.player.color})</i> {formattedClock()}
+			<span class="w-7">{formattedClock()}</span> {props.player.name} <i class="text-neutral-400">({props.player.color})</i>
 		</div>
 	)
 }

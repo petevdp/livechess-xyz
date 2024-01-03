@@ -36,7 +36,7 @@ export function RoomGuard() {
 	return (
 		<AppContainer>
 			<div class="grid h-[calc(100vh_-_4rem)] place-items-center">
-				<div class="rounded bg-gray-900 p-2">
+				<div class="rounded bg-gray-900 p-[.5rem]">
 					<Switch>
 						<Match when={!P.playerName()}>
 							<NickForm />

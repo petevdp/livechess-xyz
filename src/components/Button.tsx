@@ -6,17 +6,18 @@ export const buttonPrimary: Record<string, boolean> = {
 }
 
 export type ButtonProps = {
-	kind: 'primary' | 'secondary'
+	kind: 'primary' | 'secondary' | 'tertiary'
+	size: 'small' | 'medium' | 'large'
 } & JSX.ButtonHTMLAttributes<HTMLButtonElement>
 
 export function Button(props: ButtonProps) {
 	const baseProps: JSX.ButtonHTMLAttributes<HTMLButtonElement> = {
 		classList: {
 			[styles.button]: true,
-			[props.kind === 'primary' ? styles.primary : styles.secondary]: true,
+			[styles[props.kind]]: true,
+			[styles[props.size]]: true,
 		},
-		'aria-label':
-			props.children instanceof HTMLElement ? props.children.innerText : '',
+		'aria-label': props.children instanceof HTMLElement ? props.children.innerText : '',
 	}
 
 	const merged = mergeProps(baseProps, props)

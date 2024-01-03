@@ -10,10 +10,26 @@
 	@apply bg-gray-500;
 }
 
+.button.tertiary {
+	@apply bg-transparent hover:bg-gray-500;
+}
+
 .button.primary[disabled] {
 	@apply bg-gray-400;
 }
 
 .button.secondary[disabled] {
 	@apply bg-gray-300;
+}
+
+.button.small {
+	@apply text-xs p-[.25rem];
+}
+
+.button.medium {
+	@apply text-base;
+}
+
+.button.large {
+	@apply text-lg;
 }
