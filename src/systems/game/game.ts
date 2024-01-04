@@ -42,7 +42,7 @@ export class Game {
 	get outcome() {
 		return this.getOutcome()
 	}
-	//#region listeners
+
 	private callWhenDestroyed: (() => void)[] = []
 
 	constructor(
@@ -157,9 +157,6 @@ export class Game {
 				{ path: ['gameState', 'drawOffers'], value: { white: null, black: null } },
 			]
 		})
-		if (this.viewedMoveIndex() !== this.rollbackState.moveHistory.length - 1) {
-			this.setViewedMove('live')
-		}
 	}
 
 	//#region draw actions
@@ -244,6 +241,7 @@ export class Game {
 
 			this.callWhenDestroyed.push(d)
 
+			//#region outcome and clock
 			const move$ = observeMoves(this.rollbackState)
 			this.getClocks = useClock(move$, this.gameConfig)
 
@@ -271,38 +269,47 @@ export class Game {
 				})
 			)
 			this.getOutcome = from(outcome$)
-		})
+			//#endregion
 
-		//#region draw offer events
-		let prevOffers: GL.GameState['drawOffers'] = JSON.parse(JSON.stringify(this.rollbackState.drawOffers))
-		let prevDeclinedBy: GL.GameState['drawDeclinedBy'] | null = JSON.parse(JSON.stringify(this.rollbackState.drawDeclinedBy))
+			//#region draw offer events
+			let prevOffers: GL.GameState['drawOffers'] = JSON.parse(JSON.stringify(this.rollbackState.drawOffers))
+			let prevDeclinedBy: GL.GameState['drawDeclinedBy'] | null = JSON.parse(JSON.stringify(this.rollbackState.drawDeclinedBy))
 
-		this.drawEvent$ = rxFrom(
-			observable(() => [trackStore(this.rollbackState.drawOffers), this.rollbackState.drawDeclinedBy] as const)
-		).pipe(
-			skip(1),
-			concatMap(([offers, declinedBy]) => {
-				let opponentOffering = offers[this.opponent.color] !== null
-				let opponentOfferingPrev = prevOffers[this.opponent.color] !== null
-				let playerOffering = offers[this.player.color] !== null
-				let playerOfferingPrev = prevOffers[this.player.color] !== null
+			this.drawEvent$ = rxFrom(
+				observable(() => [trackStore(this.rollbackState.drawOffers), this.rollbackState.drawDeclinedBy] as const)
+			).pipe(
+				skip(1),
+				concatMap(([offers, declinedBy]) => {
+					let opponentOffering = offers[this.opponent.color] !== null
+					let opponentOfferingPrev = prevOffers[this.opponent.color] !== null
+					let playerOffering = offers[this.player.color] !== null
+					let playerOfferingPrev = prevOffers[this.player.color] !== null
 
-				let events: DrawEvent[] = []
-				if (this.outcome) {
-				} else if (declinedBy && !prevDeclinedBy) events.push('declined')
-				else if (opponentOffering && !opponentOfferingPrev) events.push('offered-by-opponent')
-				else if (playerOffering && !playerOfferingPrev) events.push('awaiting-response')
-				else if (!opponentOffering && opponentOfferingPrev) events.push('opponent-cancelled')
-				else if (!playerOffering && playerOfferingPrev) events.push('player-cancelled')
-				prevOffers = JSON.parse(JSON.stringify(offers))
-				prevDeclinedBy = JSON.parse(JSON.stringify(offers))
-				return events
+					let events: DrawEvent[] = []
+					if (this.outcome) {
+					} else if (declinedBy && !prevDeclinedBy) events.push('declined')
+					else if (opponentOffering && !opponentOfferingPrev) events.push('offered-by-opponent')
+					else if (playerOffering && !playerOfferingPrev) events.push('awaiting-response')
+					else if (!opponentOffering && opponentOfferingPrev) events.push('opponent-cancelled')
+					else if (!playerOffering && playerOfferingPrev) events.push('player-cancelled')
+					prevOffers = JSON.parse(JSON.stringify(offers))
+					prevDeclinedBy = JSON.parse(JSON.stringify(offers))
+					return events
+				})
+			)
+			//#endregion
+
+			//#region reset view when move history changes
+			let prevMoveCount = this.rollbackState.moveHistory.length
+			createEffect(() => {
+				if (this.rollbackState.moveHistory.length !== prevMoveCount) {
+					this.setViewedMove('live')
+				}
+				prevMoveCount = this.rollbackState.moveHistory.length
 			})
-		)
-		//#endregion
+			//#endregion
+		})
 	}
-
-	//#endregion
 }
 
 function observeMoves(gameState: GL.GameState) {
@@ -391,16 +398,14 @@ function getMoveHistoryAsNotation(state: GL.GameState) {
 
 export const [game, setGame] = createSignal<Game | null>(null)
 
-function setupGame() {}
-
-createRoot(() => {
+export function setupGameSystem() {
 	createEffect(() => {
 		const room = R.room()
-		if (!room || room.state.status !== 'playing') return
+		if (!room || !['playing', 'postgame'].includes(room.state.status)) return
 		untrack(() => {
 			game()?.destroy()
 			const gameConfig = unwrap(room.state.gameConfig)
 			setGame(new Game(room, P.playerId()!, gameConfig))
 		})
 	})
-})
+}

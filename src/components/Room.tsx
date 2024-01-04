@@ -61,6 +61,7 @@ export function RoomGuard() {
 function Room() {
 	const room = R.room()
 	if (!room) throw new Error('room is not initialized')
+	G.setupGameSystem()
 
 	return (
 		<Switch>
@@ -97,6 +98,7 @@ function Lobby() {
 				</Button>
 				<Show when={room!.sharedStore.isLeader()}>
 					<Button
+						size={'large'}
 						kind="primary"
 						disabled={!room.canStartGame}
 						class="ml-1 w-full rounded"
