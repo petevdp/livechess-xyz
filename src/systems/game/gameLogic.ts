@@ -11,6 +11,8 @@ export type ColoredPiece = {
 	color: Color
 	type: (typeof PIECES)[number]
 }
+type Timestamp = number
+
 export type Move = {
 	from: string
 	to: string
@@ -19,7 +21,7 @@ export type Move = {
 	promotion?: PromotionPiece
 	enPassant: boolean
 	capture: boolean
-	ts: number
+	ts: Timestamp
 }
 
 export const startPos = () =>
@@ -71,7 +73,7 @@ export type GameOutcome = {
 
 export const VARIANTS = ['regular', 'fog-of-war', 'duck', 'fischer-random'] as const
 export type Variant = (typeof VARIANTS)[number]
-export const TIME_CONTROLS = ['15m', '10m', '5m', '3m', '1m', '0.5m'] as const
+export const TIME_CONTROLS = ['15m', '10m', '5m', '3m', '1m', '0.25m'] as const
 export type TimeControl = (typeof TIME_CONTROLS)[number]
 export const INCREMENTS = ['0', '1', '2', '5'] as const
 export type Increment = (typeof INCREMENTS)[number]
@@ -86,12 +88,13 @@ export const defaultGameConfig: GameConfig = {
 	increment: '1',
 }
 
+
 export type GameState = {
 	players: { [id: string]: Color }
 	boardHistory: BoardHistoryEntry[]
 	moveHistory: MoveHistory
-	drawOffers: Record<Color, boolean>
-	drawDeclinedBy: null | Color
+	drawOffers: Record<Color, null | Timestamp> // if number, it's a timestamp
+	drawDeclinedBy: null | { color: Color; ts: Timestamp }
 	resigned?: Color
 }
 
@@ -122,8 +125,8 @@ export function newGameState(config: GameConfig, players: GameState['players']):
 		boardHistory: [startingBoard],
 		moveHistory: [],
 		drawOffers: {
-			white: false,
-			black: false,
+			white: null,
+			black: null,
 		},
 		drawDeclinedBy: null,
 	}
@@ -207,7 +210,7 @@ export function getGameOutcome(state: GameState) {
 	if (state.resigned) {
 		winner = state.resigned === 'white' ? 'black' : 'white'
 		reason = 'resigned'
-	} else if (!Object.values(state.drawOffers).includes(false)) {
+	} else if (!Object.values(state.drawOffers).includes(null)) {
 		winner = null
 		reason = 'draw-accepted'
 	} else if (checkmated(state)) {
@@ -718,7 +721,7 @@ export function moveToChessNotation(moveIndex: number, state: GameState): string
 
 export function getDrawIsOfferedBy(state: GameState) {
 	for (let [color, draw] of Object.entries(state.drawOffers)) {
-		if (draw) return color as GL.Color
+		if (draw !== null) return color as Color
 	}
 	return null
 }

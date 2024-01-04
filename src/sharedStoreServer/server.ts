@@ -18,6 +18,8 @@ import {
 import { map } from 'rxjs/operators'
 
 // TODO add tld support
+// TODO add timeouts for any request/response message transactions
+// TODO check if clients are being deleted
 
 const networks = new Map<string, Network>()
 type Network = {

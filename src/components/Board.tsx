@@ -1,18 +1,32 @@
-import { batch, createEffect, createSignal, For, Match, onCleanup, onMount, ParentProps, Show, Switch } from 'solid-js'
+import { batch, createEffect, createReaction, createSignal, For, Match, onCleanup, onMount, ParentProps, Show, Switch } from 'solid-js'
 import * as G from '../systems/game/game.ts'
+import { setGame } from '../systems/game/game.ts'
 import * as GL from '../systems/game/gameLogic.ts'
 import * as Modal from './Modal.tsx'
 import styles from './Board.module.css'
+import toast from 'solid-toast'
 import { Button } from './Button.tsx'
+import { unwrap } from 'solid-js/store'
+import * as P from '../systems/player.ts'
+import * as R from '../systems/room.ts'
 
 //TODO provide some method to view the current game's config
+//TODO component duplicates on reload sometimes for some reason
 
 const BOARD_SIZE = 600
 const SQUARE_SIZE = BOARD_SIZE / 8
 
 export function Board() {
-	const game = G.game()!
-	if (!game) return
+	let game = G.game()!
+	if (!game || game.destroyed) {
+		const gameConfig = unwrap(R.room()!.state.gameConfig)
+		game = new G.Game(R.room()!, P.playerId()!, gameConfig)
+		setGame(game)
+	}
+	onCleanup(() => {
+		game.destroy()
+	})
+
 	//#region board rendering and mouse events
 	const imageCache: Record<string, HTMLImageElement> = {}
 	const canvas = (<canvas class={styles.board} width={BOARD_SIZE} height={BOARD_SIZE} />) as HTMLCanvasElement
@@ -25,7 +39,10 @@ export function Board() {
 	// TODO Lots of optimization to be done here
 	//#region rendering
 	function render() {
-		if (game.destroyed || !canvas || !game.rollbackState) return
+		if (game.destroyed) {
+			return
+		}
+
 		const ctx = canvas.getContext('2d')!
 		//#region draw board
 
@@ -239,22 +256,14 @@ export function Board() {
 
 	//#region game over modal
 
-	const [shouldShowGameOverModal, setShouldShowGameOverModal] = createSignal(!game.outcome)
 	const [isGameOverModalDisposed, setIsGameOverModalDisposed] = createSignal(false)
-	let startingMoveHistoryLength = game.rollbackState.moveHistory.length
+	const [canShowGameOverModal, setCanShowGameOverModal] = createSignal(false)
 	onCleanup(() => {
 		setIsGameOverModalDisposed(true)
 	})
-	createEffect(() => {
-		if (game.rollbackState.moveHistory.length !== startingMoveHistoryLength) {
-			// move has been made
-			setShouldShowGameOverModal(true)
-		}
-	})
 
-	createEffect(async () => {
-		if (!game.outcome || !shouldShowGameOverModal() || isGameOverModalDisposed()) return
-		await Modal.prompt(
+	const trackGameOver = createReaction(async () => {
+		Modal.prompt(
 			(_props) => {
 				return (
 					<div class="flex flex-col items-center space-y-1">
@@ -270,63 +279,112 @@ export function Board() {
 			},
 			false,
 			isGameOverModalDisposed
-		)
-		setIsGameOverModalDisposed(true)
+		).then(() => {
+			setIsGameOverModalDisposed(true)
+		})
+	})
+
+	trackGameOver(canShowGameOverModal)
+
+	let loadTime = Date.now()
+	createEffect(() => {
+		if (game.outcome && !isGameOverModalDisposed() && Date.now() - loadTime > 100) {
+			setCanShowGameOverModal(true)
+		}
 	})
 
 	//#endregion
 
-	onCleanup(() => {
-		game.destroy()
-		G.setGame(null)
-	})
+	//#region draw offer events
+	{
+		const sub = game.drawEvent$.subscribe((eventType) => {
+			switch (eventType) {
+				case 'awaiting-response':
+					toast.success(`Offered Draw. Awaiting response from ${game.opponent.name}`)
+					break
+				case 'declined':
+					toast.success('Draw was declined')
+					break
+				case 'offered-by-opponent':
+					toast.success(`${game.opponent.name} has offered a draw`)
+					break
+				case 'opponent-cancelled':
+					toast.success(`${game.opponent.name} has cancelled their draw offer`)
+					break
+				case 'player-cancelled':
+					toast.success('Draw offer cancelled')
+					break
+			}
+		})
+		onCleanup(() => {
+			sub.unsubscribe()
+		})
+	}
+
+	//#endregion
 
 	return (
 		<div class={styles.boardContainer}>
 			<PlayerDisplay player={game.opponent} class={styles.opponent} clock={game.clock[game.opponent.color]} />
 			{canvas}
-			<div class={styles.playerContainer}>
-				<span>
-					<Switch>
-						<Match when={!game.outcome}>
-							<Button title="Offer Draw" size="small" kind="tertiary" onclick={() => game.offerDraw()} class="mb-1">
-								<OfferDrawSvg />
-							</Button>
-							<Button title="Resign" kind="tertiary" size="small" onclick={() => game.resign()} class="mb-1">
-								<ResignSvg />
-							</Button>
-						</Match>
-						<Match when={game.outcome}>
-							<Button size="small" kind="primary" onclick={() => game.room.configureNewGame()}>
-								New Game
-							</Button>
-						</Match>
-					</Switch>
-				</span>
-				<PlayerDisplay player={game.player} class={styles.player} clock={game.clock[game.player.color]} />
-				<div class={styles.actionsPanelLeft}>
-					<Show when={game.drawIsOfferedBy}>
-						<DrawOffers
-							offeredBy={game.drawIsOfferedBy}
-							player={game.player}
-							opponent={game.opponent}
-							cancelDraw={() => game.cancelDraw()}
-							acceptDraw={() => game.offerDraw()}
-							declineDraw={() => game.declineDraw()}
-						/>
-					</Show>
-				</div>
-			</div>
+			<PlayerContainer/>
 			<div class={styles.leftPanel}>
-				<MoveHistory />
+				<MoveHistory/>
 			</div>
 			<div class={styles.moveNav}>
-				<MoveNav />
+				<MoveNav/>
 			</div>
 			<div class={styles.rightPanel}>
-				<Button kind="tertiary" size="small" onclick={() => setBoardFlipped((f) => !f)} class="mb-1">
-					<FlipSvg />
+				<Button title={'Flip Board'} kind="tertiary" size="small" onclick={() => setBoardFlipped((f) => !f)}
+								class="mb-1">
+					<FlipSvg/>
 				</Button>
+			</div>
+		</div>
+	)
+}
+
+function PlayerContainer() {
+	const game = G.game()!
+
+	return (
+		<div class={styles.playerContainer}>
+			<span>
+				<Switch>
+					<Match when={!game.outcome}>
+						<Show when={game.drawIsOfferedBy === null}>
+							<Button title="Offer Draw" size="small" kind="tertiary" onclick={() => game.offerDraw()}>
+								<OfferDrawSvg />
+							</Button>
+							<Button title="Resign" kind="tertiary" size="small" onclick={() => game.resign()}>
+								<ResignSvg />
+							</Button>
+						</Show>
+						<Switch>
+							<Match when={game.drawIsOfferedBy === game.player.color}>
+								<Button kind="primary" size="small" onClick={() => game.cancelDraw()}>
+									Cancel Draw
+								</Button>
+							</Match>
+							<Match when={game.drawIsOfferedBy === game.opponent.color}>
+								<Button kind="primary" size="small" onClick={() => game.offerDraw()}>
+									Accept Draw
+								</Button>
+							</Match>
+						</Switch>
+					</Match>
+					<Match when={game.outcome}>
+						<Button size="small" kind="primary" onclick={() => game.configureNewGame()}>
+							New Game
+						</Button>
+					</Match>
+				</Switch>
+			</span>
+			<PlayerDisplay player={game.player} class={styles.player} clock={game.clock[game.player.color]}/>
+			<div class={styles.actionsPanelLeft}>
+				<Show when={game.drawIsOfferedBy}>
+					<div>idk</div>
+				</Show>
 			</div>
 		</div>
 	)
@@ -336,43 +394,13 @@ export function Board() {
 function NewGameButton() {
 	const game = G.game()!
 	return (
-		<Button size="medium" kind="primary" onclick={() => game.room.configureNewGame()}>
+		<Button size="medium" kind="primary" onclick={() => game.configureNewGame()}>
 			New Game
 		</Button>
 	)
 }
 
-function DrawOffers(props: {
-	offeredBy: GL.Color
-	player: G.PlayerWithColor
-	opponent: G.PlayerWithColor
-	acceptDraw: () => void
-	declineDraw: () => void
-	cancelDraw: () => void
-}) {
-	const isPlayer = () => props.offeredBy === props.player.color
-	return (
-		<Switch>
-			<Match when={isPlayer()}>
-				<Button onClick={props.cancelDraw} kind="primary" size="small">
-					Cancel
-				</Button>
-			</Match>
-			<Match when={!isPlayer()}>
-				<div>
-					<i>{props.opponent.name}</i> has offered a draw
-				</div>
-				<Button onClick={props.acceptDraw} kind="primary" size="small">
-					Accept
-				</Button>
-				<Button kind={'secondary'} onClick={props.declineDraw} size="small">
-					Decline
-				</Button>
-			</Match>
-		</Switch>
-	)
-}
-
+//TODO fix current viewed move highlight
 function MoveHistory() {
 	const game = G.game()!
 	const _setViewedMove = setViewedMove(game)
@@ -527,12 +555,25 @@ export function MoveHistoryButton(props: ParentProps<{ active: boolean; onClick:
 }
 
 function GameOutcomeDisplay(props: { outcome: GL.GameOutcome }) {
-	return (
-		<span>
-			{props.outcome.reason}
-			{props.outcome.winner ? `: ${props.outcome.winner} wins!` : ''}
-		</span>
-	)
+	const game = G.game()!
+	const winner = props.outcome.winner ? game.getColorPlayer(props.outcome.winner) : null
+	const winnerTitle = `${winner?.name} (${winner?.color})`
+	switch (props.outcome.reason) {
+		case 'checkmate':
+			return `${winnerTitle} wins by checkmate!`
+		case 'stalemate':
+			return 'Draw! (Stalemate)'
+		case 'insufficient-material':
+			return 'Draw! Insufficient Material'
+		case 'threefold-repetition':
+			return 'Draw! Threefold Repetition'
+		case 'draw-accepted':
+			return 'Agreed to a draw'
+		case 'resigned':
+			return `${winnerTitle} wins by resignation`
+		case 'flagged':
+			return `${winnerTitle} wins on time`
+	}
 }
 
 function PlayerDisplay(props: { player: G.PlayerWithColor; class: string; clock: number }) {

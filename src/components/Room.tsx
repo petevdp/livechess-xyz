@@ -19,6 +19,7 @@ export function RoomGuard() {
 	createEffect(async () => {
 		if ((!R.room() || R.room()!.roomId !== params.id) && P.playerId() && P.playerName()) {
 			setConnectionStatus('connecting')
+			console.log('connecting to room', params.id)
 			const room = await R.connectToRoom(params.id, { id: P.playerId()!, name: P.playerName()! }, () => navigate('/'))
 			R.setRoom(room)
 			setConnectionStatus('connected')
@@ -66,7 +67,7 @@ function Room() {
 			<Match when={room.state.status === 'pregame'}>
 				<Lobby />
 			</Match>
-			<Match when={G.game()}>
+			<Match when={['playing', 'postgame'].includes(room.state.status) && G.game() && !G.game()!.destroyed}>
 				<Board />
 			</Match>
 			<Match when={true}>
