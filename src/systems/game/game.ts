@@ -243,7 +243,7 @@ export class Game {
 
 			//#region outcome and clock
 			const move$ = observeMoves(this.rollbackState)
-			this.getClocks = useClock(move$, this.gameConfig)
+			this.getClocks = useClock(move$, this.gameConfig, () => !!this.outcome)
 
 			const gameOutcome$ = rxFrom(observable(() => GL.getGameOutcome(this.state)))
 			type Timeouts = {
@@ -329,7 +329,7 @@ function observeMoves(gameState: GL.GameState) {
 	return subject.asObservable()
 }
 
-function useClock(move$: Observable<GL.Move>, gameConfig: GL.GameConfig) {
+function useClock(move$: Observable<GL.Move>, gameConfig: GL.GameConfig, gameEnded: Accessor<boolean>) {
 	let startingTime = GL.timeControlToMs(gameConfig.timeControl)
 	const [white, setWhite] = createSignal(startingTime)
 	const [black, setBlack] = createSignal(startingTime)
@@ -337,6 +337,7 @@ function useClock(move$: Observable<GL.Move>, gameConfig: GL.GameConfig) {
 	let toPlay: GL.Color = 'white'
 
 	const sub = move$.subscribe((move) => {
+		if (gameEnded()) return
 		// this means that time before the first move is not counted towards the player's clock
 		if (lastMoveTs !== 0) {
 			const lostTime = move.ts - lastMoveTs - parseInt(gameConfig.increment) * 1000
@@ -371,6 +372,13 @@ function useClock(move$: Observable<GL.Move>, gameConfig: GL.GameConfig) {
 			black: Math.max(times.black, 0),
 		}
 	}
+
+	createEffect(() => {
+		if (gameEnded()) {
+			clearInterval(timeout)
+			sub.unsubscribe()
+		}
+	})
 
 	onCleanup(() => {
 		clearInterval(timeout)
