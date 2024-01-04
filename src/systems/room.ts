@@ -87,7 +87,9 @@ export async function connectToRoom(roomId: string, player: P.Player, abort?: ()
 			_dispose()
 		}
 	})
+	console.log('initializing store')
 	await until(() => store.initialized())
+	console.log('store initialized')
 	await store.setStoreWithRetries((state) => {
 		if (state.players.some((p) => p.id === player.id)) return []
 		return [
@@ -104,10 +106,7 @@ export async function connectToRoom(roomId: string, player: P.Player, abort?: ()
 export class Room {
 	get canStartGame() {
 		// check both states because reasons
-		for (let state of [this.sharedStore.lockstepStore, this.sharedStore.rollbackStore]) {
-			if (state.status !== 'pregame' || this.connectedPlayers.length < 2) return false
-		}
-		return true
+		return this.rollbackState.status === 'pregame' && this.connectedPlayers.length >= 2
 	}
 
 	constructor(

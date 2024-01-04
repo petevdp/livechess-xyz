@@ -2,9 +2,8 @@ import * as R from '../room.ts'
 import * as GL from './gameLogic.ts'
 import { BoardHistoryEntry, GameOutcome } from './gameLogic.ts'
 import * as P from '../player.ts'
-import { Accessor, createEffect, createRoot, createSignal, from, observable, onCleanup, untrack } from 'solid-js'
+import { Accessor, createEffect, createMemo, createRoot, createSignal, from, observable, onCleanup, untrack } from 'solid-js'
 import { combineLatest, concatMap, distinctUntilChanged, EMPTY, from as rxFrom, Observable, ReplaySubject, skip } from 'rxjs'
-import { unwrap } from 'solid-js/store'
 import { isEqual } from 'lodash'
 import { map } from 'rxjs/operators'
 import { trackStore } from '@solid-primitives/deep'
@@ -48,7 +47,7 @@ export class Game {
 	constructor(
 		public room: R.Room,
 		public playerId: string,
-		public gameConfig: GL.GameConfig
+		private gameConfig: GL.GameConfig
 	) {
 		const [promotion, setPromotion] = createSignal(null)
 		this.setPromotion = setPromotion
@@ -84,6 +83,10 @@ export class Game {
 
 	get rollbackState() {
 		return this.room.rollbackState.gameState!
+	}
+
+	get parsedGameConfig() {
+		return GL.parseGameConfig(this.gameConfig)
 	}
 
 	private get board() {
@@ -213,7 +216,7 @@ export class Game {
 
 	destroy() {
 		if (this.destroyed) return
-		console.log('tearing down current game')
+		console.trace('tearing down current game')
 		this.destroyed = true
 		this.callWhenDestroyed.forEach((c) => c())
 	}
@@ -243,7 +246,7 @@ export class Game {
 
 			//#region outcome and clock
 			const move$ = observeMoves(this.rollbackState)
-			this.getClocks = useClock(move$, this.gameConfig, () => !!this.outcome)
+			this.getClocks = useClock(move$, this.parsedGameConfig, () => !!this.outcome)
 
 			const gameOutcome$ = rxFrom(observable(() => GL.getGameOutcome(this.state)))
 			type Timeouts = {
@@ -329,8 +332,8 @@ function observeMoves(gameState: GL.GameState) {
 	return subject.asObservable()
 }
 
-function useClock(move$: Observable<GL.Move>, gameConfig: GL.GameConfig, gameEnded: Accessor<boolean>) {
-	let startingTime = GL.timeControlToMs(gameConfig.timeControl)
+function useClock(move$: Observable<GL.Move>, gameConfig: GL.ParsedGameConfig, gameEnded: Accessor<boolean>) {
+	let startingTime = gameConfig.timeControl
 	const [white, setWhite] = createSignal(startingTime)
 	const [black, setBlack] = createSignal(startingTime)
 	let lastMoveTs = 0
@@ -340,7 +343,7 @@ function useClock(move$: Observable<GL.Move>, gameConfig: GL.GameConfig, gameEnd
 		if (gameEnded()) return
 		// this means that time before the first move is not counted towards the player's clock
 		if (lastMoveTs !== 0) {
-			const lostTime = move.ts - lastMoveTs - parseInt(gameConfig.increment) * 1000
+			const lostTime = move.ts - lastMoveTs - gameConfig.increment
 			if (toPlay === 'white') {
 				setWhite(Math.min(white() - lostTime, startingTime))
 			} else {
@@ -389,7 +392,7 @@ function useClock(move$: Observable<GL.Move>, gameConfig: GL.GameConfig, gameEnd
 }
 
 //TODO is promotion handled correctly?
-//TODO I don't think we handle pins correctly
+//TODO W don't handle disambiguation
 function getMoveHistoryAsNotation(state: GL.GameState) {
 	let moves: [string, string | null][] = []
 	for (let i = 0; i < Math.ceil(state.moveHistory.length / 2); i++) {
@@ -407,13 +410,21 @@ function getMoveHistoryAsNotation(state: GL.GameState) {
 export const [game, setGame] = createSignal<Game | null>(null)
 
 export function setupGameSystem() {
+	const boardVisible = createMemo(() => ['playing', 'postgame'].includes(R.room()!.state.status))
 	createEffect(() => {
-		const room = R.room()
-		if (!room || !['playing', 'postgame'].includes(room.state.status)) return
-		untrack(() => {
-			game()?.destroy()
-			const gameConfig = unwrap(room.state.gameConfig)
-			setGame(new Game(room, P.playerId()!, gameConfig))
-		})
+		if (boardVisible()) {
+			untrack(() => {
+				const room = R.room()!
+				if (game()) {
+					console.warn('game already exists, destroying')
+					game()?.destroy()
+				}
+				setGame(new Game(room, room.player.id, JSON.parse(JSON.stringify(room.state.gameConfig))))
+			})
+		}
+	})
+	onCleanup(() => {
+		game()?.destroy()
+		setGame(null)
 	})
 }

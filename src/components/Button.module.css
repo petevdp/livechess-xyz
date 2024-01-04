@@ -22,6 +22,7 @@
 	@apply bg-gray-300;
 }
 
+
 .button.small {
 	@apply text-xs p-[.25rem];
 }
@@ -33,3 +34,4 @@
 .button.large {
 	@apply text-lg;
 }
+

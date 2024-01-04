@@ -5,7 +5,7 @@ import Logo from '../assets/logo.svg'
 
 export function AppContainer(props: ParentProps) {
 	return (
-		<div class="w-full bg-gradient-to-b from-gray-900 to-gray-700 text-white">
+		<div class="min-h-screen w-screen bg-gradient-to-b from-blue-800 to-blue-600 text-white">
 			<div class="w-min p-2">
 				<A href="/">
 					<Logo />

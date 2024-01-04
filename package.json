@@ -16,6 +16,7 @@
 		"@solid-primitives/deep": "^0.2.4",
 		"@solid-primitives/promise": "^1.0.13",
 		"@solid-primitives/props": "^3.1.8",
+		"@solid-primitives/resize-observer": "^2.0.22",
 		"@solidjs/router": "^0.10.2",
 		"lodash": "^4.17.21",
 		"object-hash": "^3.0.0",

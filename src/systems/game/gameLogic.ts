@@ -82,6 +82,13 @@ export type GameConfig = {
 	timeControl: TimeControl
 	increment: Increment
 }
+
+export type ParsedGameConfig = {
+	variant: Variant
+	// all times are in ms
+	timeControl: number
+	increment: number
+}
 export const defaultGameConfig: GameConfig = {
 	variant: 'regular',
 	timeControl: '5m',
@@ -690,9 +697,22 @@ export function hashBoard(board: Board) {
 	return hash.sha1(board)
 }
 
+//#endregion
+
+//#region parsing
 export function timeControlToMs(timeControl: TimeControl) {
 	const minutes = parseFloat(timeControl.slice(0, -1))
 	return minutes * 60 * 1000
+}
+
+export function parseGameConfig(config: GameConfig): ParsedGameConfig {
+	const timeControl = timeControlToMs(config.timeControl)
+	const increment = parseFloat(config.increment) * 1000
+	return {
+		variant: config.variant,
+		timeControl,
+		increment,
+	}
 }
 
 //#endregion
@@ -703,6 +723,7 @@ function toShortPieceName(piece: Piece) {
 	}
 	return piece[0].toUpperCase()
 }
+
 
 export function moveToChessNotation(moveIndex: number, state: GameState): string {
 	const move = state.moveHistory[moveIndex]

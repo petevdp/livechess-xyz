@@ -1,17 +1,73 @@
-.boardContainer {
+.boardPageWrapper {
+	width: 100%;
+	height: calc(100% - 72px);
 	display: grid;
-	grid-template-columns: repeat(3, max-content);
-	grid-template-rows: repeat(3, max-content);
+	place-items: center;
+}
+
+.boardContainer {
+	@apply rounded bg-gray-900 p-[.5rem];
+
+	display: grid;
+	grid-template-columns: max-content 1fr max-content 1fr;
+	grid-template-rows: max-content 1fr max-content;
 	gap: 0.25rem;
+	height: max-content;
+	max-height: 100%;
+	width: max-content;
+	max-width: 98vw;
 
 	grid-template-areas:
-		'. opponent right-panel'
-		'left-panel board right-panel'
-		'move-nav player right-panel';
+		'top-left-actions . opponent clock-opponent'
+		'move-history board board board'
+		'move-nav bottom-left-actions player clock-player';
+}
+
+@media screen and (max-aspect-ratio: 1/1) {
+	.boardContainer {
+		grid-template-columns: 2fr max-content 1fr 1fr;
+		grid-template-rows: repeat(4, auto);
+		grid-template-areas:
+	 'top-left-actions opponent clock-opponent clock-opponent'
+		'board board board board'
+		'bottom-left-actions player clock-player clock-player'
+		'move-history move-history move-history move-nav'
+	}
+
+	@media screen and (max-width: 700px) {
+		.boardContainer {
+			grid-template-columns: 1fr min-content 1fr;
+			grid-template-rows: repeat(3, min-content) 1fr;
+			grid-template-areas:
+	 'top-left-actions opponent clock-opponent'
+		'board board board'
+		'bottom-left-actions player clock-player'
+		'move-history move-history move-history';
+		}
+
+		.moveNav {
+			display: none;
+		}
+
+
+	}
 }
 
 .board {
 	grid-area: board;
+	margin: auto;
+}
+
+.bottomLeftActions {
+	grid-area: bottom-left-actions;
+}
+
+.topLeftActions {
+	grid-area: top-left-actions;
+}
+
+.bottomRightActions {
+	grid-area: bottom-right-actions
 }
 
 .moveNav {
@@ -21,39 +77,98 @@
 	width: 100%;
 }
 
+
+@media screen and (max-aspect-ratio: 1/1) {
+	.moveNav {
+		@apply self-start;
+	}
+
+}
+
+.player {
+	grid-area: player;
+}
+
+.clockPlayer {
+	grid-area: clock-player;
+}
+
 .opponent {
 	grid-area: opponent;
 }
 
-.player {
-	margin: auto;
-}
-
-.playerContainer {
-	grid-area: player;
-	display: grid;
-	grid-template-columns: 1fr 200px 1fr;
+.clockOpponent {
+	grid-area: clock-opponent;
 }
 
 .actionsPanel {
-	@apply space-x-1;
-	display: flex;
-	justify-content: flex-end;
-	font-size: small;
+	@apply space-x-1 flex justify-end text-sm
 }
 
 
-.leftPanel {
-	grid-area: left-panel;
+.moveHistoryContainer {
+	grid-area: move-history;
 	display: flex;
 	width: 142px;
 	flex-direction: column;
 	align-items: flex-start;
+	overflow-y: auto;
 }
 
-.rightPanel {
-	grid-area: right-panel;
-	display: flex;
-	flex-direction: column;
+
+@media screen and (max-aspect-ratio: 1/1) {
+	.moveHistoryContainer {
+		@apply w-full h-full flex flex-row
+	}
+
+
+}
+
+/* move history */
+
+.moveHistory {
+	@apply flex flex-col h-full w-full;
 	align-items: flex-end;
 }
+
+.moveHistoryEntry {
+	@apply flex flex-row p-[.10rem] h-min whitespace-nowrap items-center text-xs;
+}
+
+.moveHistoryEntry div {
+	@apply flex flex-row w-20 justify-evenly rounded p-[.25rem] pl-0 h-min whitespace-nowrap;
+}
+
+
+@media screen and (max-aspect-ratio: 1/1) {
+	.moveHistory {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, 105px);
+	}
+
+	@media screen and (max-width: 700px) {
+		.moveHistoryContainer {
+			height: fit-content;
+		}
+	}
+
+	.startEntry {
+		/*grid-column: 1 / 100;*/
+	}
+
+
+	.moveHistoryEntry {
+	}
+
+	.moveHistoryEntry > div {
+	}
+
+
+	.singleMove > div {
+		@apply flex justify-start;
+	}
+}
+
+
+
+

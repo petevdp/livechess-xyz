@@ -23,6 +23,7 @@ export function Button(props: ButtonProps) {
 		[styles.button]: true,
 		[styles[props.kind]]: true,
 		[styles[props.size]]: true,
+		[props.class || '']: !!props.class,
 	})
 
 	const [classList, setClassList] = createSignal(getClassList())
@@ -37,7 +38,6 @@ export function Button(props: ButtonProps) {
 		return (
 			<button
 				{...merged}
-				class={props.class}
 				classList={classList()}
 				use:tippy={{ theme: 'material', content: props.title, showOnCreate: false }}
 			>
@@ -46,7 +46,7 @@ export function Button(props: ButtonProps) {
 		)
 	} else {
 		return (
-			<button {...merged} class={props.class} classList={classList()}>
+			<button {...merged} classList={classList()}>
 				{props.children}
 			</button>
 		)

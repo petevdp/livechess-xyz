@@ -34,3 +34,12 @@ if (window) {
 	// @ts-ignore
 	window.Utils = utils
 }
+
+createRoot(() => {
+	createEffect(() => {
+		// @ts-ignore
+		appConsole.room = R.room()
+		// @ts-ignore
+		appConsole.game = G.game()
+	})
+})

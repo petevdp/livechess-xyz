@@ -1,36 +1,51 @@
-import { batch, createEffect, createReaction, createSignal, For, Match, onCleanup, onMount, ParentProps, Show, Switch } from 'solid-js'
+import { batch, createEffect, createReaction, createSignal, For, Match, onCleanup, onMount, Show, Switch } from 'solid-js'
 import * as G from '../systems/game/game.ts'
-import { setGame } from '../systems/game/game.ts'
 import * as GL from '../systems/game/gameLogic.ts'
 import * as Modal from './Modal.tsx'
 import styles from './Board.module.css'
 import toast from 'solid-toast'
 import { Button } from './Button.tsx'
-import { unwrap } from 'solid-js/store'
-import * as P from '../systems/player.ts'
-import * as R from '../systems/room.ts'
-import { FirstStepSvg, FlipSvg, LastStepSvg, NextStepSvg, OfferDrawSvg, PrevStepSvg, ResignSvg } from './Svgs.tsx'
+import FirstSvg from '../assets/icons/first.svg'
+import FlipBoardSvg from '../assets/icons/flip-board.svg'
+import LastSvg from '../assets/icons/last.svg'
+import NextSvg from '../assets/icons/next.svg'
+import OfferDrawSvg from '../assets/icons/offer-draw.svg'
+import PrevSvg from '../assets/icons/prev.svg'
+import ResignSvg from '../assets/icons/resign.svg'
 
 //TODO provide some method to view the current game's config
 //TODO component duplicates on reload sometimes for some reason
 
-const BOARD_SIZE = 600
-const SQUARE_SIZE = BOARD_SIZE / 8
-
 export function Board() {
 	let game = G.game()!
-	if (!game || game.destroyed) {
-		const gameConfig = unwrap(R.room()!.state.gameConfig)
-		game = new G.Game(R.room()!, P.playerId()!, gameConfig)
-		setGame(game)
-	}
-	onCleanup(() => {
-		game.destroy()
+
+	//#region calc board sizes
+	// let BOARD_SIZE = 600
+	// let SQUARE_SIZE = BOARD_SIZE / 8
+	const [windowSize, setWindowSize] = createSignal({ width: window.innerWidth, height: window.innerHeight })
+	onMount(() => {
+		window.addEventListener('resize', () => {
+			setWindowSize({ width: window.innerWidth, height: window.innerHeight })
+		})
 	})
+
+	const boardSize = (): number => {
+		if (windowSize().width < windowSize().height - 100 && windowSize().width > 600) {
+			return windowSize().width - 40
+		} else if (windowSize().width < windowSize().height && windowSize().width < 600) {
+			return windowSize().width - 20
+		} else {
+			return windowSize().height - 170
+		}
+	}
+
+	const squareSize = () => boardSize() / 8
+
+	//#endregion
 
 	//#region board rendering and mouse events
 	const imageCache: Record<string, HTMLImageElement> = {}
-	const canvas = (<canvas class={styles.board} width={BOARD_SIZE} height={BOARD_SIZE} />) as HTMLCanvasElement
+	const canvas = (<canvas width={boardSize()} height={boardSize()} />) as HTMLCanvasElement
 	const [boardFlipped, setBoardFlipped] = createSignal(false)
 	const [hoveredSquare, setHoveredSquare] = createSignal(null as null | string)
 	const [grabbedSquare, setGrabbedSquare] = createSignal(null as null | string)
@@ -55,7 +70,7 @@ export function Board() {
 		ctx.fillStyle = '#a05a2c'
 		for (let i = 0; i < 8; i++) {
 			for (let j = (i + 1) % 2; j < 8; j += 2) {
-				ctx.fillRect(j * SQUARE_SIZE, i * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE)
+				ctx.fillRect(j * squareSize(), i * squareSize(), squareSize(), squareSize())
 			}
 		}
 		//#endregion
@@ -66,9 +81,9 @@ export function Board() {
 			const highlightedSquares = [game.currentBoardView.lastMove.from, game.currentBoardView.lastMove.to]
 			for (let square of highlightedSquares) {
 				if (!square) continue
-				const [x, y] = squareToCoords(square, boardFlipped())
+				const [x, y] = squareToCoords(square, boardFlipped(), squareSize())
 				ctx.fillStyle = highlightColor
-				ctx.fillRect(x, y, SQUARE_SIZE, SQUARE_SIZE)
+				ctx.fillRect(x, y, squareSize(), squareSize())
 			}
 		}
 		//#endregion
@@ -93,7 +108,7 @@ export function Board() {
 				x = 7 - x
 				y = 7 - y
 			}
-			ctx.drawImage(imageCache[resolvePieceImagePath(piece)], x * SQUARE_SIZE, y * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE)
+			ctx.drawImage(imageCache[resolvePieceImagePath(piece)], x * squareSize(), y * squareSize(), squareSize(), squareSize())
 		}
 		//#endregion
 
@@ -103,10 +118,10 @@ export function Board() {
 			let y = grabbedSquareMousePos()!.y
 			ctx.drawImage(
 				imageCache[resolvePieceImagePath(game.currentBoardView.board.pieces[grabbedSquare()!]!)],
-				x - SQUARE_SIZE / 2,
-				y - SQUARE_SIZE / 2,
-				SQUARE_SIZE,
-				SQUARE_SIZE
+				x - squareSize() / 2,
+				y - squareSize() / 2,
+				squareSize(),
+				squareSize()
 			)
 		}
 		//#endregion
@@ -152,8 +167,8 @@ export function Board() {
 	//#region mouse events
 	onMount(() => {
 		function getSquareFromCoords(x: number, y: number) {
-			let col = Math.floor(x / SQUARE_SIZE)
-			let row = Math.floor(y / SQUARE_SIZE)
+			let col = Math.floor(x / squareSize())
+			let row = Math.floor(y / squareSize())
 			if (boardFlipped()) {
 				col = 7 - col
 				row = 7 - row
@@ -227,7 +242,7 @@ export function Board() {
 
 	const promoteModalPosition = () => {
 		if (!game.promotion()) return undefined
-		let coordsInt = squareToCoords(game.promotion()!.to, boardFlipped())
+		let coordsInt = squareToCoords(game.promotion()!.to, boardFlipped(), squareSize())
 		coordsInt[0] = coordsInt[0] + canvas.getBoundingClientRect().left
 		coordsInt[1] = coordsInt[1] + canvas.getBoundingClientRect().top
 
@@ -325,68 +340,91 @@ export function Board() {
 	//#endregion
 
 	return (
-		<div class={styles.boardContainer}>
-			<PlayerDisplay player={game.opponent} class={styles.opponent} clock={game.clock[game.opponent.color]} />
-			{canvas}
-			<PlayerContainer />
-			<div class={styles.leftPanel}>
-				<MoveHistory />
-			</div>
-			<div class={styles.moveNav}>
-				<MoveNav />
-			</div>
-			<div class={styles.rightPanel}>
-				<Button title={'Flip Board'} kind="tertiary" size="small" onclick={() => setBoardFlipped((f) => !f)} class="mb-1">
-					<FlipSvg />
-				</Button>
+		<div class={styles.boardPageWrapper}>
+			<div class={styles.boardContainer}>
+				<div class={styles.moveHistoryContainer}>
+					<MoveHistory />
+				</div>
+				<Player class={styles.opponent} player={game.opponent} />
+				<Clock class={styles.clockOpponent} clock={game.clock[game.player.color]} />
+				<div class={`${styles.topLeftActions} flex flex-col items-start space-x-1`}>
+					<Button title={'Flip Board'} kind="tertiary" size="small" onclick={() => setBoardFlipped((f) => !f)} class="mb-1">
+						<FlipBoardSvg />
+					</Button>
+				</div>
+				<div class={styles.board}>{canvas}</div>
+				<ActionsPanel class={styles.bottomLeftActions} />
+				<Player class={styles.player} player={game.player} />
+				<Clock class={styles.clockPlayer} clock={game.clock[game.opponent.color]} />
+				<div class={styles.bottomRightActions} />
+				<div class={styles.moveNav}>
+					<MoveNav />
+				</div>
 			</div>
 		</div>
 	)
 }
 
-function PlayerContainer() {
-	const game = G.game()!
-
+function Player(props: { player: G.PlayerWithColor; class: string }) {
 	return (
-		<div class={styles.playerContainer}>
-			<span>
-				<Switch>
-					<Match when={!game.outcome}>
-						<Show when={game.drawIsOfferedBy === null}>
-							<Button title="Offer Draw" size="small" kind="tertiary" onclick={() => game.offerDraw()}>
-								<OfferDrawSvg />
-							</Button>
-							<Button title="Resign" kind="tertiary" size="small" onclick={() => game.resign()}>
-								<ResignSvg />
-							</Button>
-						</Show>
-						<Switch>
-							<Match when={game.drawIsOfferedBy === game.player.color}>
-								<Button kind="primary" size="small" onClick={() => game.cancelDraw()}>
-									Cancel Draw
-								</Button>
-							</Match>
-							<Match when={game.drawIsOfferedBy === game.opponent.color}>
-								<Button kind="primary" size="small" onClick={() => game.offerDraw()}>
-									Accept Draw
-								</Button>
-							</Match>
-						</Switch>
-					</Match>
-					<Match when={game.outcome}>
-						<Button size="small" kind="primary" onclick={() => game.configureNewGame()}>
-							New Game
-						</Button>
-					</Match>
-				</Switch>
-			</span>
-			<PlayerDisplay player={game.player} class={styles.player} clock={game.clock[game.player.color]} />
-			<div class={styles.actionsPanelLeft}>
-				<Show when={game.drawIsOfferedBy}>
-					<div>idk</div>
-				</Show>
-			</div>
+		<div class={props.class + ' m-auto whitespace-nowrap'}>
+			{props.player.name} <i class="text-neutral-400">({props.player.color})</i>
 		</div>
+	)
+}
+
+function Clock(props: { clock: number; class: string }) {
+	const game = G.game()!
+	const formattedClock = () => {
+		// clock is in ms
+		const minutes = Math.floor(props.clock / 1000 / 60)
+		const seconds = Math.floor((props.clock / 1000) % 60)
+		if (minutes === 0) {
+			const tenths = Math.floor((props.clock / 100) % 10)
+			const hundredths = Math.floor((props.clock / 10) % 10)
+			return `${seconds}.${tenths}${hundredths}`
+		}
+		return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`
+	}
+	const warnThreshold = () => game.gameConfig
+
+	return <span class={`flex justify-end text-xl ${props.class}`}>{formattedClock()}</span>
+}
+
+function ActionsPanel(props: { class: string }) {
+	const game = G.game()!
+	return (
+		<span class={props.class}>
+			<Switch>
+				<Match when={!game.outcome}>
+					<Show when={game.drawIsOfferedBy === null}>
+						<Button title="Offer Draw" size="small" kind="tertiary" onclick={() => game.offerDraw()}>
+							<OfferDrawSvg />
+						</Button>
+						<Button title="Resign" kind="tertiary" size="small" onclick={() => game.resign()}>
+							<ResignSvg />
+						</Button>
+					</Show>
+					<Switch>
+						<Match when={game.drawIsOfferedBy === game.player.color}>
+							<Button kind="primary" size="small" onClick={() => game.cancelDraw()}>
+								Cancel Draw
+							</Button>
+						</Match>
+						<Match when={game.drawIsOfferedBy === game.opponent.color}>
+							<Button kind="primary" size="small" onClick={() => game.offerDraw()}>
+								Accept Draw
+							</Button>
+						</Match>
+					</Switch>
+				</Match>
+				<Match when={game.outcome}>
+					<Button size="small" kind="primary" onclick={() => game.configureNewGame()}>
+						New Game
+					</Button>
+				</Match>
+			</Switch>
+		</span>
 	)
 }
 
@@ -405,34 +443,51 @@ function MoveHistory() {
 	const game = G.game()!
 	const _setViewedMove = setViewedMove(game)
 	return (
-		<div class="align-center flex h-full w-full flex-col space-y-1">
-			<Button size="small" kind={game.viewedMoveIndex() === -1 ? 'secondary' : 'tertiary'} onClick={() => _setViewedMove(-1)}>
-				Start
-			</Button>
+		<div class={styles.moveHistory}>
+			<div class={styles.moveHistoryEntry}>
+				<pre class="mr-1">
+					<code> 0.</code>
+				</pre>
+				<div>
+					<Button size="small" kind={game.viewedMoveIndex() === -1 ? 'secondary' : 'tertiary'} onClick={() => _setViewedMove(-1)}>
+						Start
+					</Button>
+				</div>
+			</div>
 			<For each={game.moveHistoryAsNotation}>
-				{(move, index) => (
-					<code class="text-neutral-400">
-						{index()}.{' '}
-						<Button
-							size="small"
-							class="w-8"
-							kind={game.viewedMoveIndex() === index() * 2 ? 'secondary' : 'tertiary'}
-							onClick={() => _setViewedMove(index() * 2)}
+				{(move, index) => {
+					console.log('index: ', index())
+					return (
+						<div
+							classList={{
+								[styles.moveHistoryEntry]: true,
+								[styles.singleMove]: index() + 1 === game.moveHistoryAsNotation.length && game.rollbackState.moveHistory.length % 2 === 1,
+							}}
 						>
-							{move[0]}
-						</Button>{' '}
-						<Show when={move[1]}>
-							<Button
-								size="small"
-								class="w-8"
-								kind={game.viewedMoveIndex() === index() * 2 + 1 ? 'secondary' : 'tertiary'}
-								onClick={() => _setViewedMove(index() * 2 + 1)}
-							>
-								{move[1]}
-							</Button>
-						</Show>
-					</code>
-				)}
+							<pre class="mr-1">
+								<code>{(index() + 1).toString().padStart(2, ' ')}.</code>
+							</pre>
+							<div>
+								<Button
+									size="small"
+									kind={game.viewedMoveIndex() === index() * 2 ? 'secondary' : 'tertiary'}
+									onClick={() => _setViewedMove(index() * 2)}
+								>
+									{move[0]}
+								</Button>{' '}
+								<Show when={move[1]}>
+									<Button
+										size="small"
+										kind={game.viewedMoveIndex() === index() * 2 + 1 ? 'secondary' : 'tertiary'}
+										onClick={() => _setViewedMove(index() * 2 + 1)}
+									>
+										{move[1]}
+									</Button>
+								</Show>
+							</div>
+						</div>
+					)
+				}}
 			</For>
 		</div>
 	)
@@ -452,18 +507,19 @@ function MoveNav() {
 	return (
 		<div class="flex justify-evenly">
 			<Button kind="tertiary" size="small" disabled={game.viewedMoveIndex() === -1} onClick={() => _setViewedMove(-1)}>
-				<FirstStepSvg />
+				<FirstSvg />
 			</Button>
 			<Button
+				class="text-blue-600"
 				kind="tertiary"
 				size="small"
 				disabled={game.viewedMoveIndex() === -1}
 				onClick={() => _setViewedMove(game.viewedMoveIndex() - 1)}
 			>
-				<PrevStepSvg />
+				<PrevSvg />
 			</Button>
 			<Button kind="tertiary" size="small" onClick={() => _setViewedMove(game.viewedMoveIndex() + 1)}>
-				<NextStepSvg />
+				<NextSvg />
 			</Button>
 			<Button
 				kind="tertiary"
@@ -471,28 +527,9 @@ function MoveNav() {
 				disabled={game.viewedMoveIndex() === game.rollbackState.moveHistory.length - 1}
 				onClick={() => _setViewedMove('live')}
 			>
-				<LastStepSvg />
+				<LastSvg />
 			</Button>
 		</div>
-	)
-}
-
-//#region ugly svgs
-
-//#endregion
-
-export function MoveHistoryButton(props: ParentProps<{ active: boolean; onClick: () => void }>) {
-	return (
-		<button
-			onClick={props.onClick}
-			class="rounded p-1 text-xs text-neutral-300"
-			classList={{
-				['bg-neutral-700']: props.active,
-				['cursor-default']: props.active,
-			}}
-		>
-			{props.children}
-		</button>
 	)
 }
 
@@ -516,25 +553,6 @@ function GameOutcomeDisplay(props: { outcome: GL.GameOutcome }) {
 		case 'flagged':
 			return `${winnerTitle} wins on time`
 	}
-}
-
-function PlayerDisplay(props: { player: G.PlayerWithColor; class: string; clock: number }) {
-	const formattedClock = () => {
-		// clock is in ms
-		const minutes = Math.floor(props.clock / 1000 / 60)
-		const seconds = Math.floor((props.clock / 1000) % 60)
-		if (minutes === 0) {
-			const tenths = Math.floor((props.clock / 100) % 10)
-			const hundredths = Math.floor((props.clock / 10) % 10)
-			return `${seconds}.${tenths}${hundredths}`
-		}
-		return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`
-	}
-	return (
-		<div class={props.class}>
-			<span class="w-7">{formattedClock()}</span> {props.player.name} <i class="text-neutral-400">({props.player.color})</i>
-		</div>
-	)
 }
 
 function resolvePieceImagePath(piece: GL.ColoredPiece) {
@@ -561,12 +579,12 @@ function loadImage(src: string) {
 	})
 }
 
-function squareToCoords(square: string, boardFlipped: boolean) {
+function squareToCoords(square: string, boardFlipped: boolean, squareSize: number) {
 	let x = square[0].charCodeAt(0) - 'a'.charCodeAt(0)
 	let y = 8 - parseInt(square[1])
 	if (boardFlipped) {
 		x = 7 - x
 		y = 7 - y
 	}
-	return [x * SQUARE_SIZE, y * SQUARE_SIZE] as [number, number]
+	return [x * squareSize, y * squareSize] as [number, number]
 }

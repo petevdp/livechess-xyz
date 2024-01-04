@@ -1,4 +1,4 @@
-import { createEffect, createSignal, For, Match, on, onCleanup, onMount, Show, Switch } from 'solid-js'
+import { createEffect, createSignal, For, Match, on, onCleanup, onMount, ParentProps, Show, Switch } from 'solid-js'
 import * as P from '../systems/player.ts'
 import { useNavigate, useParams } from '@solidjs/router'
 import { ConnectionStatus } from '../utils/yjs.ts'
@@ -6,6 +6,7 @@ import { Board } from './Board.tsx'
 import { AppContainer } from './AppContainer.tsx'
 import { Choice, MultiChoiceButton } from '../MultiChoiceButton.tsx'
 import * as G from '../systems/game/game.ts'
+import { setupGameSystem } from '../systems/game/game.ts'
 import * as GL from '../systems/game/gameLogic.ts'
 import * as R from '../systems/room.ts'
 import { Button } from './Button.tsx'
@@ -36,32 +37,36 @@ export function RoomGuard() {
 
 	return (
 		<AppContainer>
-			<div class="grid h-[calc(100vh_-_4rem)] place-items-center">
-				<div class="rounded bg-gray-900 p-[.5rem]">
-					<Switch>
-						<Match when={!P.playerName()}>
-							<NickForm />
-						</Match>
-						<Match when={!R.room() || connectionStatus() === 'connecting'}>
-							<div>loading...</div>
-						</Match>
-						<Match when={connectionStatus() === 'disconnected'}>
-							<div>disconnected</div>
-						</Match>
-						<Match when={connectionStatus() === 'connected'}>
-							<Room />
-						</Match>
-					</Switch>
-				</div>
-			</div>
+			<Switch>
+				<Match when={!P.playerName()}>
+					<NickForm />
+				</Match>
+				<Match when={!R.room() || connectionStatus() === 'connecting'}>
+					<div>loading...</div>
+				</Match>
+				<Match when={connectionStatus() === 'disconnected'}>
+					<div>disconnected</div>
+				</Match>
+				<Match when={connectionStatus() === 'connected'}>
+					<Room />
+				</Match>
+			</Switch>
 		</AppContainer>
 	)
 }
 
+function CenterPanel(props: ParentProps) {
+	return (
+		<div class="grid h-[calc(100vh_-_4rem)] place-items-center">
+			<div class="rounded bg-gray-900 p-[.5rem]">{props.children}</div>
+		</div>
+	)
+}
+
 function Room() {
-	const room = R.room()
+	const room = R.room()!
 	if (!room) throw new Error('room is not initialized')
-	G.setupGameSystem()
+	setupGameSystem()
 
 	return (
 		<Switch>
@@ -87,32 +92,34 @@ function Lobby() {
 	}
 
 	return (
-		<div class="grid grid-cols-[60%_auto] gap-2">
-			<GameConfigForm />
-			<div class="row-span-2">
-				<ChatBox />
-			</div>
-			<div class="col-span-1 flex w-full justify-center">
-				<Button kind="primary" class="whitespace-nowrap" onclick={copyInviteLink}>
-					Copy Invite Link
-				</Button>
-				<Show when={room!.sharedStore.isLeader()}>
-					<Button
-						size={'large'}
-						kind="primary"
-						disabled={!room.canStartGame}
-						class="ml-1 w-full rounded"
-						onClick={async () => {
-							// change this to a "set ready" pattern
-							if (!room.canStartGame) return
-							room.startGame()
-						}}
-					>
-						{!room.canStartGame ? '(Waiting for opponent to connect...)' : 'Start'}
+		<CenterPanel>
+			<div class="grid grid-cols-[60%_auto] gap-2">
+				<GameConfigForm />
+				<div class="row-span-2">
+					<ChatBox />
+				</div>
+				<div class="col-span-1 flex w-full justify-center">
+					<Button kind="primary" class="whitespace-nowrap" onclick={copyInviteLink}>
+						Copy Invite Link
 					</Button>
-				</Show>
+					<Show when={room!.sharedStore.isLeader()}>
+						<Button
+							size={'large'}
+							kind="primary"
+							disabled={!room.canStartGame}
+							class="ml-1 w-full rounded"
+							onClick={async () => {
+								// change this to a "set ready" pattern
+								if (!room.canStartGame) return
+								room.startGame()
+							}}
+						>
+							{!room.canStartGame ? '(Waiting for opponent to connect...)' : 'Start'}
+						</Button>
+					</Show>
+				</div>
 			</div>
-		</div>
+		</CenterPanel>
 	)
 }
 
@@ -237,18 +244,20 @@ function NickForm() {
 	}
 
 	return (
-		<form onSubmit={onSubmit}>
-			<div>Set your Display Name</div>
-			<input
-				type="text"
-				class="bg-gray-800 p-1 text-white"
-				value={displayName()}
-				disabled={!initialized()}
-				required={true}
-				pattern={'[a-zA-Z0-9]+'}
-				onInput={(e) => setDisplayName(e.target.value.trim())}
-			/>
-			<input type="submit" value="Submit" />
-		</form>
+		<CenterPanel>
+			<form onSubmit={onSubmit}>
+				<div>Set your Display Name</div>
+				<input
+					type="text"
+					class="bg-gray-800 p-1 text-white"
+					value={displayName()}
+					disabled={!initialized()}
+					required={true}
+					pattern={'[a-zA-Z0-9]+'}
+					onInput={(e) => setDisplayName(e.target.value.trim())}
+				/>
+				<input type="submit" value="Submit" />
+			</form>
+		</CenterPanel>
 	)
 }
