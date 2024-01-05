@@ -1,9 +1,9 @@
 import { Route, Router } from '@solidjs/router'
 import { onMount } from 'solid-js'
 import * as P from './systems/player.ts'
-import { RoomGuard } from './components/Room.tsx'
 import { Home } from './components/Home.tsx'
 import { Toaster } from 'solid-toast'
+import { RoomGuard } from './components/RoomGuard.tsx'
 
 function App() {
 	onMount(async () => {

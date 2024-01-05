@@ -14,23 +14,31 @@ export type StoreMutation = {
 	value: any
 }
 
-type NewSharedStoreOrderedTransaction<Action extends string> = {
-	index: number
-	actions: Action[]
-	mutations: StoreMutation[]
+export type Action<ActionType extends string> = {
+	type: ActionType
+	//clientId
+	origin: string
 }
 
-type NewSharedStoreUnorderedTransaction<A extends string> = {
+type NewSharedStoreOrderedTransaction<ActionType extends string> = {
+	index: number
+	mutations: StoreMutation[]
+	actions: Action<ActionType>[]
+}
+
+type NewSharedStoreUnorderedTransaction<ActionType extends string> = {
 	index: null
 	mutations: StoreMutation[]
-	actions: A[]
+	actions: Action<ActionType>[]
 }
 
-type NewSharedStoreTransaction<Action extends string> =
-	| NewSharedStoreOrderedTransaction<Action>
-	| NewSharedStoreUnorderedTransaction<Action>
-export type SharedStoreTransaction<Action extends string> = NewSharedStoreTransaction<Action> & { mutationId: string }
-export type SharedStoreOrderedTransaction<Action extends string> = NewSharedStoreOrderedTransaction<Action> & {
+type NewSharedStoreTransaction<ActionType extends string> =
+	| NewSharedStoreOrderedTransaction<ActionType>
+	| NewSharedStoreUnorderedTransaction<ActionType>
+export type SharedStoreTransaction<ActionType extends string> = NewSharedStoreTransaction<ActionType> & {
+	mutationId: string
+}
+export type SharedStoreOrderedTransaction<ActionType extends string> = NewSharedStoreOrderedTransaction<ActionType> & {
 	mutationId: string
 }
 
@@ -92,11 +100,12 @@ export type SharedStoreMessage =
 
 //#endregion
 
+
 export type SharedStore<
 	T extends object,
 	CCS extends ClientControlledState = ClientControlledState,
-	Action extends string = string,
-> = ReturnType<typeof initSharedStore<T, CCS, Action>>
+	ActionType extends string = string,
+> = ReturnType<typeof initSharedStore<T, CCS, ActionType>>
 
 /**
  * Create a shared store that can be used to synchronize state between multiple clients, and can rollback any conflicting changes.
@@ -107,8 +116,8 @@ export type SharedStore<
 export function initSharedStore<
 	S extends object,
 	CCS extends ClientControlledState = ClientControlledState,
-	Action extends string = string,
->(provider: SharedStoreProvider<Action>, startingClientState = {} as CCS, startingState: S = {} as S) {
+	ActionType extends string = string,
+>(provider: SharedStoreProvider<ActionType>, startingClientState = {} as CCS, startingState: S = {} as S) {
 	//#region statuses
 	const [initialized, setInitialized] = createSignal(false)
 	const [isLeader, setIsLeader] = createSignal(false)
@@ -134,7 +143,7 @@ export function initSharedStore<
 	let subscription = new Subscription()
 
 	//#region actions
-	const action$ = new Subject<Action>()
+	const action$ = new Subject<Action<ActionType>>()
 	subscription.add(action$)
 	subscription.add(action$.subscribe((action) => {
 		console.debug(`dispatching action: ${action}`)
@@ -143,16 +152,17 @@ export function initSharedStore<
 
 	//#region outgoing transactions
 	const previousValues = new Map<number, any[]>()
-	const transactionsBeingBuilt = new Set<SharedStoreTransactionBuilder<Action>>()
-	const appliedTransactions = [] as NewSharedStoreOrderedTransaction<Action>[]
+	const transactionsBeingBuilt = new Set<SharedStoreTransactionBuilder<ActionType>>()
+	const appliedTransactions = [] as NewSharedStoreOrderedTransaction<ActionType>[]
 	const setStore = async (
 		mutation: StoreMutation,
-		transactionBuilder?: SharedStoreTransactionBuilder<Action>,
-		actions: Action[] = [],
+		transactionBuilder?: SharedStoreTransactionBuilder<ActionType>,
+		actionTypes: ActionType[] = [],
 		rollback = true
 	) => {
 		await until(initialized)
-		let transaction: NewSharedStoreOrderedTransaction<Action>
+		let transaction: NewSharedStoreOrderedTransaction<ActionType>
+		const actions: Action<ActionType>[] = actionTypes.map(at => ({type: at, origin: provider.clientId!}))
 		if (transactionBuilder) {
 			transactionBuilder.push(mutation)
 			if (transactionsBeingBuilt.has(transactionBuilder)) {
@@ -166,7 +176,7 @@ export function initSharedStore<
 				return
 			}
 
-			transaction = transactionBuilder.build(appliedTransactions.length, actions)
+			transaction = transactionBuilder.build(appliedTransactions.length, actionTypes, provider.clientId!)
 		} else {
 			transaction = {
 				index: appliedTransactions.length,
@@ -174,7 +184,7 @@ export function initSharedStore<
 				mutations: [mutation],
 			}
 		}
-		let _transaction: NewSharedStoreUnorderedTransaction<Action> | NewSharedStoreOrderedTransaction<Action>
+		let _transaction: NewSharedStoreUnorderedTransaction<ActionType> | NewSharedStoreOrderedTransaction<ActionType>
 		if (rollback) {
 			_transaction = transaction
 		} else {
@@ -188,7 +198,7 @@ export function initSharedStore<
 		return await applyTransaction(_transaction)
 	}
 
-	const applyTransaction = async (transaction: NewSharedStoreTransaction<Action>): Promise<boolean> => {
+	const applyTransaction = async (transaction: NewSharedStoreTransaction<ActionType>): Promise<boolean> => {
 		if (isLeader()) {
 			for (let mut of transaction.mutations) {
 				mut.path = interpolatePath(mut.path, lockstepStore)
@@ -197,7 +207,7 @@ export function initSharedStore<
 				applyMutationsToStore(transaction.mutations, setRollbackStore)
 				applyMutationsToStore(transaction.mutations, setLockstepStore)
 			})
-			let orderedTransaction: SharedStoreOrderedTransaction<Action>
+			let orderedTransaction: SharedStoreOrderedTransaction<ActionType>
 			if (transaction.index == null) {
 				orderedTransaction = {
 					...transaction,
@@ -245,7 +255,7 @@ export function initSharedStore<
 			| StoreMutation[]
 			| {
 			mutations: StoreMutation[]
-			actions: Action[]
+			actions: ActionType[]
 		}
 			| void,
 		numRetries = 5
@@ -254,11 +264,12 @@ export function initSharedStore<
 		for (let i = 0; i < numRetries + 1; i++) {
 			const res = fn(rollbackStore)
 			if (!res) return true
-			let transaction: NewSharedStoreOrderedTransaction<Action>
+			let transaction: NewSharedStoreOrderedTransaction<ActionType>
 			if ('mutations' in res) {
+				const actions = res.actions.map(at => ({type: at, origin: provider.clientId!}))
 				transaction = {
 					index: appliedTransactions.length,
-					actions: res.actions,
+					actions,
 					mutations: res.mutations,
 				}
 			} else {
@@ -285,7 +296,7 @@ export function initSharedStore<
 		}
 	}
 
-	function handleReceivedTransaction(receivedAtom: SharedStoreOrderedTransaction<Action>) {
+	function handleReceivedTransaction(receivedAtom: SharedStoreOrderedTransaction<ActionType>) {
 		console.debug(`processing atom (${provider.clientId})`, receivedAtom, appliedTransactions.length)
 		for (let mut of receivedAtom.mutations) {
 			mut.path = interpolatePath(mut.path, lockstepStore)
@@ -365,7 +376,7 @@ export function initSharedStore<
 		provider.observeComittedMutations().subscribe(async (_receivedAtom) => {
 			await until(initialized)
 			// annoying but we have both receivedAtom and _receivedAtom for type narrowing reasons,
-			let receivedAtom = _receivedAtom as SharedStoreOrderedTransaction<Action>
+			let receivedAtom = _receivedAtom as SharedStoreOrderedTransaction<ActionType>
 			if (isLeader() && _receivedAtom.index === null) {
 				receivedAtom.index = appliedTransactions.length
 			} else if (!isLeader() && receivedAtom.index === null) {
@@ -767,10 +778,10 @@ export class SharedStoreTransactionBuilder<Action extends string> {
 		this.mutations.push(mutation)
 	}
 
-	build(index: number, actions: Action[]): NewSharedStoreOrderedTransaction<Action> {
+	build(index: number, actions: Action[], origin: string): NewSharedStoreOrderedTransaction<Action> {
 		return {
 			index,
-			actions,
+			actions: actions.map(at => ({type: at, origin})),
 			mutations: this.mutations,
 		}
 	}

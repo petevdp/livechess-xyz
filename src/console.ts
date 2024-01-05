@@ -6,7 +6,6 @@ import * as M from './components/Modal.tsx'
 import { createEffect, createRoot, getOwner } from 'solid-js'
 import { until } from '@solid-primitives/promise'
 import * as yUtils from './utils/yjs.ts'
-import { unwrap } from 'solid-js/store'
 
 const appConsole = {
 	R,
@@ -22,7 +21,7 @@ const utils = {
 	createEffect,
 	until,
 	yUtils,
-	unwrap,
+	unwrap: (i: any) => JSON.parse(JSON.stringify(i)),
 }
 
 export type AppConsole = typeof appConsole

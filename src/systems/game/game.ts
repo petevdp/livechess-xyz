@@ -451,7 +451,7 @@ export const [game, setGame] = createSignal<Game | null>(null)
 export function setupGameSystem() {
 	const boardVisible = createMemo(() => ['playing', 'postgame'].includes(R.room()!.state.status))
 	createEffect(() => {
-		if (boardVisible()) {
+		if (R.room() && boardVisible()) {
 			untrack(() => {
 				const room = R.room()!
 				if (game()) {

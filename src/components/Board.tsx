@@ -1,6 +1,7 @@
 import { batch, createEffect, createReaction, createSignal, For, Match, onCleanup, onMount, Show, Switch } from 'solid-js'
 import * as G from '../systems/game/game.ts'
 import * as GL from '../systems/game/gameLogic.ts'
+import * as PC from '../systems/piece.ts'
 import * as Modal from './Modal.tsx'
 import styles from './Board.module.css'
 import toast from 'solid-toast'
@@ -12,6 +13,7 @@ import NextSvg from '../assets/icons/next.svg'
 import OfferDrawSvg from '../assets/icons/offer-draw.svg'
 import PrevSvg from '../assets/icons/prev.svg'
 import ResignSvg from '../assets/icons/resign.svg'
+import { BOARD_COLORS } from '../config.ts'
 
 //TODO provide some method to view the current game's config
 //TODO component duplicates on reload sometimes for some reason
@@ -74,11 +76,11 @@ export function Board() {
 		//#region draw board
 
 		// fill in light squares as background
-		ctx.fillStyle = '#eaaa69'
+		ctx.fillStyle = BOARD_COLORS.light
 		ctx.fillRect(0, 0, canvas.width, canvas.height)
 
 		// fill in dark squares
-		ctx.fillStyle = '#a05a2c'
+		ctx.fillStyle = BOARD_COLORS.dark
 		for (let i = 0; i < 8; i++) {
 			for (let j = (i + 1) % 2; j < 8; j += 2) {
 				ctx.fillRect(j * squareSize(), i * squareSize(), squareSize(), squareSize())
@@ -119,7 +121,7 @@ export function Board() {
 				x = 7 - x
 				y = 7 - y
 			}
-			ctx.drawImage(imageCache[resolvePieceImagePath(piece)], x * squareSize(), y * squareSize(), squareSize(), squareSize())
+			ctx.drawImage(imageCache[PC.resolvePieceImagePath(piece)], x * squareSize(), y * squareSize(), squareSize(), squareSize())
 		}
 		//#endregion
 
@@ -128,7 +130,7 @@ export function Board() {
 			let x = grabbedSquareMousePos()!.x
 			let y = grabbedSquareMousePos()!.y
 			ctx.drawImage(
-				imageCache[resolvePieceImagePath(game.currentBoardView.board.pieces[grabbedSquare()!]!)],
+				imageCache[PC.resolvePieceImagePath(game.currentBoardView.board.pieces[grabbedSquare()!]!)],
 				x - squareSize() / 2,
 				y - squareSize() / 2,
 				squareSize(),
@@ -145,8 +147,8 @@ export function Board() {
 	onMount(async () => {
 		await Promise.all(
 			Object.values(game.currentBoardView.board.pieces).map(async (piece) => {
-				const src = resolvePieceImagePath(piece)
-				imageCache[src] = await loadImage(src)
+				const src = PC.resolvePieceImagePath(piece)
+				imageCache[src] = await PC.loadImage(src)
 			})
 		)
 		requestAnimationFrame(render)
@@ -267,7 +269,7 @@ export function Board() {
 				<For each={GL.PROMOTION_PIECES}>
 					{(pp) => (
 						<button onclick={() => setPromotion(pp)}>
-							<img alt={pp} src={resolvePieceImagePath({ color: game.player.color, type: pp })} />
+							<img alt={pp} src={PC.resolvePieceImagePath({ color: game.player.color, type: pp })} />
 						</button>
 					)}
 				</For>
@@ -386,7 +388,6 @@ function Player(props: { player: G.PlayerWithColor; class: string }) {
 }
 
 function Clock(props: { clock: number; class: string }) {
-	const game = G.game()!
 	const formattedClock = () => {
 		// clock is in ms
 		const minutes = Math.floor(props.clock / 1000 / 60)
@@ -398,7 +399,8 @@ function Clock(props: { clock: number; class: string }) {
 		}
 		return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`
 	}
-	const warnThreshold = () => game.gameConfig
+	// TODO add warning threshold for time
+	// const warnThreshold = () => game.gameConfig
 
 	return <span class={`flex justify-end text-xl ${props.class}`}>{formattedClock()}</span>
 }
@@ -517,7 +519,7 @@ function CapturedPieces(props: { pieces: GL.ColoredPiece[]; is: 'player' | 'oppo
 		>
 			<For each={props.pieces}>
 				{(piece) => (
-					<img class={styles.capturedPiece} src={resolvePieceImagePath(piece)} alt={piece.type} title={`${piece.color} ${piece.type}`} />
+					<img class={styles.capturedPiece} src={PC.resolvePieceImagePath(piece)} alt={piece.type} title={`${piece.color} ${piece.type}`} />
 				)}
 			</For>
 		</div>
@@ -585,31 +587,6 @@ function GameOutcomeDisplay(props: { outcome: GL.GameOutcome }) {
 			return `${winnerTitle} wins on time`
 	}
 }
-
-function resolvePieceImagePath(piece: GL.ColoredPiece) {
-	const abbrs = {
-		pawn: 'p',
-		knight: 'n',
-		bishop: 'b',
-		rook: 'r',
-		queen: 'q',
-		king: 'k',
-	}
-	const color = piece.color == 'white' ? 'l' : 'd'
-
-	return `/pieces/${abbrs[piece.type]}${color}t45.svg`
-}
-
-function loadImage(src: string) {
-	return new Promise<HTMLImageElement>((resolve) => {
-		const img = new Image()
-		img.src = src
-		img.onload = () => {
-			resolve(img)
-		}
-	})
-}
-
 function squareToCoords(square: string, boardFlipped: boolean, squareSize: number) {
 	let x = square[0].charCodeAt(0) - 'a'.charCodeAt(0)
 	let y = 8 - parseInt(square[1])

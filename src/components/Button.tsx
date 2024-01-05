@@ -1,8 +1,7 @@
-import { createEffect, createSignal, JSX, mergeProps } from 'solid-js'
+import { createEffect, createSignal, JSX, mergeProps, onMount } from 'solid-js'
 import { filterProps } from '@solid-primitives/props'
 import styles from './Button.module.css'
 import { tippy } from '../utils/tippy.tsx'
-import 'tippy.js/themes/material.css'
 
 tippy
 export const buttonPrimary: Record<string, boolean> = {
@@ -34,22 +33,39 @@ export function Button(props: ButtonProps) {
 
 	let merged = mergeProps(baseProps, props)
 	merged = filterProps(merged, (k) => !['kind', 'size', 'title', 'class'].includes(k))
-	console.log({ child: props.children, class: props.class, classList: getClassList() })
+	let ref = null as unknown as HTMLButtonElement
+
 	if (props.title) {
-		return (
-			<button
-				{...merged}
-				classList={classList()}
-				use:tippy={{ theme: 'material', content: props.title, showOnCreate: false }}
-			>
-				{props.children}
-			</button>
-		)
-	} else {
-		return (
-			<button {...merged} classList={classList()}>
-				{props.children}
-			</button>
-		)
+		onMount(() => {
+			tippy(ref, {
+				content: props.title,
+				showOnCreate: false,
+				interactive: true,
+			})
+		})
 	}
+
+	return (
+		<button {...merged} ref={ref} classList={classList()}>
+			{props.children}
+		</button>
+	)
+
+	// if (props.title) {
+	// 	return (
+	// 		<button
+	// 			{...merged}
+	// 			classList={classList()}
+	// 			use:tippy={{ content: props.title, showOnCreate: false, interactive: true, }}
+	// 		>
+	// 			{props.children}
+	// 		</button>
+	// 	)
+	// } else {
+	// 	return (
+	// 		<button {...merged} classList={classList()}>
+	// 			{props.children}
+	// 		</button>
+	// 	)
+	// }
 }

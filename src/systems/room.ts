@@ -1,17 +1,26 @@
 import * as P from './player.ts'
 import * as GL from './game/gameLogic.ts'
 import { PLAYER_TIMEOUT, SERVER_HOST } from '../config.ts'
-import { initSharedStore, newNetwork, SharedStore, SharedStoreProvider } from '../utils/sharedStore.ts'
+import { initSharedStore, newNetwork, SharedStore, SharedStoreProvider, StoreMutation } from '../utils/sharedStore.ts'
 import { createEffect, createRoot, createSignal, on, onCleanup } from 'solid-js'
 import { until } from '@solid-primitives/promise'
 import { trackStore } from '@solid-primitives/deep'
+import { Observable } from 'rxjs'
+import { map } from 'rxjs/operators'
 
-export type RoomParticipant = P.Player & { disconnectedAt?: number }
+export type RoomParticipant = P.Player & {
+	disconnectedAt?: number
+	isReadyForGame: boolean
+	agreeColorSwap: boolean
+}
+
+export type RoomActionType = 'prompt-piece-swap' | 'cancel-piece-swap' | 'agree-piece-swap'
 
 export type RoomState = {
 	players: RoomParticipant[]
 	status: 'pregame' | 'playing' | 'postgame'
 	gameConfig: GL.GameConfig
+	whitePlayerId?: string
 	gameState?: GL.GameState
 	messages: ChatMessage[]
 }
@@ -27,6 +36,11 @@ type ClientOwnedState = {
 	playerId: string
 }
 
+type RoomAction = {
+	type: RoomActionType
+	origin: RoomParticipant
+}
+
 export const [room, setRoom] = createSignal<Room | null>(null)
 
 let disposePrevious = () => {}
@@ -36,7 +50,7 @@ export async function createRoom() {
 }
 
 export async function connectToRoom(roomId: string, player: P.Player, abort?: () => void) {
-	const provider = new SharedStoreProvider(SERVER_HOST, roomId)
+	const provider = new SharedStoreProvider<RoomActionType>(SERVER_HOST, roomId)
 	provider.disconnected$.then(() => abort && abort())
 
 	// will only be used if the room is new
@@ -58,10 +72,10 @@ export async function connectToRoom(roomId: string, player: P.Player, abort?: ()
 		}
 	}
 
-	let store: SharedStore<RoomState, ClientOwnedState> = null as unknown as SharedStore<RoomState, ClientOwnedState>
+	let store = null as unknown as SharedStore<RoomState, ClientOwnedState, RoomActionType>
 	disposePrevious()
 	createRoot((_dispose) => {
-		store = initSharedStore<RoomState, ClientOwnedState>(provider, { playerId: player.id }, state)
+		store = initSharedStore<RoomState, ClientOwnedState, RoomActionType>(provider, { playerId: player.id }, state)
 
 		//#region try to take state snapshot on page unload
 		createEffect(() => {
@@ -92,15 +106,26 @@ export async function connectToRoom(roomId: string, player: P.Player, abort?: ()
 	console.log('store initialized')
 	await store.setStoreWithRetries((state) => {
 		if (state.players.some((p) => p.id === player.id)) return []
-		return [
-			{ path: ['players', '__push__'], value: { id: player.id, name: P.playerName() } },
+		const mutations: StoreMutation[] = [
+			{
+				path: ['players', '__push__'],
+				value: { id: player.id, name: P.playerName(), isReadyForGame: false, agreeColorSwap: false },
+			},
 			{
 				path: ['messages', '__push__'],
 				value: { type: 'system', text: `${player.name} has joined`, sender: null, ts: Date.now() },
 			},
 		]
+
+		if (!state.whitePlayerId && Math.random() > 0.5) {
+			mutations.push({ path: ['whitePlayerId'], value: player.id })
+		} else if (!state.whitePlayerId) {
+			mutations.push({ path: ['whitePlayerId'], value: state.whitePlayerId })
+		}
+
+		return mutations
 	})
-	return new Room(store, provider, player)
+	return new Room(store, provider, store.rollbackStore.players.find((p) => player.id === p.id)!)
 }
 
 export class Room {
@@ -110,9 +135,9 @@ export class Room {
 	}
 
 	constructor(
-		public sharedStore: SharedStore<RoomState, ClientOwnedState>,
-		public provider: SharedStoreProvider,
-		public player: P.Player
+		public sharedStore: SharedStore<RoomState, ClientOwnedState, RoomActionType>,
+		public provider: SharedStoreProvider<RoomActionType>,
+		public player: RoomParticipant
 	) {
 		this.setupListeners()
 	}
@@ -129,6 +154,10 @@ export class Room {
 
 	get state() {
 		return this.sharedStore.lockstepStore
+	}
+
+	get opponent() {
+		return this.activePlayers.find((p) => p.id !== this.player.id)!
 	}
 
 	// the implementation here could potentially lead to bugs in multiple client per user scenarios where player details change on one client but not another. need to do something more clever for that
@@ -157,41 +186,23 @@ export class Room {
 		return [...this.state.messages].sort((a, b) => a.ts - b.ts)
 	}
 
+	get action$(): Observable<RoomAction> {
+		return this.sharedStore.action$.pipe(
+			map((a) => {
+				const playerId = this.sharedStore.clientControlledStates[a.origin].playerId
+				return {
+					type: a.type,
+					origin: this.players.find((p) => p.id === playerId)!,
+				}
+			})
+		)
+	}
+
 	destroy: Function = () => {}
 
 	//#endregion
 
 	//#region actions
-
-	async startGame() {
-		let errors: string[] = []
-		await this.sharedStore.setStoreWithRetries((state: RoomState) => {
-			if (state.status !== 'pregame') {
-				errors.push('Not pregame')
-				return []
-			}
-			if (state.players.length < 2) {
-				errors.push('Not enough players')
-				return []
-			}
-
-			const gameState = GL.newGameState(state.gameConfig, {
-				[state.players[0].id]: 'white',
-				[state.players[1].id]: 'black',
-			})
-
-			return [
-				{ path: ['status'], value: 'playing' },
-				{ path: ['gameState'], value: gameState },
-			]
-		}, 2)
-		if (errors) {
-			for (const error of errors) {
-				console.error(error)
-			}
-		}
-	}
-
 	setGameConfig(config: Partial<GL.GameConfig>) {
 		this.sharedStore.setStore({ path: ['gameConfig'], value: config })
 	}
@@ -220,7 +231,7 @@ export class Room {
 			ts: Date.now(),
 		}
 
-		await this.sharedStore.setStore({ path: ['messages', '__push__'], value: newMessage }, undefined, false)
+		await this.sharedStore.setStore({ path: ['messages', '__push__'], value: newMessage }, undefined, [], false)
 	}
 
 	configureNewGame() {
@@ -231,6 +242,88 @@ export class Room {
 			]
 		}, 0)
 	}
+
+	agreeColorSwap() {
+		console.log('agreeing to color swap')
+		return this.sharedStore.setStoreWithRetries(() => {
+			if (!this.opponent) {
+				const playerIndex = this.players.findIndex((p) => p.id === this.player.id)
+				return {
+					mutations: [
+						{ path: ['players', playerIndex, 'agreePlayerSwap'], value: false },
+						{
+							path: ['whitePlayerId'],
+							value: this.rollbackState.whitePlayerId === this.player.id ? undefined : this.player.id,
+						},
+					],
+					actions: ['agree-piece-swap'],
+				}
+			}
+			if (this.player.agreeColorSwap)
+				return {
+					mutations: [
+						{
+							path: ['players', this.players.findIndex((p) => p.id === this.player.id), 'agreeColorSwap'],
+							value: false,
+						},
+					],
+					actions: ['cancel-piece-swap'],
+				}
+
+			const playerIndex = this.players.findIndex((p) => p.id === this.player.id)
+			const opponentIndex = this.players.findIndex((p) => p.id === this.opponent.id)
+			if (!this.opponent.agreeColorSwap) {
+				return {
+					mutations: [{ path: ['players', playerIndex, 'agreeColorSwap'], value: true }],
+					actions: ['prompt-piece-swap'],
+				}
+			} else {
+				return {
+					mutations: [
+						{ path: ['players', playerIndex, 'agreePlayerSwap'], value: false },
+						{ path: ['players', opponentIndex, 'agreePlayerSwap'], value: false },
+						{ path: ['whitePlayerId'], value: !this.rollbackState.whitePlayerId },
+					],
+					actions: ['agree-piece-swap'],
+				}
+			}
+		})
+	}
+
+	toggleReady() {
+		if (!this.player.isReadyForGame) {
+			this.sharedStore.setStoreWithRetries(() => {
+				if (this.player.isReadyForGame) return []
+				const playerIndex = this.players.findIndex((p) => p.id === this.player.id)
+				if (this.opponent?.isReadyForGame) {
+					const opponentIndex = this.players.findIndex((p) => p.id === this.opponent.id)
+					const gameState = GL.newGameState(this.rollbackState.gameConfig, {
+						[this.player.id]: this.player.id === this.rollbackState.whitePlayerId ? 'white' : 'black',
+						[this.opponent.id]: this.opponent.id === this.rollbackState.whitePlayerId ? 'white' : 'black',
+					})
+					return [
+						{ path: ['players', playerIndex, 'isReadyForGame'], value: false },
+						{ path: ['players', opponentIndex, 'isReadyForGame'], value: false },
+						{ path: ['playerIsWhite'], value: undefined },
+						{ path: ['gameState'], value: gameState },
+						{ path: ['status'], value: 'playing' },
+					]
+				} else {
+					return [{ path: ['players', playerIndex, 'isReadyForGame'], value: true }]
+				}
+			})
+		} else {
+			this.sharedStore.setStoreWithRetries(() => {
+				if (!this.player.isReadyForGame) return []
+
+				const playerIndex = this.players.findIndex((p) => p.id === this.player.id)
+
+				return [{ path: ['players', playerIndex, 'isReadyForGame'], value: false }]
+			})
+		}
+	}
+
+	readyDown() {}
 
 	//#endregion
 
