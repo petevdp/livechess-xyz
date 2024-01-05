@@ -6,6 +6,7 @@ import {sleep} from './time.ts'
 import {SERVER_HOST} from '../config.ts'
 import {unwrap} from 'solid-js/store'
 import {trackStore} from '@solid-primitives/deep'
+import {firstValueFrom} from 'rxjs'
 
 /**
  * All of the tests below assume that the sharedstore server  is running on localhost:8080
@@ -261,7 +262,7 @@ describe('network provider/shared store', () => {
 		await until(() => follower1Store.initialized() && leaderStore.initialized())
 
 		leaderStore.setStore({ path: ['arr', '__push__'], value: 1 })
-		const success = await follower1Store.setStore({ path: ['arr', '__push__'], value: 2 }, undefined, false)
+		const success = await follower1Store.setStore({ path: ['arr', '__push__'], value: 2 }, undefined, [], false)
 
 		expect(success).toBe(true)
 		expect(leaderStore.lockstepStore.arr).toEqual([1, 2])
@@ -295,6 +296,43 @@ describe('network provider/shared store', () => {
 		//
 		const states = unwrap(leaderStore.clientControlledStates)
 		expect(states).toEqual({ [provider1.clientId!]: { a: 1 } })
+		dispose()
+	})
+
+	test.only('actions', async () => {
+		const network = await newNetwork(SERVER_HOST)
+		const provider1 = new SharedStoreProvider(SERVER_HOST, network.networkId)
+		const provider2 = new SharedStoreProvider(SERVER_HOST, network.networkId)
+
+		let leaderStore = null as unknown as SharedStore<any>
+		let followerStore = null as unknown as SharedStore<any>
+
+		let dispose = () => {}
+		createRoot((d) => {
+			dispose = d
+			leaderStore = initSharedStore(provider1)
+			followerStore = initSharedStore(provider2)
+		})
+
+		await until(() => followerStore.initialized() && leaderStore.initialized())
+
+		console.log({
+			leaderStore: provider1.clientId,
+			followerStore: provider2.clientId,
+		})
+
+		leaderStore.setStoreWithRetries(() => {
+			return { mutations: [{ path: ['ayy'], value: 'lmao' }], actions: ['action1'] }
+		})
+
+		expect(await firstValueFrom(followerStore.action$)).toEqual('action1')
+
+		followerStore.setStoreWithRetries(() => {
+			return { mutations: [{ path: ['lmao'], value: 'ayy' }], actions: ['action2'] }
+		})
+
+		expect(await firstValueFrom(leaderStore.action$)).toEqual('action2')
+
 		dispose()
 	})
 })
