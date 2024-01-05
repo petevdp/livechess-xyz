@@ -34,6 +34,7 @@ export function Button(props: ButtonProps) {
 
 	let merged = mergeProps(baseProps, props)
 	merged = filterProps(merged, (k) => !['kind', 'size', 'title', 'class'].includes(k))
+	console.log({ child: props.children, class: props.class, classList: getClassList() })
 	if (props.title) {
 		return (
 			<button

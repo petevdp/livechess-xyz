@@ -13,7 +13,7 @@ export function Home() {
 	return (
 		<AppContainer>
 			<div class="grid h-[calc(100vh_-_4rem)] place-items-center">
-				<div class="flex w-[24em] flex-col rounded bg-gray-900 p-2">
+				<div class="flex w-[24em] flex-col rounded bg-gray-800 p-2">
 					<h2 class="text-center">Welcome!</h2>
 					<p class="mb-2 text-sm">Click below to host a new game, or copy the link from your opponent into your browser to join theirs.</p>
 					<Button kind="primary" onClick={createRoom}>

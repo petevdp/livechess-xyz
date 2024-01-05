@@ -58,7 +58,7 @@ export function RoomGuard() {
 function CenterPanel(props: ParentProps) {
 	return (
 		<div class="grid h-[calc(100vh_-_4rem)] place-items-center">
-			<div class="rounded bg-gray-900 p-[.5rem]">{props.children}</div>
+			<div class="rounded bg-gray-800 p-[.5rem]">{props.children}</div>
 		</div>
 	)
 }

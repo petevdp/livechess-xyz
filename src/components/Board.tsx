@@ -29,11 +29,22 @@ export function Board() {
 		})
 	})
 
+	const layout: () => 'column' | 'row' = () => {
+		if (windowSize().width < windowSize().height) {
+			return 'row'
+		} else {
+			return 'column'
+		}
+	}
+	createEffect(() => {
+		console.log('layout', layout())
+	})
+
 	const boardSize = (): number => {
-		if (windowSize().width < windowSize().height - 100 && windowSize().width > 600) {
+		if (windowSize().width < windowSize().height && windowSize().width > 700) {
 			return windowSize().width - 40
-		} else if (windowSize().width < windowSize().height && windowSize().width < 600) {
-			return windowSize().width - 20
+		} else if (windowSize().width < windowSize().height && windowSize().width < 700) {
+			return windowSize().width - 40
 		} else {
 			return windowSize().height - 170
 		}
@@ -352,11 +363,12 @@ export function Board() {
 						<FlipBoardSvg />
 					</Button>
 				</div>
+				<CapturedPieces size={boardSize() / 2} layout={layout()} pieces={game.capturedPieces(game.opponent.color)} is={'opponent'} />
+				<CapturedPieces size={boardSize() / 2} layout={layout()} pieces={game.capturedPieces(game.player.color)} is={'player'} />
 				<div class={styles.board}>{canvas}</div>
 				<ActionsPanel class={styles.bottomLeftActions} />
 				<Player class={styles.player} player={game.player} />
 				<Clock class={styles.clockPlayer} clock={game.clock[game.opponent.color]} />
-				<div class={styles.bottomRightActions} />
 				<div class={styles.moveNav}>
 					<MoveNav />
 				</div>
@@ -457,6 +469,8 @@ function MoveHistory() {
 			<For each={game.moveHistoryAsNotation}>
 				{(move, index) => {
 					console.log('index: ', index())
+					const viewingFirstMove = () => game.viewedMoveIndex() === index() * 2
+					const viewingSecondMove = () => game.viewedMoveIndex() === index() * 2 + 1
 					return (
 						<div
 							classList={{
@@ -469,8 +483,9 @@ function MoveHistory() {
 							</pre>
 							<div>
 								<Button
+									class={viewingFirstMove() ? '' : 'font-light'}
 									size="small"
-									kind={game.viewedMoveIndex() === index() * 2 ? 'secondary' : 'tertiary'}
+									kind={viewingFirstMove() ? 'secondary' : 'tertiary'}
 									onClick={() => _setViewedMove(index() * 2)}
 								>
 									{move[0]}
@@ -478,7 +493,8 @@ function MoveHistory() {
 								<Show when={move[1]}>
 									<Button
 										size="small"
-										kind={game.viewedMoveIndex() === index() * 2 + 1 ? 'secondary' : 'tertiary'}
+										class={viewingSecondMove() ? '' : 'font-light'}
+										kind={viewingSecondMove() ? 'secondary' : 'tertiary'}
 										onClick={() => _setViewedMove(index() * 2 + 1)}
 									>
 										{move[1]}
@@ -488,6 +504,21 @@ function MoveHistory() {
 						</div>
 					)
 				}}
+			</For>
+		</div>
+	)
+}
+
+function CapturedPieces(props: { pieces: GL.ColoredPiece[]; is: 'player' | 'opponent'; size: number; layout: 'column' | 'row' }) {
+	return (
+		<div
+			class={`${styles.capturedPieces} ${styles[props.is]}`}
+			style={{ [props.layout === 'row' ? 'width' : 'height']: `${props.size - 20}px` }}
+		>
+			<For each={props.pieces}>
+				{(piece) => (
+					<img class={styles.capturedPiece} src={resolvePieceImagePath(piece)} alt={piece.type} title={`${piece.color} ${piece.type}`} />
+				)}
 			</For>
 		</div>
 	)

@@ -6,11 +6,11 @@
 }
 
 .boardContainer {
-	@apply rounded bg-gray-900 p-[.5rem];
+	@apply rounded bg-gray-700 p-[.5rem];
 
 	display: grid;
-	grid-template-columns: max-content 1fr max-content 1fr;
-	grid-template-rows: max-content 1fr max-content;
+	grid-template-columns: max-content 1fr max-content 1fr max-content;
+	grid-template-rows: max-content 1fr 1fr max-content;
 	gap: 0.25rem;
 	height: max-content;
 	max-height: 100%;
@@ -18,38 +18,39 @@
 	max-width: 98vw;
 
 	grid-template-areas:
-		'top-left-actions . opponent clock-opponent'
-		'move-history board board board'
-		'move-nav bottom-left-actions player clock-player';
+		'top-left-actions .                   opponent clock-opponent .'
+		'move-history     board               board    board          captured-player'
+		'move-history     board               board    board          captured-opponent'
+		'move-nav         bottom-left-actions player   clock-player   .';
 }
 
 @media screen and (max-aspect-ratio: 1/1) {
 	.boardContainer {
-		grid-template-columns: 2fr max-content 1fr 1fr;
-		grid-template-rows: repeat(4, auto);
+		grid-template-columns: 1fr max-content max-content 1fr;
+		grid-template-rows: repeat(5, auto);
 		grid-template-areas:
-	 'top-left-actions opponent clock-opponent clock-opponent'
-		'board board board board'
-		'bottom-left-actions player clock-player clock-player'
-		'move-history move-history move-history move-nav'
+			'top-left-actions    opponent        opponent          clock-opponent'
+			'board               board           board             board'
+			'bottom-left-actions player          player            clock-player'
+			'captured-player     captured-player captured-opponent captured-opponent'
+			'move-history        move-history    move-history      move-nav';
 	}
 
 	@media screen and (max-width: 700px) {
 		.boardContainer {
 			grid-template-columns: 1fr min-content 1fr;
-			grid-template-rows: repeat(3, min-content) 1fr;
+			grid-template-rows: repeat(4, min-content) 1fr;
 			grid-template-areas:
-	 'top-left-actions opponent clock-opponent'
-		'board board board'
-		'bottom-left-actions player clock-player'
-		'move-history move-history move-history';
+			'top-left-actions    opponent        opponent          clock-opponent'
+			'board               board           board             board'
+			'bottom-left-actions player          player            clock-player'
+			'captured-player     captured-player captured-opponent captured-opponent'
+			'move-history        move-history    move-history      move-history';
 		}
 
 		.moveNav {
 			display: none;
 		}
-
-
 	}
 }
 
@@ -124,6 +125,7 @@
 
 }
 
+
 /* move history */
 
 .moveHistory {
@@ -139,17 +141,55 @@
 	@apply flex flex-row w-20 justify-evenly rounded p-[.25rem] pl-0 h-min whitespace-nowrap;
 }
 
+.capturedPieces {
+	display: flex;
+	min-width: 30px;
+	flex-wrap: wrap;
+}
+
+.capturedPieces.player {
+	grid-area: captured-player;
+	flex-direction: column;
+}
+
+.capturedPieces.opponent {
+	grid-area: captured-opponent;
+	flex-direction: column-reverse;
+}
+
+.capturedPiece {
+	width: 30px;
+	height: 30px;
+}
+
 
 @media screen and (max-aspect-ratio: 1/1) {
+	.capturedPieces {
+		width: auto;
+		min-height: 30px;
+		min-width: unset;
+	}
+
+	.capturedPieces.player {
+		@apply flex-row;
+	}
+
+	.capturedPieces.opponent {
+		@apply flex-row-reverse;
+	}
+
+	.capturedPiece {
+		width: 1.5em;
+		height: 1.5em;
+	}
+
+
 	.moveHistory {
 		display: grid;
 		grid-template-columns: repeat(auto-fit, 105px);
 	}
 
 	@media screen and (max-width: 700px) {
-		.moveHistoryContainer {
-			height: fit-content;
-		}
 	}
 
 	.startEntry {

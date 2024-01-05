@@ -117,6 +117,45 @@ export class Game {
 		return getMoveHistoryAsNotation(this.rollbackState)
 	}
 
+	capturedPieces(color: GL.Color) {
+		function getPieceCounts(pieces: GL.Piece[]) {
+			const counts = {} as Record<GL.Piece, number>
+
+			for (let piece of pieces) {
+				counts[piece] = (counts[piece] || 0) + 1
+			}
+
+			return counts
+		}
+
+		const pieceCounts = getPieceCounts(
+			Object.values(GL.startPos().pieces)
+				.filter((p) => p.color === color)
+				.map((p) => p.type)
+		)
+		const currentPieceCounts = getPieceCounts(
+			Object.values(this.board.pieces)
+				.filter((p) => p.color === color)
+				.map((p) => p.type)
+		)
+
+		for (let [key, count] of Object.entries(currentPieceCounts)) {
+			//@ts-ignore
+			pieceCounts[key] -= count
+		}
+
+		const capturedPieces: GL.ColoredPiece[] = []
+
+		for (let [key, count] of Object.entries(pieceCounts)) {
+			for (let i = 0; i < count; i++) {
+				//@ts-ignore
+				capturedPieces.push({ type: key, color })
+			}
+		}
+
+		return capturedPieces
+	}
+
 	getPlayerColor(playerId: string) {
 		return this.rollbackState.players[playerId]
 	}
