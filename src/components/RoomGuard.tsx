@@ -16,6 +16,7 @@ export function RoomGuard() {
 			setConnectionStatus('connecting')
 			console.log('connecting to room', params.id)
 			R.room()?.destroy()
+			// TODO need some sort of retry mechanism here
 			R.connectToRoom(params.id, { id: P.playerId()!, name: P.playerName()! }, () => navigate('/')).then((room) => {
 				R.setRoom(room)
 				setConnectionStatus('connected')

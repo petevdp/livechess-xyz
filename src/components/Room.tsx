@@ -4,8 +4,6 @@ import * as PC from '../systems/piece.ts'
 import * as P from '../systems/player.ts'
 import { Board } from './Board.tsx'
 import { Choice, MultiChoiceButton } from '../MultiChoiceButton.tsx'
-import * as G from '../systems/game/game.ts'
-import { setupGameSystem } from '../systems/game/game.ts'
 import * as GL from '../systems/game/gameLogic.ts'
 import * as R from '../systems/room.ts'
 import { tippy } from '../utils/tippy.tsx'
@@ -13,7 +11,6 @@ import { Button } from './Button.tsx'
 import { until } from '@solid-primitives/promise'
 import SwapSvg from '../assets/icons/swap.svg'
 import * as TIP from 'tippy.js'
-import { createIdSync } from '../utils/ids.ts'
 
 function CenterPanel(props: ParentProps) {
 	return (
@@ -26,15 +23,14 @@ function CenterPanel(props: ParentProps) {
 export function Room() {
 	const room = R.room()!
 	if (!room) throw new Error('room is not initialized')
-	setupGameSystem()
 
 	return (
 		<Switch>
 			<Match when={room.state.status === 'pregame'}>
 				<Lobby />
 			</Match>
-			<Match when={['playing', 'postgame'].includes(room.state.status) && G.game() && !G.game()!.destroyed}>
-				<Board />
+			<Match when={room.rollbackState.activeGameId}>
+				<Board gameId={room.rollbackState.activeGameId!} />
 			</Match>
 			<Match when={true}>
 				<div>idk</div>
@@ -49,6 +45,7 @@ function Lobby() {
 
 	const copyInviteLink = () => {
 		navigator.clipboard.writeText(window.location.href)
+
 	}
 
 	return (
@@ -131,16 +128,15 @@ function PlayerAwareness() {
 			case 'agree-piece-swap':
 				toast(`Swapped Pieces! You are now ${playerColor()}`)
 				break
-			case 'cancel-piece-swap':
-				if (action.origin.id === room.player.id) {
-					toast('Cancelled piece swap')
+			case 'decline-or-cancel-piece-swap':
+				if (action.origin.id === room.opponent?.id) {
+					toast(`${room.opponent.name} declined piece swap`)
 				} else {
-					toast(`Opponent cancelled piece swap`)
+					toast('Piece swap cancelled')
 				}
 				break
-			case 'prompt-piece-swap':
-				if (action.origin.id === room.opponent.id) {
-					toast(`${room.opponent.name} wants to swap pieces`)
+			case 'initiate-piece-swap':
+				if (action.origin.id === room.opponent?.id) {
 				} else {
 					toast('Waiting for opponent to accept piece swap')
 				}
@@ -151,15 +147,27 @@ function PlayerAwareness() {
 		sub.unsubscribe()
 	})
 
+	// large margin needed for headroom for piece switch popup
 	return (
-		<div class="col-span-2 m-auto grid grid-cols-[1fr_min-content_1fr] items-center">
-			<PlayerConfigDisplay toggleReady={() => room.toggleReady()} player={room.player} color={playerColor()} />
+		<div class="col-span-2 m-auto mt-8 grid grid-cols-[1fr_min-content_1fr] items-center">
+			<PlayerConfigDisplay
+				canStartGame={room.canStartGame}
+				toggleReady={() => room.toggleReady()}
+				player={room.player}
+				color={playerColor()}
+				cancelPieceSwap={() => room.declineOrCancelPieceSwap()}
+			/>
 			<span></span>
 			<Show when={room.opponent} fallback={<OpponentPlaceholder color={opponentColor()} />}>
-				<OpponentConfigDisplay opponent={room.opponent} color={opponentColor()} confirmColorSwap={() => room.agreeColorSwap()} />
+				<OpponentConfigDisplay
+					opponent={room.opponent!}
+					color={opponentColor()}
+					agreePieceSwap={() => room.agreePieceSwap()}
+					declinePieceSwap={() => room.declineOrCancelPieceSwap()}
+				/>
 			</Show>
 			<PlayerColorDisplay color={playerColor()} />
-			<SwapButton alreadySwapping={room.player.agreeColorSwap} swapPlayer={() => room.agreeColorSwap()} />
+			<SwapButton alreadySwapping={room.player.agreeColorSwap} initiatePieceSwap={() => room.initiatePieceSwap()} />
 			<PlayerColorDisplay color={opponentColor()} />
 		</div>
 	)
@@ -173,10 +181,10 @@ function PlayerColorDisplay(props: { color: GL.Color }) {
 	)
 }
 
-function SwapButton(props: { swapPlayer: () => void; alreadySwapping: boolean }) {
+function SwapButton(props: { initiatePieceSwap: () => void; alreadySwapping: boolean }) {
 	const requestSwap = () => {
 		if (props.alreadySwapping) return
-		props.swapPlayer()
+		props.initiatePieceSwap()
 	}
 
 	return (
@@ -197,13 +205,54 @@ function SwapButton(props: { swapPlayer: () => void; alreadySwapping: boolean })
 	)
 }
 
-function PlayerConfigDisplay(props: { player: R.RoomParticipant; color: GL.Color; toggleReady: () => void }) {
+function PlayerConfigDisplay(props: {
+	player: R.RoomParticipant
+	color: GL.Color
+	toggleReady: () => void
+	cancelPieceSwap: () => void
+	canStartGame: boolean
+}) {
+	const [tip, setTip] = createSignal<TIP.Instance | null>(null)
+	let playerNameRef = null as unknown as HTMLSpanElement
+	const cancelSwapModalContent = (
+		<div class="space-x-1">
+			<span class="text-xs">Asking Opponent for piece swap</span>
+			<Button
+				onclick={() => {
+					tip()?.hide()
+					props.cancelPieceSwap()
+				}}
+				size="small"
+				kind="secondary"
+			>
+				Decline
+			</Button>
+		</div>
+	) as HTMLDivElement
+
+	onMount(() => {
+		setTip(
+			tippy(playerNameRef, {
+				theme: 'material',
+				allowHTML: true,
+				content: cancelSwapModalContent,
+				hideOnClick: false,
+				placement: 'top',
+				trigger: 'manual',
+				interactive: true,
+				showOnCreate: false,
+				appendTo: document.body,
+			})
+		)
+	})
 	return (
 		<PlayerDisplayContainer color={props.color}>
-			<span class="whitespace-nowrap text-xs">{props.player.name} (You)</span>
+			<span ref={playerNameRef} class="whitespace-nowrap text-xs">
+				{props.player.name} (You)
+			</span>
 			<Show when={!props.player.isReadyForGame}>
 				<Button size="medium" kind="primary" onclick={() => props.toggleReady()}>
-					Ready Up!
+					{props.canStartGame ? 'Start Game!' : 'Ready Up!'}
 				</Button>
 			</Show>
 			<Show when={props.player.isReadyForGame}>
@@ -216,51 +265,59 @@ function PlayerConfigDisplay(props: { player: R.RoomParticipant; color: GL.Color
 	)
 }
 
-function OpponentConfigDisplay(props: { opponent: R.RoomParticipant; color: GL.Color; confirmColorSwap: () => void }) {
+function OpponentConfigDisplay(props: {
+	opponent: R.RoomParticipant
+	color: GL.Color
+	agreePieceSwap: () => void
+	declinePieceSwap: () => void
+}) {
 	let ref = null as unknown as HTMLSpanElement
 	const [tip, setTip] = createSignal<TIP.Instance | null>(null)
 
+	const changeColorModalContent = (
+		<div class="space-x-1">
+			<span class="text-xs">{props.opponent.name} wants to swap colors</span>
+			<Button
+				onClick={() => {
+					tip()?.hide()
+					props.agreePieceSwap()
+				}}
+				size="small"
+				kind="primary"
+			>
+				Accept
+			</Button>
+			<Button
+				onclick={() => {
+					tip()?.hide()
+					props.declinePieceSwap()
+				}}
+				size="small"
+				kind="secondary"
+			>
+				Decline
+			</Button>
+		</div>
+	) as HTMLDivElement
+
 	onMount(() => {
-		const buttonId = createIdSync(4)
-
-		const modalContent = (
-			<div class="space-x-1">
-				<span class="text-xs">{props.opponent.name} wants to swap colors</span>
-				<Button id={buttonId} onClick={props.confirmColorSwap} size="small" kind="primary">
-					Accept
-				</Button>
-			</div>
-		) as HTMLDivElement
-
-		async function clickListener() {
-			await props.confirmColorSwap()
-			tip()!.hide()
-		}
-
-		const runOnCleanup: (() => void)[] = []
-		onCleanup(() => {
-			runOnCleanup.forEach((f) => f())
-		})
-
 		setTip(
 			tippy(ref, {
 				theme: 'material',
 				allowHTML: true,
-				content: modalContent.innerHTML,
+				content: changeColorModalContent,
 				hideOnClick: false,
-				placement: props.color === 'white' ? 'left' : 'right',
+				placement: 'top',
 				trigger: 'manual',
 				interactive: true,
 				showOnCreate: false,
 				appendTo: document.body,
-				onShown: () => {
-					const button = document.getElementById(buttonId) as HTMLButtonElement
-					console.log('adding event listener')
-					button.addEventListener('click', clickListener)
-					runOnCleanup.push(() => button.removeEventListener('click', clickListener))
-				},
 			})
 		)
+	})
+
+	onCleanup(() => {
+		tip()?.hide()
 	})
 
 	createEffect(() => {

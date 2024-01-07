@@ -1,6 +1,6 @@
 import { Accessor, createEffect, createRoot, createSignal, getOwner, JSXElement, onCleanup, onMount, runWithOwner, Show } from 'solid-js'
 import { Button } from './Button.tsx'
-import { until } from '@solid-primitives/promise'
+import { myUntil } from '../utils/solid.ts'
 
 let modalContainer: HTMLDivElement | null = null
 // for some reason checking for reference equality on the JSXElement itself isn't working, so we're wrap it in an object as a workaround
@@ -14,13 +14,13 @@ type ActiveModal = {
 }
 
 const [activeModal, setActiveModal] = createSignal<ActiveModal | null>(null)
+
 export function ModalContainer() {
 	modalContainer?.remove()
 	onCleanup(() => {
 		modalContainer?.remove()
 		modalContainer = null
 	})
-
 
 	return (
 		<div
@@ -129,6 +129,7 @@ export function addModal(props: ModalProps) {
 		if (current) {
 			if (activeModal() === current) setActiveModal(null)
 			current.elt.remove()
+			current = null
 		}
 	})
 }
@@ -145,7 +146,7 @@ export async function prompt<T>(
 	const [output, setOutput] = createSignal(null as { out: T } | null)
 	let disposeOwner = null as unknown as () => void
 
-	let disposedAccessor = disposed || (() => false)
+	disposed ||= () => false
 
 	function render() {
 		const onCompleted = (result: T) => {
@@ -174,7 +175,7 @@ export async function prompt<T>(
 			return (
 				<div class="flex items-center">
 					<p class="mr-2 text-lg">{rendered}</p>
-					<Button tabindex={1} ref={buttonRef!} kind="primary" onclick={() => onCompleted(defaultValue)}>
+					<Button size="medium" tabindex={1} ref={buttonRef!} kind="primary" onclick={() => onCompleted(defaultValue)}>
 						OK
 					</Button>
 				</div>
@@ -196,11 +197,15 @@ export async function prompt<T>(
 			closeOnEscape: false,
 		})
 		createEffect(() => {
-			if (disposedAccessor()) dispose()
+			if (disposed!()) {
+				setOutput({ out: defaultValue })
+			}
 		})
 	})
 
-	await until(() => output() !== null)
-	!disposedAccessor() && disposeOwner()
+	console.log('before received output')
+	await myUntil(() => output() !== null)
+	console.log('received output')
+	disposeOwner()
 	return output()!.out
 }

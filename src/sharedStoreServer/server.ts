@@ -1,21 +1,7 @@
 import * as ws from 'ws'
 import * as http from 'http'
 import { Base64String, ClientConfig, encodeContent, NewNetworkResponse, SharedStoreMessage } from '../utils/sharedStore.ts'
-import {
-	BehaviorSubject,
-	concatMap,
-	EMPTY,
-	endWith,
-	first,
-	firstValueFrom,
-	from,
-	interval,
-	mergeAll,
-	Observable,
-	share,
-	switchMap,
-} from 'rxjs'
-import { map } from 'rxjs/operators'
+import { BehaviorSubject, concatMap, EMPTY, endWith, first, firstValueFrom, interval, mergeMap, Observable, share, switchMap } from 'rxjs'
 
 // TODO add tld support
 // TODO add timeouts for any request/response message transactions
@@ -213,7 +199,6 @@ export function startServer(port: number) {
 				lastMutationIndex = stateResponse.lastMutationIndex
 				initialState = stateResponse.state
 			}
-			console.log({ clientId: client.clientId })
 			console.log(`network before client-config: ${client.clientId}`, printNetwork(network))
 			const config: ClientConfig<Base64String> = {
 				clientId: client.clientId,
@@ -227,35 +212,29 @@ export function startServer(port: number) {
 
 			//#region send client-controlled-states to new client
 			if (network.leader?.clientId !== client.clientId) {
-				let states$: Promise<Base64String | null>[] = []
-				for (let _client of network.clients) {
-					if (_client.clientId === client.clientId) continue
-					const state$ = _client.message$.pipe(
-						map((m) => {
-							return m.type === 'client-controlled-states' && m.forClient === client.clientId ? m.states : null
-						}),
-						endWith(null)
+				for (let otherClient of network.clients) {
+					if (otherClient.clientId === client.clientId) continue
+					const state$ = firstValueFrom(
+						otherClient.message$.pipe(
+							mergeMap((m) => {
+								return m.type === 'client-controlled-states' && m.forClient === client.clientId ? [m.states] : []
+							}),
+							endWith(null)
+						)
 					)
-					try {
-						await firstValueFrom(state$)
-					} catch (e) {
-						console.warn('did not receive client-controlled-states from client', _client.clientId)
-						console.error(e)
-					}
-					_client.send({
+					state$
+						.catch(() => {
+							console.log(`error getting client-controlled-states from client ${otherClient.clientId}, ignoring`)
+						})
+						.then((state) => {
+							if (!state) return
+							client.send({type: 'client-controlled-states', states: state})
+						})
+					otherClient.send({
 						type: 'request-client-controlled-states',
 						forClient: client.clientId,
 					})
 				}
-
-				from(states$)
-					.pipe(
-						mergeAll(),
-						concatMap((s) => (!!s ? [s] : []))
-					)
-					.subscribe((states) => {
-						client.send({ type: 'client-controlled-states', states })
-					})
 			}
 
 			//#endregion

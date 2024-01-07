@@ -1,6 +1,6 @@
 import { createStore, produce, unwrap } from 'solid-js/store'
 import { concatMap, endWith, firstValueFrom, merge, Observable, share, Subject, Subscription } from 'rxjs'
-import { isEqual } from 'lodash'
+import isEqual from 'lodash/isEqual'
 import { batch, createSignal, onCleanup } from 'solid-js'
 import { until } from '@solid-primitives/promise'
 
@@ -16,7 +16,7 @@ export type StoreMutation = {
 
 export type Action<ActionType extends string> = {
 	type: ActionType
-	//clientId
+	// TODO this is actually stupid, origin should be a member of a transaction, not an action. duh.
 	origin: string
 }
 
@@ -100,7 +100,6 @@ export type SharedStoreMessage =
 
 //#endregion
 
-
 export type SharedStore<
 	T extends object,
 	CCS extends ClientControlledState = ClientControlledState,
@@ -123,7 +122,6 @@ export function initSharedStore<
 	const [isLeader, setIsLeader] = createSignal(false)
 	//#endregion
 
-
 	//#region stores
 	const [rollbackStore, _setRollbackStore] = createStore<S>({} as S)
 	const setRollbackStore = (...args: any[]) => {
@@ -145,9 +143,11 @@ export function initSharedStore<
 	//#region actions
 	const action$ = new Subject<Action<ActionType>>()
 	subscription.add(action$)
-	subscription.add(action$.subscribe((action) => {
-		console.debug(`dispatching action: ${action}`)
-	}))
+	subscription.add(
+		action$.subscribe((action) => {
+			console.debug(`dispatching action: ${action}`)
+		})
+	)
 	//#endregion
 
 	//#region outgoing transactions
@@ -162,7 +162,7 @@ export function initSharedStore<
 	) => {
 		await until(initialized)
 		let transaction: NewSharedStoreOrderedTransaction<ActionType>
-		const actions: Action<ActionType>[] = actionTypes.map(at => ({type: at, origin: provider.clientId!}))
+		const actions: Action<ActionType>[] = actionTypes.map((at) => ({ type: at, origin: provider.clientId! }))
 		if (transactionBuilder) {
 			transactionBuilder.push(mutation)
 			if (transactionsBeingBuilt.has(transactionBuilder)) {
@@ -254,9 +254,9 @@ export function initSharedStore<
 		fn: (s: S) =>
 			| StoreMutation[]
 			| {
-			mutations: StoreMutation[]
-			actions: ActionType[]
-		}
+					mutations: StoreMutation[]
+					actions: ActionType[]
+			  }
 			| void,
 		numRetries = 5
 	) => {
@@ -266,7 +266,7 @@ export function initSharedStore<
 			if (!res) return true
 			let transaction: NewSharedStoreOrderedTransaction<ActionType>
 			if ('mutations' in res) {
-				const actions = res.actions.map(at => ({type: at, origin: provider.clientId!}))
+				const actions = res.actions.map((at) => ({ type: at, origin: provider.clientId! }))
 				transaction = {
 					index: appliedTransactions.length,
 					actions,
@@ -414,7 +414,7 @@ export function initSharedStore<
 			setIsLeader(true)
 			// we don't have to do any manual handling of the store at this point, because if there is anything that's already inflight from this store it will come back here and be processed once the leader has been updated
 			provider.send({ type: 'ack-promote-to-leader' })
-			provider.broadcastAsCommitted({index: appliedTransactions.length, mutations: [], actions: []})
+			provider.broadcastAsCommitted({ index: appliedTransactions.length, mutations: [], actions: [] })
 		})
 	)
 	//#endregion
@@ -544,9 +544,8 @@ function interpolatePath(path: (string | number)[], store: any) {
 }
 
 function areTransactionsEqual(a: NewSharedStoreTransaction<any>, b: NewSharedStoreTransaction<any>) {
-	const _a = {mutations: a.mutations, index: a.index}
-	const _b = {mutations: b.mutations, index: b.index}
-	//@ts-ignore
+	const _a = { mutations: a.mutations, index: a.index }
+	const _b = { mutations: b.mutations, index: b.index }
 	return isEqual(_a, _b)
 }
 
@@ -781,7 +780,7 @@ export class SharedStoreTransactionBuilder<Action extends string> {
 	build(index: number, actions: Action[], origin: string): NewSharedStoreOrderedTransaction<Action> {
 		return {
 			index,
-			actions: actions.map(at => ({type: at, origin})),
+			actions: actions.map((at) => ({ type: at, origin })),
 			mutations: this.mutations,
 		}
 	}

@@ -299,7 +299,7 @@ describe('network provider/shared store', () => {
 		dispose()
 	})
 
-	test.only('actions', async () => {
+	test('actions', async () => {
 		const network = await newNetwork(SERVER_HOST)
 		const provider1 = new SharedStoreProvider(SERVER_HOST, network.networkId)
 		const provider2 = new SharedStoreProvider(SERVER_HOST, network.networkId)
@@ -325,13 +325,13 @@ describe('network provider/shared store', () => {
 			return { mutations: [{ path: ['ayy'], value: 'lmao' }], actions: ['action1'] }
 		})
 
-		expect(await firstValueFrom(followerStore.action$)).toEqual('action1')
+		expect((await firstValueFrom(followerStore.action$)).type).toEqual('action1')
 
 		followerStore.setStoreWithRetries(() => {
 			return { mutations: [{ path: ['lmao'], value: 'ayy' }], actions: ['action2'] }
 		})
 
-		expect(await firstValueFrom(leaderStore.action$)).toEqual('action2')
+		expect((await firstValueFrom(leaderStore.action$)).type).toEqual('action2')
 
 		dispose()
 	})

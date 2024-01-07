@@ -2,7 +2,7 @@ import * as R from '../room.ts'
 import * as GL from './gameLogic.ts'
 import { BoardHistoryEntry, GameOutcome } from './gameLogic.ts'
 import * as P from '../player.ts'
-import { Accessor, createEffect, createMemo, createRoot, createSignal, from, observable, onCleanup, untrack } from 'solid-js'
+import { Accessor, createEffect, createRoot, createSignal, from, observable, onCleanup } from 'solid-js'
 import { combineLatest, concatMap, distinctUntilChanged, EMPTY, from as rxFrom, Observable, ReplaySubject, skip } from 'rxjs'
 import { isEqual } from 'lodash'
 import { map } from 'rxjs/operators'
@@ -37,6 +37,7 @@ export class Game {
 	destroyed = false
 	viewedMoveIndex: Accessor<number>
 	drawEvent$: Observable<DrawEvent> = EMPTY
+	private gameConfig: GL.GameConfig
 
 	get outcome() {
 		return this.getOutcome()
@@ -45,10 +46,13 @@ export class Game {
 	private callWhenDestroyed: (() => void)[] = []
 
 	constructor(
+		public gameId: string,
 		public room: R.Room,
 		public playerId: string,
-		private gameConfig: GL.GameConfig
+		gameConfig: GL.GameConfig
 	) {
+		this.gameConfig = JSON.parse(JSON.stringify(gameConfig)) as GL.GameConfig
+
 		const [promotion, setPromotion] = createSignal(null)
 		this.setPromotion = setPromotion
 		this.promotion = promotion
@@ -77,12 +81,12 @@ export class Game {
 		}
 	}
 
-	private get state() {
-		return this.room.state.gameState!
+	get rollbackState() {
+		return this.room.rollbackState.gameStates[this.gameId]
 	}
 
-	get rollbackState() {
-		return this.room.rollbackState.gameState!
+	private get state() {
+		return this.room.state.gameStates[this.gameId]
 	}
 
 	get parsedGameConfig() {
@@ -115,6 +119,10 @@ export class Game {
 
 	get moveHistoryAsNotation() {
 		return getMoveHistoryAsNotation(this.rollbackState)
+	}
+
+	private get gameStatePath(): string[] {
+		return ['gameStates', this.gameId]
 	}
 
 	capturedPieces(color: GL.Color) {
@@ -165,12 +173,11 @@ export class Game {
 		console.log('trying move', { from, to, promotionPiece })
 		let expectedMoveIndex = this.rollbackState.moveHistory.length
 		await this.room.sharedStore.setStoreWithRetries((roomState) => {
-			const state = roomState.gameState!
 			// check that we're still on the same move
-			if (state.moveHistory.length !== expectedMoveIndex) return
-			let board = GL.getBoard(state)
+			if (this.rollbackState.moveHistory.length !== expectedMoveIndex) return
+			let board = GL.getBoard(this.rollbackState)
 			if (!GL.isPlayerTurn(board, this.getPlayerColor(this.playerId)) || !board.pieces[from]) return
-			let result = GL.validateAndPlayMove(from, to, state, promotionPiece)
+			let result = GL.validateAndPlayMove(from, to, this.rollbackState, promotionPiece)
 			if (!result) {
 				console.error('invalid move')
 				return
@@ -191,57 +198,56 @@ export class Game {
 
 			return [
 				{
-					path: ['gameState', 'boardHistory', newBoardIndex],
+					path: [...this.gameStatePath, 'boardHistory', newBoardIndex],
 					value: newBoardHistoryEntry,
 				},
-				{ path: ['gameState', 'moveHistory', '__push__'], value: result.move },
-				{ path: ['gameState', 'drawDeclinedBy'], value: null },
-				{ path: ['gameState', 'drawOffers'], value: { white: null, black: null } },
+				{ path: [...this.gameStatePath, 'moveHistory', '__push__'], value: result.move },
+				{ path: [...this.gameStatePath, 'drawDeclinedBy'], value: null },
+				{ path: [...this.gameStatePath, 'drawOffers'], value: { white: null, black: null } },
 			]
 		})
 	}
 
 	//#region draw actions
 	offerDraw() {
-		const moveOffered = this.state.moveHistory.length
+		const moveOffered = this.rollbackState.moveHistory.length
 		const offerTime = Date.now()
-		this.room.sharedStore.setStoreWithRetries((state) => {
-			if (!state.gameState || state.gameState.moveHistory.length !== moveOffered || GL.getGameOutcome(state.gameState)) return
-			const drawIsOfferedBy = GL.getDrawIsOfferedBy(state.gameState)
+		this.room.sharedStore.setStoreWithRetries(() => {
+			if (!this.rollbackState || this.rollbackState.moveHistory.length !== moveOffered || GL.getGameOutcome(this.rollbackState)) return
+			const drawIsOfferedBy = GL.getDrawIsOfferedBy(this.rollbackState)
 			if (drawIsOfferedBy === this.getPlayerColor(this.playerId)) return
-			return [{ path: ['gameState', 'drawOffers', this.getPlayerColor(this.playerId)], value: offerTime }]
+			return [{ path: [...this.gameStatePath, 'drawOffers', this.getPlayerColor(this.playerId)], value: offerTime }]
 		})
 	}
 
 	configureNewGame() {
-		setGame(null)
 		this.destroy()
 		this.room.configureNewGame()
 	}
 
 	cancelDraw() {
 		const moveOffered = this.state.moveHistory.length
-		this.room.sharedStore.setStoreWithRetries((state) => {
-			if (!state.gameState || state.gameState.moveHistory.length !== moveOffered || GL.getGameOutcome(state.gameState)) return
-			const drawIsOfferedBy = GL.getDrawIsOfferedBy(state.gameState)
+		this.room.sharedStore.setStoreWithRetries(() => {
+			if (!this.rollbackState || this.state.moveHistory.length !== moveOffered || GL.getGameOutcome(this.rollbackState)) return
+			const drawIsOfferedBy = GL.getDrawIsOfferedBy(this.rollbackState)
 			if (drawIsOfferedBy !== this.getPlayerColor(this.playerId)) return
-			return [{ path: ['gameState', 'drawOffers', this.getPlayerColor(this.playerId)], value: null }]
+			return [{ path: [...this.gameStatePath, 'drawOffers', this.getPlayerColor(this.playerId)], value: null }]
 		})
 	}
 
 	declineDraw() {
 		const moveOffered = this.state.moveHistory.length
-		this.room.sharedStore.setStoreWithRetries((state) => {
-			if (!state.gameState || state.gameState.moveHistory.length !== moveOffered || GL.getGameOutcome(state.gameState)) return
-			const drawIsOfferedBy = GL.getDrawIsOfferedBy(state.gameState)
-			if (drawIsOfferedBy === this.getPlayerColor(this.playerId)) return
+		this.room.sharedStore.setStoreWithRetries(() => {
+			if (!this.rollbackState || this.rollbackState.moveHistory.length !== moveOffered || GL.getGameOutcome(this.rollbackState)) return
+			const drawIsOfferedBy = GL.getDrawIsOfferedBy(this.rollbackState)
+			if (drawIsOfferedBy === this.getPlayerColor(this.playerId) || !this.drawIsOfferedBy) return
 			return [
 				{
-					path: ['gameState', 'drawOffers', this.drawIsOfferedBy],
+					path: [...this.gameStatePath, 'drawOffers', this.drawIsOfferedBy],
 					value: null,
 				},
 				{
-					path: ['gameState', 'drawDeclinedBy'],
+					path: [...this.gameStatePath, 'drawDeclinedBy'],
 					value: {
 						color: this.getPlayerColor(this.getPlayerColor(this.playerId)),
 						ts: Date.now(),
@@ -254,18 +260,20 @@ export class Game {
 	//#endregion
 
 	destroy() {
-		if (this.destroyed) return
+		if (this.destroyed) {
+			return
+		}
 		console.trace('tearing down current game')
 		this.destroyed = true
 		this.callWhenDestroyed.forEach((c) => c())
 	}
 
 	resign() {
-		this.room.sharedStore.setStoreWithRetries((state) => {
-			if (!state.gameState || GL.getGameOutcome(state.gameState)) return
+		this.room.sharedStore.setStoreWithRetries(() => {
+			if (!this.rollbackState || GL.getGameOutcome(this.rollbackState)) return
 			return [
 				{
-					path: ['gameState', 'resigned'],
+					path: [...this.gameStatePath, 'resigned'],
 					value: this.getPlayerColor(this.playerId),
 				},
 			]
@@ -278,10 +286,19 @@ export class Game {
 	private getClocks = () => ({ white: 0, black: 0 })
 
 	private registerListeners() {
-		createRoot((d) => {
+		createRoot((dispose) => {
+			if (!this.state) {
+				dispose()
+				return
+			}
 			// WARNING make sure this callback runs synchronously, or things will break
+			createEffect(() => {
+				if (!this.rollbackState) {
+					this.destroy()
+				}
+			})
 
-			this.callWhenDestroyed.push(d)
+			this.callWhenDestroyed.push(dispose)
 
 			//#region outcome and clock
 			const move$ = observeMoves(this.rollbackState)
@@ -447,23 +464,3 @@ function getMoveHistoryAsNotation(state: GL.GameState) {
 }
 
 export const [game, setGame] = createSignal<Game | null>(null)
-
-export function setupGameSystem() {
-	const boardVisible = createMemo(() => ['playing', 'postgame'].includes(R.room()!.state.status))
-	createEffect(() => {
-		if (R.room() && boardVisible()) {
-			untrack(() => {
-				const room = R.room()!
-				if (game()) {
-					console.warn('game already exists, destroying')
-					game()?.destroy()
-				}
-				setGame(new Game(room, room.player.id, JSON.parse(JSON.stringify(room.state.gameConfig))))
-			})
-		}
-	})
-	onCleanup(() => {
-		game()?.destroy()
-		setGame(null)
-	})
-}

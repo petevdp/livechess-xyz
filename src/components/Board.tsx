@@ -1,4 +1,5 @@
 import { batch, createEffect, createReaction, createSignal, For, Match, onCleanup, onMount, Show, Switch } from 'solid-js'
+import * as R from '../systems/room.ts'
 import * as G from '../systems/game/game.ts'
 import * as GL from '../systems/game/gameLogic.ts'
 import * as PC from '../systems/piece.ts'
@@ -18,8 +19,13 @@ import { BOARD_COLORS } from '../config.ts'
 //TODO provide some method to view the current game's config
 //TODO component duplicates on reload sometimes for some reason
 
-export function Board() {
-	let game = G.game()!
+export function Board(props: { gameId: string }) {
+	let game = new G.Game(props.gameId, R.room()!, R.room()!.player.id, R.room()!.rollbackState.gameConfig)
+	G.setGame(game)
+
+	onCleanup(() => {
+		game.destroy()
+	})
 
 	//#region calc board sizes
 	// let BOARD_SIZE = 600
@@ -38,9 +44,6 @@ export function Board() {
 			return 'column'
 		}
 	}
-	createEffect(() => {
-		console.log('layout', layout())
-	})
 
 	const boardSize = (): number => {
 		if (windowSize().width < windowSize().height && windowSize().width > 700) {
@@ -68,7 +71,7 @@ export function Board() {
 	// TODO Lots of optimization to be done here
 	//#region rendering
 	function render() {
-		if (game.destroyed) {
+		if (game.destroyed || !game.rollbackState) {
 			return
 		}
 
@@ -288,6 +291,7 @@ export function Board() {
 	const [isGameOverModalDisposed, setIsGameOverModalDisposed] = createSignal(false)
 	const [canShowGameOverModal, setCanShowGameOverModal] = createSignal(false)
 	onCleanup(() => {
+		console.log('disposing game over modal')
 		setIsGameOverModalDisposed(true)
 	})
 
@@ -298,7 +302,9 @@ export function Board() {
 					<div class="flex flex-col items-center space-y-1">
 						<GameOutcomeDisplay outcome={game.outcome!} />
 						<div class="space-x-1">
-							<NewGameButton />
+							<Button size="medium" kind="primary" onclick={() => game.configureNewGame()}>
+								New Game
+							</Button>
 							<Button size="medium" kind="secondary" onclick={() => _props.onCompleted(false)}>
 								Continue
 							</Button>
@@ -308,9 +314,14 @@ export function Board() {
 			},
 			false,
 			isGameOverModalDisposed
-		).then(() => {
-			setIsGameOverModalDisposed(true)
-		})
+		)
+			.catch((err) => {
+				console.log('received error after modal prompt')
+				console.trace(err)
+			})
+			.then(() => {
+				setIsGameOverModalDisposed(true)
+			})
 	})
 
 	trackGameOver(canShowGameOverModal)
@@ -445,11 +456,6 @@ function ActionsPanel(props: { class: string }) {
 // TODO use a "ready up" system here instead
 function NewGameButton() {
 	const game = G.game()!
-	return (
-		<Button size="medium" kind="primary" onclick={() => game.configureNewGame()}>
-			New Game
-		</Button>
-	)
 }
 
 //TODO fix current viewed move highlight
@@ -470,7 +476,6 @@ function MoveHistory() {
 			</div>
 			<For each={game.moveHistoryAsNotation}>
 				{(move, index) => {
-					console.log('index: ', index())
 					const viewingFirstMove = () => game.viewedMoveIndex() === index() * 2
 					const viewingSecondMove = () => game.viewedMoveIndex() === index() * 2 + 1
 					return (
