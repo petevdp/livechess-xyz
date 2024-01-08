@@ -6,8 +6,14 @@ import fastifyStatic from '@fastify/static'
 import * as ws from 'ws'
 import fastifyCors from '@fastify/cors'
 import * as SSS from './sharedStoreSystem.ts'
+import * as fs from 'node:fs'
 
 //TODO improve organization of this file
+
+
+if (!fs.existsSync('./logs')) {
+	fs.mkdirSync('./logs')
+}
 
 // improve formatting of logs, have distinct development version
 const envToLogger = {
@@ -41,8 +47,6 @@ const envToLogger = {
 				},
 			],
 		},
-		level: 'info',
-		file: './logs/server.log',
 	},
 }
 
