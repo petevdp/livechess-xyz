@@ -357,9 +357,6 @@ export class Room {
 			})
 		}
 	}
-
-	readyDown() {}
-
 	//#endregion
 
 	private setupListeners() {
