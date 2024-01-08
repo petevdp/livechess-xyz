@@ -15,7 +15,7 @@ function App() {
 			<Toaster />
 			<Router>
 				<Route path="/" component={Home} />
-				<Route path="/room/:id" component={RoomGuard} />
+				<Route path="/rooms/:id" component={RoomGuard} />
 			</Router>
 		</>
 	)

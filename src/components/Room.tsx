@@ -45,7 +45,6 @@ function Lobby() {
 
 	const copyInviteLink = () => {
 		navigator.clipboard.writeText(window.location.href)
-
 	}
 
 	return (

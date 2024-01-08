@@ -7,7 +7,7 @@ export function Home() {
 	const navigate = useNavigate()
 	async function createRoom() {
 		const res = await R.createRoom()
-		navigate(`/room/${res.networkId}`)
+		navigate(`/rooms/${res.networkId}`)
 	}
 
 	return (

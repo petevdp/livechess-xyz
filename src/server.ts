@@ -8,6 +8,8 @@ import { BehaviorSubject, concatMap, EMPTY, endWith, first, firstValueFrom, inte
 import * as ws from 'ws'
 import fastifyCors from '@fastify/cors'
 
+//TODO improve organization of this file
+
 const networks = new Map<string, Network>()
 type Network = {
 	id: string
@@ -102,6 +104,7 @@ function thirtySecondsFromNow() {
 	return Date.now() + 1000 * 30
 }
 
+// improve formatting of logs, have distinct development version
 const envToLogger = {
 	development: {
 		transport: {
@@ -136,10 +139,13 @@ server.register(fastifyCors, () => {
 		callback(null, corsOptions)
 	}
 })
-server.register(fastifyStatic, { root: path.join(path.dirname(fileURLToPath(import.meta.url)), '../dist') })
+server.register(fastifyStatic, {
+	root: path.join(path.dirname(fileURLToPath(import.meta.url)), '../dist'),
+})
 //#region websocket routes
 server.register(async function () {
 	server.get('/networks/:networkId', { websocket: true }, (connection, request) => {
+		console.log('connection', connection, request)
 		const socket = connection.socket as unknown as ws.WebSocket
 		let network: Network
 		//@ts-ignore
@@ -381,6 +387,11 @@ server.post('/networks', () => {
 	return { networkId } satisfies NewNetworkResponse
 })
 
+server.get('/rooms/:networkId', (_, res) => {
+	// serve index.html
+	return res.sendFile('index.html')
+})
+//
 //#region clean up networks marked for deletion
 interval(1000).subscribe(() => {
 	for (let [networkId, network] of networks) {
