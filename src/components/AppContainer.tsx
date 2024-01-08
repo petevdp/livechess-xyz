@@ -6,7 +6,7 @@ import styles from './AppContainer.module.css'
 
 export function AppContainer(props: ParentProps) {
 	return (
-		<div class="min-h-screen w-screen bg-gradient-to-b from-blue-800 to-blue-600 text-white">
+		<div class="min-h-screen w-[w-screen] bg-gradient-to-b from-blue-800 to-blue-600 text-white">
 			<div class="w-min p-2">
 				<A href="/" class="flex">
 					<Logo class={styles.logo} />

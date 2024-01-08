@@ -1,12 +1,11 @@
 .boardPageWrapper {
-	width: 100%;
 	height: calc(100% - 72px);
 	display: grid;
 	place-items: center;
 }
 
 .boardContainer {
-	@apply rounded bg-gray-700 p-[.5rem];
+	@apply rounded bg-gray-800 p-[.5rem];
 
 	display: grid;
 	grid-template-columns: max-content 1fr max-content 1fr max-content;
@@ -110,7 +109,7 @@
 .moveHistoryContainer {
 	grid-area: move-history;
 	display: flex;
-	width: 142px;
+	width: min-content;
 	flex-direction: column;
 	align-items: flex-start;
 	overflow-y: auto;
@@ -142,9 +141,11 @@
 }
 
 .capturedPieces {
+	@apply bg-gray-700 rounded;
 	display: flex;
 	min-width: 30px;
 	flex-wrap: wrap;
+	height: 100%;
 }
 
 .capturedPieces.player {

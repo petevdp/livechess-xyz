@@ -1,6 +1,6 @@
 import * as R from '../room.ts'
 import * as GL from './gameLogic.ts'
-import { BoardHistoryEntry, GameOutcome } from './gameLogic.ts'
+import { BoardHistoryEntry, coordsFromNotation, GameOutcome } from './gameLogic.ts'
 import * as P from '../player.ts'
 import { Accessor, createEffect, createRoot, createSignal, from, observable, onCleanup } from 'solid-js'
 import { combineLatest, concatMap, distinctUntilChanged, EMPTY, from as rxFrom, Observable, ReplaySubject, skip } from 'rxjs'
@@ -121,8 +121,16 @@ export class Game {
 		return getMoveHistoryAsNotation(this.rollbackState)
 	}
 
+
+	get isPlayerTurn() {
+		return GL.isPlayerTurn(this.board, this.player.color)
+	}
 	private get gameStatePath(): string[] {
 		return ['gameStates', this.gameId]
+	}
+
+	getLegalMovesForSquare(startingSquare: string) {
+		return GL.getLegalMoves([coordsFromNotation(startingSquare)], this.rollbackState)
 	}
 
 	capturedPieces(color: GL.Color) {
@@ -164,15 +172,20 @@ export class Game {
 		return capturedPieces
 	}
 
+
 	getPlayerColor(playerId: string) {
 		return this.rollbackState.players[playerId]
 	}
 
 	async tryMakeMove(from: string, to: string, promotionPiece?: GL.PromotionPiece) {
-		if (this.viewedMoveIndex() !== this.rollbackState.moveHistory.length - 1 || this.outcome) return
 		console.log('trying move', { from, to, promotionPiece })
+		if (this.outcome) return
 		let expectedMoveIndex = this.rollbackState.moveHistory.length
-		await this.room.sharedStore.setStoreWithRetries((roomState) => {
+		const result = GL.validateAndPlayMove(from, to, this.rollbackState, promotionPiece)
+		if (!result) return false
+
+		return this.room.sharedStore.setStoreWithRetries(() => {
+			if (this.viewedMoveIndex() !== this.rollbackState.moveHistory.length - 1 || this.outcome) return
 			// check that we're still on the same move
 			if (this.rollbackState.moveHistory.length !== expectedMoveIndex) return
 			let board = GL.getBoard(this.rollbackState)

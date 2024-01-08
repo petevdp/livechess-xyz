@@ -1,4 +1,4 @@
-import { batch, createEffect, createReaction, createSignal, For, Match, onCleanup, onMount, Show, Switch } from 'solid-js'
+import { batch, createEffect, createMemo, createReaction, createSignal, For, Match, onCleanup, onMount, Show, Switch } from 'solid-js'
 import * as R from '../systems/room.ts'
 import * as G from '../systems/game/game.ts'
 import * as GL from '../systems/game/gameLogic.ts'
@@ -15,10 +15,12 @@ import OfferDrawSvg from '../assets/icons/offer-draw.svg'
 import PrevSvg from '../assets/icons/prev.svg'
 import ResignSvg from '../assets/icons/resign.svg'
 import { BOARD_COLORS } from '../config.ts'
+import { isEqual } from 'lodash'
 
 //TODO provide some method to view the current game's config
 //TODO component duplicates on reload sometimes for some reason
 
+const imageCache: Record<string, HTMLImageElement> = {}
 export function Board(props: { gameId: string }) {
 	let game = new G.Game(props.gameId, R.room()!, R.room()!.player.id, R.room()!.rollbackState.gameConfig)
 	G.setGame(game)
@@ -47,9 +49,9 @@ export function Board(props: { gameId: string }) {
 
 	const boardSize = (): number => {
 		if (windowSize().width < windowSize().height && windowSize().width > 700) {
-			return windowSize().width - 40
+			return windowSize().width - 80
 		} else if (windowSize().width < windowSize().height && windowSize().width < 700) {
-			return windowSize().width - 40
+			return windowSize().width - 20
 		} else {
 			return windowSize().height - 170
 		}
@@ -60,13 +62,27 @@ export function Board(props: { gameId: string }) {
 	//#endregion
 
 	//#region board rendering and mouse events
-	const imageCache: Record<string, HTMLImageElement> = {}
 	const canvas = (<canvas width={boardSize()} height={boardSize()} />) as HTMLCanvasElement
 	const [boardFlipped, setBoardFlipped] = createSignal(false)
 	const [hoveredSquare, setHoveredSquare] = createSignal(null as null | string)
 	const [grabbedSquare, setGrabbedSquare] = createSignal(null as null | string)
 	const [clickedSquare, setClickedSquare] = createSignal(null as null | string)
 	const [grabbedSquareMousePos, setGrabbedSquareMousePos] = createSignal(null as null | { x: number; y: number })
+
+	const activeSquare = () => grabbedSquare() || clickedSquare()
+
+	const legalMovesForActivePiece = createMemo(() => {
+		const _square = activeSquare()
+		if (!_square) return []
+		const moves = game.getLegalMovesForSquare(_square)
+		console.log({ moves })
+		return moves
+	})
+
+	createEffect(() => {
+		console.log('grabbed: ', grabbedSquare())
+		console.log('hovered: ', hoveredSquare())
+	})
 
 	// TODO Lots of optimization to be done here
 	//#region rendering
@@ -97,9 +113,28 @@ export function Board(props: { gameId: string }) {
 			const highlightedSquares = [game.currentBoardView.lastMove.from, game.currentBoardView.lastMove.to]
 			for (let square of highlightedSquares) {
 				if (!square) continue
-				const [x, y] = squareToCoords(square, boardFlipped(), squareSize())
+				const [x, y] = squareNotationToDisplayCoords(square, boardFlipped(), squareSize())
 				ctx.fillStyle = highlightColor
 				ctx.fillRect(x, y, squareSize(), squareSize())
+			}
+		}
+		//#endregion
+
+		//#region draw legal move highlights
+		const dotColor = '#f2f2f2'
+		const captureHighlightColor = '#fc3c3c'
+		for (let move of legalMovesForActivePiece()) {
+			// draw dot in center of move end
+			const [x, y] = boardCoordsToDisplayCoords(move.to, boardFlipped(), squareSize())
+			if (game.currentBoardView.board.pieces[GL.notationFromCoords(move.to)]) {
+				ctx.fillStyle = captureHighlightColor
+				ctx.fillRect(x, y, squareSize(), squareSize())
+			} else {
+				ctx.fillStyle = dotColor
+				ctx.beginPath()
+				ctx.arc(x + squareSize() / 2, y + squareSize() / 2, squareSize() / 10, 0, 2 * Math.PI)
+				ctx.fill()
+				ctx.closePath()
 			}
 		}
 		//#endregion
@@ -128,6 +163,39 @@ export function Board(props: { gameId: string }) {
 		}
 		//#endregion
 
+		//#region draw hovered move highlight
+		const moveHighlightColor = '#ffffff'
+		if (
+			hoveredSquare() &&
+			activeSquare() &&
+			legalMovesForActivePiece().some((m) => isEqual(m.to, GL.coordsFromNotation(hoveredSquare()!)))
+		) {
+			// draw empty square in hovered square
+			const [x, y] = squareNotationToDisplayCoords(hoveredSquare()!, boardFlipped(), squareSize())
+			ctx.beginPath()
+			ctx.strokeStyle = moveHighlightColor
+			ctx.lineWidth = 6
+			ctx.rect(x + 3, y + 3, squareSize() - 6, squareSize() - 6)
+			ctx.stroke()
+			ctx.closePath()
+		}
+		//#endregion
+
+		//#region draw clicked move highlight
+		const clickedHighlightColor = '#809dfd'
+
+		if (clickedSquare()) {
+			const [x, y] = squareNotationToDisplayCoords(clickedSquare()!, boardFlipped(), squareSize())
+			ctx.beginPath()
+			ctx.strokeStyle = clickedHighlightColor
+			ctx.lineWidth = 6
+			ctx.rect(x + 3, y + 3, squareSize() - 6, squareSize() - 6)
+			ctx.stroke()
+			ctx.closePath()
+		}
+
+		//#endregion
+
 		//#region draw grabbed piece
 		if (grabbedSquare() && grabbedSquareMousePos()) {
 			let x = grabbedSquareMousePos()!.x
@@ -151,6 +219,7 @@ export function Board(props: { gameId: string }) {
 		await Promise.all(
 			Object.values(game.currentBoardView.board.pieces).map(async (piece) => {
 				const src = PC.resolvePieceImagePath(piece)
+				if (imageCache[src]) return
 				imageCache[src] = await PC.loadImage(src)
 			})
 		)
@@ -213,7 +282,9 @@ export function Board(props: { gameId: string }) {
 				if (clickedSquare() && hoveredSquare() && clickedSquare() !== hoveredSquare()) {
 					game.tryMakeMove(clickedSquare()!, hoveredSquare()!)
 					setClickedSquare(null)
-				} else if (
+				}
+
+				if (
 					hoveredSquare() &&
 					game.currentBoardView.board.pieces[hoveredSquare()!] &&
 					game.currentBoardView.board.pieces[hoveredSquare()!]!.color === game.player.color
@@ -258,11 +329,11 @@ export function Board(props: { gameId: string }) {
 
 	const promoteModalPosition = () => {
 		if (!game.promotion()) return undefined
-		let coordsInt = squareToCoords(game.promotion()!.to, boardFlipped(), squareSize())
-		coordsInt[0] = coordsInt[0] + canvas.getBoundingClientRect().left
-		coordsInt[1] = coordsInt[1] + canvas.getBoundingClientRect().top
+		let [x, y] = squareNotationToDisplayCoords(game.promotion()!.to, boardFlipped(), squareSize())
+		x += canvas.getBoundingClientRect().left
+		y += canvas.getBoundingClientRect().top
 
-		return coordsInt.map((c) => `${c}px`) as [string, string]
+		return [x, y].map((c) => `${c}px`) as [string, string]
 	}
 
 	Modal.addModal({
@@ -370,7 +441,7 @@ export function Board(props: { gameId: string }) {
 					<MoveHistory />
 				</div>
 				<Player class={styles.opponent} player={game.opponent} />
-				<Clock class={styles.clockOpponent} clock={game.clock[game.player.color]} />
+				<Clock class={styles.clockOpponent} clock={game.clock[game.opponent.color]} ticking={!game.isPlayerTurn} />
 				<div class={`${styles.topLeftActions} flex flex-col items-start space-x-1`}>
 					<Button title={'Flip Board'} kind="tertiary" size="small" onclick={() => setBoardFlipped((f) => !f)} class="mb-1">
 						<FlipBoardSvg />
@@ -381,7 +452,7 @@ export function Board(props: { gameId: string }) {
 				<div class={styles.board}>{canvas}</div>
 				<ActionsPanel class={styles.bottomLeftActions} />
 				<Player class={styles.player} player={game.player} />
-				<Clock class={styles.clockPlayer} clock={game.clock[game.opponent.color]} />
+				<Clock class={styles.clockPlayer} clock={game.clock[game.player.color]} ticking={game.isPlayerTurn} />
 				<div class={styles.moveNav}>
 					<MoveNav />
 				</div>
@@ -398,7 +469,7 @@ function Player(props: { player: G.PlayerWithColor; class: string }) {
 	)
 }
 
-function Clock(props: { clock: number; class: string }) {
+function Clock(props: { clock: number; class: string; ticking: boolean }) {
 	const formattedClock = () => {
 		// clock is in ms
 		const minutes = Math.floor(props.clock / 1000 / 60)
@@ -413,7 +484,7 @@ function Clock(props: { clock: number; class: string }) {
 	// TODO add warning threshold for time
 	// const warnThreshold = () => game.gameConfig
 
-	return <span class={`flex justify-end text-xl ${props.class}`}>{formattedClock()}</span>
+	return <span class={`flex justify-end text-xl ${props.class} ${!props.ticking ? 'text-neutral-400' : ''}`}>{formattedClock()}</span>
 }
 
 function ActionsPanel(props: { class: string }) {
@@ -520,7 +591,7 @@ function CapturedPieces(props: { pieces: GL.ColoredPiece[]; is: 'player' | 'oppo
 	return (
 		<div
 			class={`${styles.capturedPieces} ${styles[props.is]}`}
-			style={{ [props.layout === 'row' ? 'width' : 'height']: `${props.size - 20}px` }}
+			// style={{ [props.layout === 'row' ? 'width' : 'height']: `${props.size - 20}px` }}
 		>
 			<For each={props.pieces}>
 				{(piece) => (
@@ -592,12 +663,18 @@ function GameOutcomeDisplay(props: { outcome: GL.GameOutcome }) {
 			return `${winnerTitle} wins on time`
 	}
 }
-function squareToCoords(square: string, boardFlipped: boolean, squareSize: number) {
-	let x = square[0].charCodeAt(0) - 'a'.charCodeAt(0)
-	let y = 8 - parseInt(square[1])
-	if (boardFlipped) {
-		x = 7 - x
+
+function boardCoordsToDisplayCoords(square: GL.Coords, boardFlipped: boolean, squareSize: number) {
+	let { x, y } = square
+	if (!boardFlipped) {
 		y = 7 - y
+	} else {
+		x = 7 - x
 	}
 	return [x * squareSize, y * squareSize] as [number, number]
+}
+
+function squareNotationToDisplayCoords(square: string, boardFlipped: boolean, squareSize: number) {
+	const { x, y } = GL.coordsFromNotation(square)
+	return boardCoordsToDisplayCoords({ x, y }, boardFlipped, squareSize)
 }
