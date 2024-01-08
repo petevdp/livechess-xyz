@@ -797,5 +797,5 @@ export async function buildTransaction<Action extends string>(fn: (t: SharedStor
 }
 
 export async function newNetwork(host: string) {
-	return (await fetch(`http://${host}/networks/new`).then((res) => res.json())) as NewNetworkResponse
+	return (await fetch(`http://${host}/networks`, {method: 'POST'}).then((res) => res.json())) as NewNetworkResponse
 }

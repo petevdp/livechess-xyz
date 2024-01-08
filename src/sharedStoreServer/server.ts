@@ -1,12 +1,30 @@
-import * as ws from 'ws'
-import * as http from 'http'
-import { Base64String, ClientConfig, encodeContent, NewNetworkResponse, SharedStoreMessage } from '../utils/sharedStore.ts'
-import { BehaviorSubject, concatMap, EMPTY, endWith, first, firstValueFrom, interval, mergeMap, Observable, share, switchMap } from 'rxjs'
-
-// TODO add tld support
-// TODO add timeouts for any request/response message transactions
-// TODO check if clients are being deleted
-
+import Fastify, {FastifyBaseLogger} from 'fastify'
+import fastifyWebsocket from '@fastify/websocket'
+import path from 'node:path'
+import { fileURLToPath } from 'url';
+import fastifyStatic from "@fastify/static";
+import {
+	Base64String,
+	ClientConfig,
+	encodeContent,
+	NewNetworkResponse,
+	SharedStoreMessage
+} from "../utils/sharedStore.ts";
+import {
+	BehaviorSubject,
+	concatMap,
+	EMPTY,
+	endWith,
+	first,
+	firstValueFrom,
+	interval,
+	mergeMap,
+	Observable,
+	share,
+	switchMap
+} from "rxjs";
+import * as ws from "ws";
+import fastifyCors from '@fastify/cors'
 
 const networks = new Map<string, Network>()
 type Network = {
@@ -102,65 +120,59 @@ function thirtySecondsFromNow() {
 	return Date.now() + 1000 * 30
 }
 
-export function startServer(port: number) {
-	const server = new http.Server()
-	const wss = new ws.WebSocketServer({ server })
+const envToLogger = {
+	development: {
+		transport: {
+			target: 'pino-pretty',
+			options: {
+				translateTime: 'HH:MM:ss Z',
+				ignore: 'pid,hostname',
+				color: true
+			},
 
-	//#region rest api
-	server.on('request', (request, response) => {
-		if (request.url === '/networks/new') {
-			const networkId = createId(6)
-			networks.set(networkId, {
-				id: networkId,
-				cleanupAt: thirtySecondsFromNow(),
-				followers: [],
-				leader$: new BehaviorSubject<Client | null>(null),
-				get leader() {
-					return this.leader$.value
-				},
-				get clients() {
-					const clients = [...this.followers]
-					if (this.leader) clients.push(this.leader)
-					return clients
-				},
-			})
+		},
+	},
+	production: true,
+	test: false,
+} satisfies FastifyBaseLogger
+const server = Fastify({logger: envToLogger.development})
 
-			response.writeHead(200, {
-				'Content-Type': 'application/json',
-				'Access-Control-Allow-Origin': '*',
-			})
-			const body: NewNetworkResponse = { networkId }
+server.register(fastifyWebsocket)
+server.register(fastifyCors, () => {
+	//@ts-ignore
+	return (req, callback) => {
+		const corsOptions = {
+			// This is NOT recommended for production as it enables reflection exploits
+			origin: true
+		};
 
-			response.end(JSON.stringify(body))
-			return
+		// do not include CORS headers for requests from localhost
+		if (/^localhost$/m.test(req.headers.origin)) {
+			corsOptions.origin = false
 		}
-	})
-	//#endregion
 
-	//#region websocket events
-	wss.on('connection', async (socket, request) => {
+		// callback expects two parameters: error and options
+		callback(null, corsOptions)
+	}
+})
+server.register(fastifyStatic, {root: path.join(path.dirname(fileURLToPath(import.meta.url)), '../../dist')})
+server.register(async function () {
+
+	server.get('/networks/:networkId', {websocket: true}, (connection: fastifyWebsocket.SocketStream, request) => {
+		const socket = connection.socket as unknown as ws.WebSocket
 		let network: Network
-		let networkId: string
+		//@ts-ignore
+		let networkId = request.params.networkId
 		//#region retrieve network
-		if (!request.url) return
-		{
-			const match = request.url!.match(/networks\/(.+)/)
-			if (!match) {
-				socket.close()
-				return
-			}
-			networkId = match[1]
-			network = networks.get(networkId)!
-			if (!network) {
-				console.log('network not found, closing newly connected client', networkId)
-				socket.close()
-				return
-			}
+		network = networks.get(networkId)!
+		if (!network) {
+			request.log.info('network not found, closing newly connected client', networkId)
+			socket.close()
+			return
 		}
 		//#endregion
 
 		network.cleanupAt = null
-
 		const client = new Client(socket, createId(6), network)
 
 		console.log(`new socket connected to network ${networkId} with clientId ${client.clientId}`)
@@ -187,7 +199,7 @@ export function startServer(port: number) {
 					network.leader$.pipe(
 						switchMap((leader) => {
 							if (!leader) return EMPTY as Observable<SharedStoreMessage>
-							leader.send({ type: 'request-state' })
+							leader.send({type: 'request-state'})
 							return leader.message$
 						}),
 						concatMap((m) => (m.type === 'state' ? [m] : [])),
@@ -209,7 +221,7 @@ export function startServer(port: number) {
 			}
 			//#endregion
 
-			client.send({ type: 'client-config', config })
+			client.send({type: 'client-config', config})
 
 			//#region send client-controlled-states to new client
 			if (network.leader?.clientId !== client.clientId) {
@@ -239,7 +251,8 @@ export function startServer(port: number) {
 			}
 
 			//#endregion
-		})().then(() => {})
+		})().then(() => {
+		})
 
 		//#endregion
 
@@ -338,10 +351,10 @@ export function startServer(port: number) {
 			if (network.leader?.clientId === client.clientId) {
 				network.leader$.next(null)
 				network.nextLeader = network.followers[0]
-				network.nextLeader?.send({ type: 'promote-to-leader' })
+				network.nextLeader?.send({type: 'promote-to-leader'})
 			} else if (network.nextLeader?.clientId === client.clientId) {
 				network.nextLeader = network.followers[0]
-				network.nextLeader?.send({ type: 'promote-to-leader' })
+				network.nextLeader?.send({type: 'promote-to-leader'})
 			}
 
 			if (network.clients.length === 0) {
@@ -353,8 +366,8 @@ export function startServer(port: number) {
 				// TODO check if we should do this sort of validation elsewhere
 				await firstValueFrom(network.leader$.pipe(first((l) => !!l)))
 				console.log(`nulling out client-controlled-states for disconnected client (${client.clientId})`)
-				const states = encodeContent({ [client.clientId]: null })
-				const message: SharedStoreMessage = { type: 'client-controlled-states', states }
+				const states = encodeContent({[client.clientId]: null})
+				const message: SharedStoreMessage = {type: 'client-controlled-states', states}
 				for (let clt of network.clients) {
 					if (clt.clientId === client.clientId) continue
 					clt.send(message)
@@ -365,24 +378,50 @@ export function startServer(port: number) {
 		})
 		//#endregion
 	})
-	//#endregion
 
-	//#region clean up networks marked for deletion
-	interval(1000).subscribe(() => {
-		for (let [networkId, network] of networks) {
-			if (network.cleanupAt && network.cleanupAt < Date.now()) {
-				const sockets = [network.leader, ...network.followers]
-				sockets.forEach((s) => s?.socket.close())
-				network.leader$.next(null)
-				networks.delete(networkId)
-			}
+})
+
+// fastify.get('/*', (req,reply) => {
+// 	reply.sendFile('index.html')
+// })
+
+server.post('/networks', (_, response) => {
+	const networkId = createId(6)
+	networks.set(networkId, {
+		id: networkId,
+		cleanupAt: thirtySecondsFromNow(),
+		followers: [],
+		leader$: new BehaviorSubject<Client | null>(null),
+		get leader() {
+			return this.leader$.value
+		},
+		get clients() {
+			const clients = [...this.followers]
+			if (this.leader) clients.push(this.leader)
+			return clients
+		},
+	})
+
+	return {networkId} satisfies NewNetworkResponse
+})
+
+
+//#region clean up networks marked for deletion
+interval(1000).subscribe(() => {
+	for (let [networkId, network] of networks) {
+		if (network.cleanupAt && network.cleanupAt < Date.now()) {
+			const sockets = [network.leader, ...network.followers]
+			sockets.forEach((s) => s?.socket.close())
+			network.leader$.next(null)
+			networks.delete(networkId)
 		}
-	})
-	//#endregion
-
-	server.listen(port, () => {
-		console.log('server started on port ', port)
-	})
-}
-
-startServer(8080)
+	}
+})
+//#endregion
+server.listen({port: 8080}, (err, address) => {
+	if (err) {
+		server.log.error(err)
+		process.exit(1)
+	}
+	server.log.info(`server listening on ${address}`)
+})
