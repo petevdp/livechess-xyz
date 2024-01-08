@@ -109,9 +109,8 @@ const envToLogger = {
 			options: {
 				translateTime: 'HH:MM:ss Z',
 				ignore: 'pid,hostname',
-				color: true
+				color: true,
 			},
-
 		},
 	},
 	production: true,
@@ -125,8 +124,8 @@ server.register(fastifyCors, () => {
 	return (req, callback) => {
 		const corsOptions = {
 			// This is NOT recommended for production as it enables reflection exploits
-			origin: true
-		};
+			origin: true,
+		}
 
 		// do not include CORS headers for requests from localhost
 		if (/^localhost$/m.test(req.headers.origin)) {
@@ -137,10 +136,9 @@ server.register(fastifyCors, () => {
 		callback(null, corsOptions)
 	}
 })
-server.register(fastifyStatic, {root: path.join(path.dirname(fileURLToPath(import.meta.url)), '../dist')})
+server.register(fastifyStatic, { root: path.join(path.dirname(fileURLToPath(import.meta.url)), '../dist') })
 //#region websocket routes
 server.register(async function () {
-
 	server.get('/networks/:networkId', { websocket: true }, (connection, request) => {
 		const socket = connection.socket as unknown as ws.WebSocket
 		let network: Network
@@ -360,7 +358,6 @@ server.register(async function () {
 		})
 		//#endregion
 	})
-
 })
 //#endregion
 
@@ -381,9 +378,8 @@ server.post('/networks', () => {
 		},
 	})
 
-	return {networkId} satisfies NewNetworkResponse
+	return { networkId } satisfies NewNetworkResponse
 })
-
 
 //#region clean up networks marked for deletion
 interval(1000).subscribe(() => {
@@ -397,7 +393,10 @@ interval(1000).subscribe(() => {
 	}
 })
 //#endregion
-server.listen({port: 8080}, (err, address) => {
+
+//@ts-ignore
+const port: number = parseInt(process.env.PORT) || 8080
+server.listen({port}, (err, address) => {
 	if (err) {
 		server.log.error(err)
 		process.exit(1)
