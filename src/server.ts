@@ -396,7 +396,7 @@ interval(1000).subscribe(() => {
 
 //@ts-ignore
 const port: number = parseInt(process.env.PORT) || 8080
-server.listen({port}, (err, address) => {
+server.listen({ port, host: 'localhost' }, (err, address) => {
 	if (err) {
 		server.log.error(err)
 		process.exit(1)
