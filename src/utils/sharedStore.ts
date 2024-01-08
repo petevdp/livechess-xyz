@@ -558,10 +558,10 @@ export class SharedStoreProvider<Action extends string> {
 
 	constructor(
 		serverHost: string,
-		public networkId: string
+		public networkId: string | null
 	) {
-		this.ws = new WebSocket(`ws://${serverHost}/networks/${networkId}`)
-
+		const url = `ws://${serverHost || window.location.hostname}/networks/`
+		this.ws = new WebSocket(url)
 		this.message$ = new Observable<SharedStoreMessage>((subscriber) => {
 			const listener = (event: MessageEvent) => {
 				const message = JSON.parse(event.data) as SharedStoreMessage
@@ -796,6 +796,7 @@ export async function buildTransaction<Action extends string>(fn: (t: SharedStor
 	}
 }
 
-export async function newNetwork(host: string) {
-	return (await fetch(`http://${host}/networks`, {method: 'POST'}).then((res) => res.json())) as NewNetworkResponse
+export async function newNetwork(host?: string) {
+	let url = `http://${host || window.location.hostname}/networks`
+	return (await fetch(url, { method: 'POST' }).then((res) => res.json())) as NewNetworkResponse
 }

@@ -1,29 +1,11 @@
-import Fastify, {FastifyBaseLogger} from 'fastify'
+import Fastify from 'fastify'
 import fastifyWebsocket from '@fastify/websocket'
 import path from 'node:path'
-import { fileURLToPath } from 'url';
-import fastifyStatic from "@fastify/static";
-import {
-	Base64String,
-	ClientConfig,
-	encodeContent,
-	NewNetworkResponse,
-	SharedStoreMessage
-} from "../utils/sharedStore.ts";
-import {
-	BehaviorSubject,
-	concatMap,
-	EMPTY,
-	endWith,
-	first,
-	firstValueFrom,
-	interval,
-	mergeMap,
-	Observable,
-	share,
-	switchMap
-} from "rxjs";
-import * as ws from "ws";
+import { fileURLToPath } from 'url'
+import fastifyStatic from '@fastify/static'
+import { Base64String, ClientConfig, encodeContent, NewNetworkResponse, SharedStoreMessage } from './utils/sharedStore.ts'
+import { BehaviorSubject, concatMap, EMPTY, endWith, first, firstValueFrom, interval, mergeMap, Observable, share, switchMap } from 'rxjs'
+import * as ws from 'ws'
 import fastifyCors from '@fastify/cors'
 
 const networks = new Map<string, Network>()
@@ -134,8 +116,8 @@ const envToLogger = {
 	},
 	production: true,
 	test: false,
-} satisfies FastifyBaseLogger
-const server = Fastify({logger: envToLogger.development})
+}
+const server = Fastify({ logger: envToLogger.development })
 
 server.register(fastifyWebsocket)
 server.register(fastifyCors, () => {
@@ -155,10 +137,11 @@ server.register(fastifyCors, () => {
 		callback(null, corsOptions)
 	}
 })
-server.register(fastifyStatic, {root: path.join(path.dirname(fileURLToPath(import.meta.url)), '../../dist')})
+server.register(fastifyStatic, {root: path.join(path.dirname(fileURLToPath(import.meta.url)), '../dist')})
+//#region websocket routes
 server.register(async function () {
 
-	server.get('/networks/:networkId', {websocket: true}, (connection: fastifyWebsocket.SocketStream, request) => {
+	server.get('/networks/:networkId', { websocket: true }, (connection, request) => {
 		const socket = connection.socket as unknown as ws.WebSocket
 		let network: Network
 		//@ts-ignore
@@ -199,7 +182,7 @@ server.register(async function () {
 					network.leader$.pipe(
 						switchMap((leader) => {
 							if (!leader) return EMPTY as Observable<SharedStoreMessage>
-							leader.send({type: 'request-state'})
+							leader.send({ type: 'request-state' })
 							return leader.message$
 						}),
 						concatMap((m) => (m.type === 'state' ? [m] : [])),
@@ -221,7 +204,7 @@ server.register(async function () {
 			}
 			//#endregion
 
-			client.send({type: 'client-config', config})
+			client.send({ type: 'client-config', config })
 
 			//#region send client-controlled-states to new client
 			if (network.leader?.clientId !== client.clientId) {
@@ -241,7 +224,7 @@ server.register(async function () {
 						})
 						.then((state) => {
 							if (!state) return
-							client.send({type: 'client-controlled-states', states: state})
+							client.send({ type: 'client-controlled-states', states: state })
 						})
 					otherClient.send({
 						type: 'request-client-controlled-states',
@@ -251,8 +234,7 @@ server.register(async function () {
 			}
 
 			//#endregion
-		})().then(() => {
-		})
+		})().then(() => {})
 
 		//#endregion
 
@@ -351,10 +333,10 @@ server.register(async function () {
 			if (network.leader?.clientId === client.clientId) {
 				network.leader$.next(null)
 				network.nextLeader = network.followers[0]
-				network.nextLeader?.send({type: 'promote-to-leader'})
+				network.nextLeader?.send({ type: 'promote-to-leader' })
 			} else if (network.nextLeader?.clientId === client.clientId) {
 				network.nextLeader = network.followers[0]
-				network.nextLeader?.send({type: 'promote-to-leader'})
+				network.nextLeader?.send({ type: 'promote-to-leader' })
 			}
 
 			if (network.clients.length === 0) {
@@ -366,8 +348,8 @@ server.register(async function () {
 				// TODO check if we should do this sort of validation elsewhere
 				await firstValueFrom(network.leader$.pipe(first((l) => !!l)))
 				console.log(`nulling out client-controlled-states for disconnected client (${client.clientId})`)
-				const states = encodeContent({[client.clientId]: null})
-				const message: SharedStoreMessage = {type: 'client-controlled-states', states}
+				const states = encodeContent({ [client.clientId]: null })
+				const message: SharedStoreMessage = { type: 'client-controlled-states', states }
 				for (let clt of network.clients) {
 					if (clt.clientId === client.clientId) continue
 					clt.send(message)
@@ -380,12 +362,9 @@ server.register(async function () {
 	})
 
 })
+//#endregion
 
-// fastify.get('/*', (req,reply) => {
-// 	reply.sendFile('index.html')
-// })
-
-server.post('/networks', (_, response) => {
+server.post('/networks', () => {
 	const networkId = createId(6)
 	networks.set(networkId, {
 		id: networkId,

@@ -2,7 +2,7 @@ import * as R from '../room.ts'
 import * as GL from './gameLogic.ts'
 import { BoardHistoryEntry, coordsFromNotation, GameOutcome } from './gameLogic.ts'
 import * as P from '../player.ts'
-import { Accessor, createEffect, createRoot, createSignal, from, mapArray, observable, onCleanup } from 'solid-js'
+import { Accessor, createEffect, createRoot, createSignal, from, observable, onCleanup } from 'solid-js'
 import { combineLatest, concatMap, distinctUntilChanged, EMPTY, from as rxFrom, Observable, ReplaySubject, skip } from 'rxjs'
 import { isEqual } from 'lodash'
 import { map } from 'rxjs/operators'
@@ -474,23 +474,6 @@ function getMoveHistoryAsNotation(state: GL.GameState) {
 		moves.push([whiteMove, blackMove])
 	}
 	return moves
-}
-
-function cacheMoves(moveHistory, startPos: GL.Board) {
-	let boardHistory = new Map<number, GL.Board>()
-	boardHistory.set(-1, startPos)
-
-	mapArray(moveHistory, (move, i) => {
-		const result = GL.validateAndPlayMove(
-			move.from,
-			move.to,
-			{
-				boardHistory,
-				moveHistory: moveHistory.slice(0, i),
-			},
-			move.promotion
-		)
-	})
 }
 
 export const [game, setGame] = createSignal<Game | null>(null)

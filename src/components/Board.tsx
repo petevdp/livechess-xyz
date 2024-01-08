@@ -524,11 +524,6 @@ function ActionsPanel(props: { class: string }) {
 	)
 }
 
-// TODO use a "ready up" system here instead
-function NewGameButton() {
-	const game = G.game()!
-}
-
 //TODO fix current viewed move highlight
 function MoveHistory() {
 	const game = G.game()!

@@ -120,7 +120,7 @@ export type Coords = {
 
 //#endregion
 
-export function newGameState(config: GameConfig, players: GameState['players']): GameState {
+export function newGameState(_config: GameConfig, players: GameState['players']): GameState {
 	const startingBoard: BoardHistoryEntry = {
 		board: startPos(),
 		index: 0,

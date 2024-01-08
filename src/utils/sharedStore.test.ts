@@ -11,7 +11,6 @@ import {firstValueFrom} from 'rxjs'
 /**
  * All of the tests below assume that the sharedstore server  is running on localhost:8080
  */
-
 describe('network provider/shared store', () => {
 	it('can create a network', async () => {
 		const network = await newNetwork(SERVER_HOST)
@@ -111,6 +110,7 @@ describe('network provider/shared store', () => {
 			const provider1 = new SharedStoreProvider(SERVER_HOST, network.networkId)
 			toDispose.push(d)
 
+			//@ts-ignore
 			leaderStore = initSharedStore(provider1, {}, { ayy: 'lmao' })
 		})
 
@@ -231,7 +231,12 @@ describe('network provider/shared store', () => {
 
 		await follower2Store.setStore({ path: ['arr'], value: [] })
 		const follower1MutDone = follower1Store.setStore({ path: ['arr', 0], value: 'ayy' })
-		const follower2MutDone = follower2Store.setStoreWithRetries((s) => [{ path: ['arr', s.arr.length], value: 'lmao' }])
+		const follower2MutDone = follower2Store.setStoreWithRetries((s: any) => [
+			{
+				path: ['arr', s.arr.length],
+				value: 'lmao',
+			},
+		])
 
 		await Promise.all([follower1MutDone, follower2MutDone])
 		expect(leaderStore.lockstepStore.arr[0]).toBe('ayy')

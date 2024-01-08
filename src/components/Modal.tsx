@@ -60,7 +60,7 @@ export function ModalContainer() {
 							<h5 class="text-lg font-medium leading-normal text-neutral-800 dark:text-neutral-200" id="modalLabel">
 								{activeModal()!.title}
 							</h5>
-							<Button kind={'secondary'} onclick={() => setActiveModal(null)}>
+							<Button size="medium" kind={'secondary'} onclick={() => setActiveModal(null)}>
 								<svg
 									xmlns="http://www.w3.org/2000/svg"
 									fill="none"

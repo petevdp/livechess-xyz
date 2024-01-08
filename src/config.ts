@@ -1,4 +1,4 @@
-export const SERVER_HOST = 'localhost:8080'
+export const SERVER_HOST = import.meta.env.VITE_SERVER_HOST || null
 export const PLAYER_TIMEOUT = 5000
 
 

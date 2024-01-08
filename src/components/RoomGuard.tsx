@@ -1,11 +1,11 @@
 import { useNavigate, useParams } from '@solidjs/router'
 import { createEffect, createSignal, Match, onCleanup, Switch } from 'solid-js'
-import { ConnectionStatus } from '../utils/yjs.ts'
 import * as R from '../systems/room.ts'
 import * as P from '../systems/player.ts'
 import { AppContainer } from './AppContainer.tsx'
 import { NickForm, Room } from './Room.tsx'
 
+type ConnectionStatus = 'connected' | 'disconnected' | 'connecting'
 export function RoomGuard() {
 	const params = useParams()
 	const [connectionStatus, setConnectionStatus] = createSignal<ConnectionStatus>(R.room() ? 'connected' : 'disconnected')
