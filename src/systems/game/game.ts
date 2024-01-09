@@ -2,11 +2,11 @@ import * as R from '../room.ts'
 import * as GL from './gameLogic.ts'
 import { BoardHistoryEntry, coordsFromNotation, GameOutcome } from './gameLogic.ts'
 import * as P from '../player.ts'
-import {Accessor, createEffect, createMemo, createRoot, createSignal, from, observable, onCleanup} from 'solid-js'
+import { Accessor, createEffect, createMemo, createSignal, from, getOwner, observable, onCleanup } from 'solid-js'
 import { combineLatest, concatMap, distinctUntilChanged, EMPTY, from as rxFrom, Observable, ReplaySubject, skip } from 'rxjs'
 import { isEqual } from 'lodash'
 import { map } from 'rxjs/operators'
-import { trackStore } from '@solid-primitives/deep'
+import { trackAndUnwrap } from '../../utils/solid.ts'
 
 export type PlayerWithColor = P.Player & { color: GL.Color }
 
@@ -34,17 +34,15 @@ export class Game {
 	promotion: Accessor<PromotionSelection | null>
 	setPromotion: (p: PromotionSelection | null) => void
 	setViewedMove: (move: number | 'live') => void
-	destroyed = false
 	viewedMoveIndex: Accessor<number>
 	drawEvent$: Observable<DrawEvent> = EMPTY
-	private _currentBoardView: Accessor<BoardView>;
+	currentBoardView: BoardView
 	private gameConfig: GL.GameConfig
+	private getMoveHistoryAsNotation: Accessor<[string, string | null][]>
 
 	get outcome() {
 		return this.getOutcome()
 	}
-
-	private callWhenDestroyed: (() => void)[] = []
 
 	constructor(
 		public gameId: string,
@@ -52,11 +50,14 @@ export class Game {
 		public playerId: string,
 		gameConfig: GL.GameConfig
 	) {
+		if (!getOwner()) throw new Error('Game constructor must be called in reactive context')
 		this.gameConfig = JSON.parse(JSON.stringify(gameConfig)) as GL.GameConfig
 
+		//#region promotion
 		const [promotion, setPromotion] = createSignal(null)
 		this.setPromotion = setPromotion
 		this.promotion = promotion
+		//#endregion
 
 		//#region view history
 		const [currentMove, setViewedMove] = createSignal<'live' | number>('live')
@@ -64,36 +65,114 @@ export class Game {
 		this.setViewedMove = setViewedMove
 		//#endregion
 
-		this._currentBoardView = createMemo(() => this.getCurrentBoardView())
+		//#region board view
+		const lastMove = () => this.rollbackState.moveHistory[this.viewedMoveIndex()] || null
+		const board = () => this.rollbackState.boardHistory[this.viewedMoveIndex() + 1].board
 
-		this.registerListeners()
-	}
+		const inCheck = createMemo(() => GL.inCheck(this.rollbackState.boardHistory[this.rollbackState.boardHistory.length - 1].board))
+		this.currentBoardView = {
+			get board() {
+				return board()
+			},
+			get inCheck() {
+				return inCheck()
+			},
+			get lastMove() {
+				return lastMove()
+			},
+		} as BoardView
+		this.getMoveHistoryAsNotation = createMemo(() => getMoveHistoryAsNotation(trackAndUnwrap(this.rollbackState)))
 
-	get currentBoardView() {
-		return this._currentBoardView()
+		//#endregion
+
+		//#region outcome and clock
+		const move$ = observeMoves(this.rollbackState)
+		this.getClocks = useClock(move$, this.parsedGameConfig, () => !!this.outcome)
+
+		const gameOutcome$ = rxFrom(observable(() => GL.getGameOutcome(trackAndUnwrap(this.lockstepState))))
+		type Timeouts = {
+			white: boolean
+			black: boolean
+		}
+
+		const timeout$ = rxFrom(observable(this.getClocks)).pipe(
+			map(
+				(clocks) =>
+					({
+						white: clocks.white <= 0,
+						black: clocks.black <= 0,
+					}) as Timeouts
+			),
+			distinctUntilChanged(isEqual)
+		)
+		const outcome$ = combineLatest([gameOutcome$, timeout$]).pipe(
+			map(([outcome, timeouts]): GameOutcome | undefined => {
+				if (timeouts.white) return { winner: 'black', reason: 'flagged' }
+				if (timeouts.black) return { winner: 'white', reason: 'flagged' }
+				return outcome || undefined
+			})
+		)
+		this.getOutcome = from(outcome$)
+		//#endregion
+
+		//#region draw offer events
+		let prevOffers: GL.GameState['drawOffers'] = JSON.parse(JSON.stringify(this.rollbackState.drawOffers))
+		let prevDeclinedBy: GL.GameState['drawDeclinedBy'] | null = JSON.parse(JSON.stringify(this.rollbackState.drawDeclinedBy))
+
+		this.drawEvent$ = rxFrom(
+			observable(
+				() =>
+					[
+						{
+							white: this.rollbackState.drawOffers.white,
+							black: this.rollbackState.drawOffers.black,
+						} satisfies GL.GameState['drawOffers'],
+						this.rollbackState.drawDeclinedBy,
+					] as const
+			)
+		).pipe(
+			skip(1),
+			concatMap(([offers, declinedBy]) => {
+				let opponentOffering = offers[this.opponent.color] !== null
+				let opponentOfferingPrev = prevOffers[this.opponent.color] !== null
+				let playerOffering = offers[this.player.color] !== null
+				let playerOfferingPrev = prevOffers[this.player.color] !== null
+
+				let events: DrawEvent[] = []
+				if (this.outcome) {
+				} else if (declinedBy && !prevDeclinedBy) events.push('declined')
+				else if (opponentOffering && !opponentOfferingPrev) events.push('offered-by-opponent')
+				else if (playerOffering && !playerOfferingPrev) events.push('awaiting-response')
+				else if (!opponentOffering && opponentOfferingPrev) events.push('opponent-cancelled')
+				else if (!playerOffering && playerOfferingPrev) events.push('player-cancelled')
+				prevOffers = JSON.parse(JSON.stringify(offers))
+				prevDeclinedBy = JSON.parse(JSON.stringify(offers))
+				return events
+			})
+		)
+		//#endregion
+
+		//#region reset view when move history changes
+		let prevMoveCount = this.rollbackState.moveHistory.length
+		createEffect(() => {
+			if (this.rollbackState.moveHistory.length !== prevMoveCount) {
+				this.setViewedMove('live')
+			}
+			prevMoveCount = this.rollbackState.moveHistory.length
+		})
+		//#endregion
 	}
 
 	getColorPlayer(color: GL.Color) {
 		return this.players.find((p) => p.color === color)!
 	}
 
-	getCurrentBoardView(): BoardView {
-		const lastMove = this.rollbackState.moveHistory[this.viewedMoveIndex()] || null
-		const entry = this.rollbackState.boardHistory[this.viewedMoveIndex() + 1]
-
-		return {
-			board: entry.board,
-			inCheck: GL.inCheck(entry.board),
-			lastMove,
-		}
-	}
-
 	get rollbackState() {
 		return this.room.rollbackState.gameStates[this.gameId]
 	}
 
-	private get state() {
-		return this.room.state.gameStates[this.gameId]
+	get moveHistoryAsNotation() {
+		return this.getMoveHistoryAsNotation()
 	}
 
 	get parsedGameConfig() {
@@ -124,24 +203,25 @@ export class Game {
 		return GL.getDrawIsOfferedBy(this.rollbackState)
 	}
 
-	get moveHistoryAsNotation() {
-		return getMoveHistoryAsNotation(this.rollbackState)
+	private get lockstepState() {
+		return this.room.state.gameStates[this.gameId]
 	}
-
 
 	get isPlayerTurn() {
 		return GL.isPlayerTurn(this.board, this.player.color)
 	}
+
 	private get gameStatePath(): string[] {
 		return ['gameStates', this.gameId]
 	}
 
 	getLegalMovesForSquare(startingSquare: string) {
 		if (!this.board.pieces[startingSquare]) return []
-		return GL.getLegalMoves([coordsFromNotation(startingSquare)], this.rollbackState)
+		return GL.getLegalMoves([coordsFromNotation(startingSquare)], trackAndUnwrap(this.rollbackState))
 	}
 
 	capturedPieces(color: GL.Color) {
+		const pieces = trackAndUnwrap(this.board.pieces)
 		function getPieceCounts(pieces: GL.Piece[]) {
 			const counts = {} as Record<GL.Piece, number>
 
@@ -158,7 +238,7 @@ export class Game {
 				.map((p) => p.type)
 		)
 		const currentPieceCounts = getPieceCounts(
-			Object.values(this.board.pieces)
+			Object.values(pieces)
 				.filter((p) => p.color === color)
 				.map((p) => p.type)
 		)
@@ -179,7 +259,6 @@ export class Game {
 
 		return capturedPieces
 	}
-
 
 	getPlayerColor(playerId: string) {
 		return this.rollbackState.players[playerId]
@@ -243,15 +322,10 @@ export class Game {
 		})
 	}
 
-	configureNewGame() {
-		this.destroy()
-		this.room.configureNewGame()
-	}
-
 	cancelDraw() {
-		const moveOffered = this.state.moveHistory.length
+		const moveOffered = this.lockstepState.moveHistory.length
 		this.room.sharedStore.setStoreWithRetries(() => {
-			if (!this.rollbackState || this.state.moveHistory.length !== moveOffered || GL.getGameOutcome(this.rollbackState)) return
+			if (!this.rollbackState || this.lockstepState.moveHistory.length !== moveOffered || GL.getGameOutcome(this.rollbackState)) return
 			const drawIsOfferedBy = GL.getDrawIsOfferedBy(this.rollbackState)
 			if (drawIsOfferedBy !== this.getPlayerColor(this.playerId)) return
 			return [{ path: [...this.gameStatePath, 'drawOffers', this.getPlayerColor(this.playerId)], value: null }]
@@ -259,7 +333,7 @@ export class Game {
 	}
 
 	declineDraw() {
-		const moveOffered = this.state.moveHistory.length
+		const moveOffered = this.lockstepState.moveHistory.length
 		this.room.sharedStore.setStoreWithRetries(() => {
 			if (!this.rollbackState || this.rollbackState.moveHistory.length !== moveOffered || GL.getGameOutcome(this.rollbackState)) return
 			const drawIsOfferedBy = GL.getDrawIsOfferedBy(this.rollbackState)
@@ -282,15 +356,6 @@ export class Game {
 
 	//#endregion
 
-	destroy() {
-		if (this.destroyed) {
-			return
-		}
-		console.trace('tearing down current game')
-		this.destroyed = true
-		this.callWhenDestroyed.forEach((c) => c())
-	}
-
 	resign() {
 		this.room.sharedStore.setStoreWithRetries(() => {
 			if (!this.rollbackState || GL.getGameOutcome(this.rollbackState)) return
@@ -307,91 +372,6 @@ export class Game {
 
 	// will be reassigned
 	private getClocks = () => ({ white: 0, black: 0 })
-
-	private registerListeners() {
-		createRoot((dispose) => {
-			if (!this.state) {
-				dispose()
-				return
-			}
-			// WARNING make sure this callback runs synchronously, or things will break
-			createEffect(() => {
-				if (!this.rollbackState) {
-					this.destroy()
-				}
-			})
-
-			this.callWhenDestroyed.push(dispose)
-
-			//#region outcome and clock
-			const move$ = observeMoves(this.rollbackState)
-			this.getClocks = useClock(move$, this.parsedGameConfig, () => !!this.outcome)
-
-			const gameOutcome$ = rxFrom(observable(() => GL.getGameOutcome(this.state)))
-			type Timeouts = {
-				white: boolean
-				black: boolean
-			}
-
-			const timeout$ = rxFrom(observable(this.getClocks)).pipe(
-				map(
-					(clocks) =>
-						({
-							white: clocks.white <= 0,
-							black: clocks.black <= 0,
-						}) as Timeouts
-				),
-				distinctUntilChanged(isEqual)
-			)
-			const outcome$ = combineLatest([gameOutcome$, timeout$]).pipe(
-				map(([outcome, timeouts]): GameOutcome | undefined => {
-					if (timeouts.white) return { winner: 'black', reason: 'flagged' }
-					if (timeouts.black) return { winner: 'white', reason: 'flagged' }
-					return outcome || undefined
-				})
-			)
-			this.getOutcome = from(outcome$)
-			//#endregion
-
-			//#region draw offer events
-			let prevOffers: GL.GameState['drawOffers'] = JSON.parse(JSON.stringify(this.rollbackState.drawOffers))
-			let prevDeclinedBy: GL.GameState['drawDeclinedBy'] | null = JSON.parse(JSON.stringify(this.rollbackState.drawDeclinedBy))
-
-			this.drawEvent$ = rxFrom(
-				observable(() => [trackStore(this.rollbackState.drawOffers), this.rollbackState.drawDeclinedBy] as const)
-			).pipe(
-				skip(1),
-				concatMap(([offers, declinedBy]) => {
-					let opponentOffering = offers[this.opponent.color] !== null
-					let opponentOfferingPrev = prevOffers[this.opponent.color] !== null
-					let playerOffering = offers[this.player.color] !== null
-					let playerOfferingPrev = prevOffers[this.player.color] !== null
-
-					let events: DrawEvent[] = []
-					if (this.outcome) {
-					} else if (declinedBy && !prevDeclinedBy) events.push('declined')
-					else if (opponentOffering && !opponentOfferingPrev) events.push('offered-by-opponent')
-					else if (playerOffering && !playerOfferingPrev) events.push('awaiting-response')
-					else if (!opponentOffering && opponentOfferingPrev) events.push('opponent-cancelled')
-					else if (!playerOffering && playerOfferingPrev) events.push('player-cancelled')
-					prevOffers = JSON.parse(JSON.stringify(offers))
-					prevDeclinedBy = JSON.parse(JSON.stringify(offers))
-					return events
-				})
-			)
-			//#endregion
-
-			//#region reset view when move history changes
-			let prevMoveCount = this.rollbackState.moveHistory.length
-			createEffect(() => {
-				if (this.rollbackState.moveHistory.length !== prevMoveCount) {
-					this.setViewedMove('live')
-				}
-				prevMoveCount = this.rollbackState.moveHistory.length
-			})
-			//#endregion
-		})
-	}
 }
 
 function observeMoves(gameState: GL.GameState) {

@@ -207,7 +207,6 @@ const setRollbackStore = (...args: any[]) => {
 				applyMutationsToStore(transaction.mutations, setRollbackStore)
 				applyMutationsToStore(transaction.mutations, setLockstepStore)
 			})
-			console.log('set')
 			let orderedTransaction: SharedStoreOrderedTransaction<ActionType>
 			if (transaction.index == null) {
 				orderedTransaction = {
@@ -235,14 +234,7 @@ const setRollbackStore = (...args: any[]) => {
 			// only update rollback store if this transaction must be applied on a particular transaction index, otherwise the history could end up irreconcilable
 			if (transaction.index) {
 				batch(() => {
-					for (let mutation of transaction.mutations) {
-						mutation.path = interpolatePath(mutation.path, rollbackStore)
-						previous.push(resolvePath(mutation.path, rollbackStore))
-						setRollbackStore(...mutation.path, mutation.value)
-						if (isLeader()) {
-							setLockstepStore(...mutation.path, mutation.value)
-						}
-					}
+					applyMutationsToStore(transaction.mutations, setRollbackStore)
 				})
 				console.log('applied to stores')
 				appliedTransactions.push(transaction)
@@ -295,9 +287,23 @@ const setRollbackStore = (...args: any[]) => {
 
 	//#region handle incoming transactions
 	const applyMutationsToStore = (mutations: StoreMutation[], setStore: (...args: any[]) => any) => {
-		for (let mutation of mutations) {
-			setStore(...mutation.path, mutation.value)
-		}
+		setStore(
+			produce((state: any) => {
+				for (let mut of mutations) {
+					const path = interpolatePath(mut.path, state)
+					if (path.length === 0) return mut.value
+					let current = state
+					for (let segment of path.slice(0, -1)) {
+						current = current[segment]
+						if (!current) {
+							console.error('attempted to resolve invalid path for store', path, state)
+							throw new Error('invalid path')
+						}
+					}
+					current[path[path.length - 1]] = mut.value
+				}
+			})
+		)
 	}
 
 	function handleReceivedTransaction(receivedAtom: SharedStoreOrderedTransaction<ActionType>) {
@@ -312,7 +318,9 @@ const setRollbackStore = (...args: any[]) => {
 			// we've received the first valid mutation with this index
 			if (receivedAtom.index === appliedTransactions.length) {
 				applyMutationsToStore(receivedAtom.mutations, setRollbackStore)
+				console.log('rollback store set')
 				applyMutationsToStore(receivedAtom.mutations, setLockstepStore)
+				console.log('lockstep store set')
 				appliedTransactions.push(receivedAtom)
 				// this is now canonical state, and we can broadcast it
 				provider.broadcastAsCommitted(receivedAtom, receivedAtom.mutationId)

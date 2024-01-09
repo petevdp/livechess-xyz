@@ -84,15 +84,15 @@ export async function connectToRoom(roomId: string, player: P.Player, abort?: ()
 		store = initSharedStore<RoomState, ClientOwnedState, RoomActionType>(provider, { playerId: player.id }, state)
 
 		//#region try to take state snapshot on page unload
-		createEffect(() => {
-			trackStore(store.lockstepStore)
-			const now = Date.now()
-			if (lastSnaphotTs === -1 || now - lastSnaphotTs > 5000) {
-				localStorage.setItem(`roomSnapshot:roomId`, roomId)
-				localStorage.setItem(`roomSnapshot`, JSON.stringify(store.lockstepStore))
-				lastSnaphotTs = now
-			}
-		})
+		// createEffect(() => {
+		// 	trackStore(store.lockstepStore)
+		// 	const now = Date.now()
+		// 	if (lastSnaphotTs === -1 || now - lastSnaphotTs > 5000) {
+		// 		localStorage.setItem(`roomSnapshot:roomId`, roomId)
+		// 		localStorage.setItem(`roomSnapshot`, JSON.stringify(store.lockstepStore))
+		// 		lastSnaphotTs = now
+		// 	}
+		// })
 
 		function unloadListener() {
 			localStorage.setItem(`roomSnapshot`, JSON.stringify(store.lockstepStore))

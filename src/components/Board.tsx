@@ -1,16 +1,4 @@
-import {
-	batch,
-	createEffect,
-	createMemo,
-	createReaction,
-	createSignal,
-	For,
-	Match,
-	onCleanup,
-	onMount,
-	Show,
-	Switch
-} from 'solid-js'
+import { batch, createEffect, createMemo, createReaction, createSignal, For, Match, onCleanup, onMount, Show, Switch } from 'solid-js'
 import * as R from '../systems/room.ts'
 import * as G from '../systems/game/game.ts'
 import * as GL from '../systems/game/gameLogic.ts'
@@ -18,7 +6,7 @@ import * as PC from '../systems/piece.ts'
 import * as Modal from './Modal.tsx'
 import styles from './Board.module.css'
 import toast from 'solid-toast'
-import {Button} from './Button.tsx'
+import { Button } from './Button.tsx'
 import FirstSvg from '../assets/icons/first.svg'
 import FlipBoardSvg from '../assets/icons/flip-board.svg'
 import LastSvg from '../assets/icons/last.svg'
@@ -26,8 +14,8 @@ import NextSvg from '../assets/icons/next.svg'
 import OfferDrawSvg from '../assets/icons/offer-draw.svg'
 import PrevSvg from '../assets/icons/prev.svg'
 import ResignSvg from '../assets/icons/resign.svg'
-import {BOARD_COLORS} from '../config.ts'
-import {isEqual} from 'lodash'
+import { BOARD_COLORS } from '../config.ts'
+import { isEqual } from 'lodash'
 
 //TODO provide some method to view the current game's config
 //TODO component duplicates on reload sometimes for some reason
@@ -36,10 +24,6 @@ const imageCache: Record<string, HTMLImageElement> = {}
 export function Board(props: { gameId: string }) {
 	let game = new G.Game(props.gameId, R.room()!, R.room()!.player.id, R.room()!.rollbackState.gameConfig)
 	G.setGame(game)
-
-	onCleanup(() => {
-		game.destroy()
-	})
 
 	//#region calc board sizes
 	// let BOARD_SIZE = 600
@@ -81,9 +65,6 @@ export function Board(props: { gameId: string }) {
 	const [clickedSquare, setClickedSquare] = createSignal(null as null | string)
 	const [grabbedSquareMousePos, setGrabbedSquareMousePos] = createSignal(null as null | { x: number; y: number })
 
-	// createEffect(() => {
-	// 	console.log('current board view: in check', game.currentBoardView.inCheck)
-	// })
 
 	const activeSquare = () => grabbedSquare() || clickedSquare()
 
@@ -96,11 +77,6 @@ export function Board(props: { gameId: string }) {
 	// TODO Lots of optimization to be done here
 	//#region rendering
 	function render() {
-		if (game.destroyed || !game.rollbackState) {
-			console.log('early return from render')
-			return
-		}
-
 		const ctx = canvas.getContext('2d')!
 		//#region draw board
 
@@ -383,7 +359,7 @@ export function Board(props: { gameId: string }) {
 					<div class="flex flex-col items-center space-y-1">
 						<GameOutcomeDisplay outcome={game.outcome!} />
 						<div class="space-x-1">
-							<Button size="medium" kind="primary" onclick={() => game.configureNewGame()}>
+							<Button size="medium" kind="primary" onclick={() => game.room.configureNewGame()}>
 								New Game
 							</Button>
 							<Button size="medium" kind="secondary" onclick={() => _props.onCompleted(false)}>
@@ -525,7 +501,7 @@ function ActionsPanel(props: { class: string }) {
 					</Switch>
 				</Match>
 				<Match when={game.outcome}>
-					<Button size="small" kind="primary" onclick={() => game.configureNewGame()}>
+					<Button size="small" kind="primary" onclick={() => game.room.configureNewGame()}>
 						New Game
 					</Button>
 				</Match>

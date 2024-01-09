@@ -151,7 +151,7 @@ export function notationFromCoords(coords: Coords) {
 	return String.fromCharCode('a'.charCodeAt(0) + coords.x) + (coords.y + 1)
 }
 
-export function candidateMoveToMove(candidateMove: CandidateMove, promotion?: PromotionPiece, capture?: boolean): Move {
+function candidateMoveToMove(candidateMove: CandidateMove, promotion?: PromotionPiece, capture?: boolean): Move {
 	return {
 		from: notationFromCoords(candidateMove.from),
 		to: notationFromCoords(candidateMove.to),
@@ -183,22 +183,22 @@ export function inCheck(board: Board) {
 	return _inCheck(board)
 }
 
-export function checkmated(game: GameState) {
+function checkmated(game: GameState) {
 	return inCheck(getBoard(game)) && noMoves(game)
 }
 
-export function stalemated(game: GameState) {
+function stalemated(game: GameState) {
 	return !inCheck(getBoard(game)) && noMoves(game)
 }
 
-export function threefoldRepetition(game: GameState) {
+function threefoldRepetition(game: GameState) {
 	if (game.boardHistory.length === 0) return false
 	const currentHash = game.boardHistory[game.boardHistory.length - 1].hash
 	const dupeCount = game.boardHistory.filter(({ hash }) => hash === currentHash).length
 	return dupeCount == 3
 }
 
-export function insufficientMaterial(game: GameState) {
+function insufficientMaterial(game: GameState) {
 	for (let piece of Object.values(getBoard(game).pieces)) {
 		if (piece.type === 'pawn' || piece.type === 'rook' || piece.type === 'queen') {
 			return false
@@ -269,7 +269,7 @@ export function validateAndPlayMove(from: string, to: string, game: GameState, p
 }
 
 // Uncritically apply a move to the board. Does not mutate input.
-export function applyMoveToBoard(move: CandidateMove | Move, board: Board) {
+function applyMoveToBoard(move: CandidateMove | Move, board: Board) {
 	const _move = (typeof move.from === 'string' ? moveToCandidateMove(move as Move) : move) as CandidateMove
 	const piece = board.pieces[notationFromCoords(_move.from)]
 	const newBoard = JSON.parse(JSON.stringify(board)) as Board
