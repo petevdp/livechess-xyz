@@ -1,11 +1,11 @@
 import * as P from './player.ts'
 import * as GL from './game/gameLogic.ts'
 import { PLAYER_TIMEOUT, SERVER_HOST } from '../config.ts'
-import { initSharedStore, newNetwork, SharedStore, SharedStoreProvider, StoreMutation } from '../utils/sharedStore.ts'
+import { initSharedStore, newNetwork, SharedStore, SharedStoreProvider, StoreMutation } from '~/utils/sharedStore.ts'
 import { createEffect, createMemo, createRoot, createSignal, getOwner, onCleanup, Owner, runWithOwner, untrack } from 'solid-js'
 import { until } from '@solid-primitives/promise'
 import { trackDeep, trackStore } from '@solid-primitives/deep'
-import { createIdSync } from '../utils/ids.ts'
+import { createIdSync } from '~/utils/ids.ts'
 import { unwrap } from 'solid-js/store'
 import { concatMap } from 'rxjs'
 

@@ -21,6 +21,12 @@
 		"strict": true,
 		"noUnusedLocals": true,
 		"noUnusedParameters": true,
+		"baseUrl": "src/",
+		"paths": {
+			"~/*": [
+				"./*"
+			]
+		},
 		"noFallthroughCasesInSwitch": true,
 		"types": [
 			"vite-plugin-solid-svg/types-component-solid",

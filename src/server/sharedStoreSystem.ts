@@ -12,7 +12,7 @@ import {
 	Subscription,
 	switchMap,
 } from 'rxjs'
-import { Base64String, ClientConfig, encodeContent, NewNetworkResponse, SharedStoreMessage } from '../utils/sharedStore.ts'
+import { Base64String, ClientConfig, encodeContent, NewNetworkResponse, SharedStoreMessage } from '~/utils/sharedStore.ts'
 import * as ws from 'ws'
 import { FastifyBaseLogger } from 'fastify'
 

@@ -1,7 +1,7 @@
 import { ParentProps } from 'solid-js'
 import { ModalContainer } from './Modal.tsx'
 import { A } from '@solidjs/router'
-import Logo from '../assets/logo.svg'
+import Logo from '~/assets/logo.svg'
 import styles from './AppContainer.module.css'
 
 export function AppContainer(props: ParentProps) {

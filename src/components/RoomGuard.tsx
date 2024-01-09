@@ -1,7 +1,7 @@
 import { useNavigate, useParams } from '@solidjs/router'
 import { createEffect, createSignal, getOwner, Match, Switch } from 'solid-js'
-import * as R from '../systems/room.ts'
-import * as P from '../systems/player.ts'
+import * as R from '~/systems/room.ts'
+import * as P from '~/systems/player.ts'
 import { AppContainer } from './AppContainer.tsx'
 import { NickForm, Room } from './Room.tsx'
 

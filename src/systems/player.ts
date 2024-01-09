@@ -1,4 +1,4 @@
-import { createId } from '../utils/ids.ts'
+import { createId } from '~/utils/ids.ts'
 import { createEffect, createSignal } from 'solid-js'
 import * as R from './room.ts'
 

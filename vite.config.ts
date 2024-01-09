@@ -2,7 +2,8 @@ import { defineConfig } from 'vite'
 import solid from 'vite-plugin-solid'
 import solidSvg from 'vite-plugin-solid-svg'
 import devtools from 'solid-devtools/vite'
+import tsconfigPaths from 'vite-tsconfig-paths'
 
 export default defineConfig({
-	plugins: [devtools({ autoname: true }), solid(), solidSvg()],
+	plugins: [devtools({ autoname: true }), solid(), solidSvg(), tsconfigPaths()],
 })

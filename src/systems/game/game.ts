@@ -6,7 +6,7 @@ import { Accessor, createEffect, createMemo, createSignal, from, getOwner, obser
 import { combineLatest, concatMap, distinctUntilChanged, EMPTY, from as rxFrom, Observable, ReplaySubject, skip } from 'rxjs'
 import { isEqual } from 'lodash'
 import { map } from 'rxjs/operators'
-import { trackAndUnwrap } from '../../utils/solid.ts'
+import { trackAndUnwrap } from '~/utils/solid.ts'
 
 export type PlayerWithColor = P.Player & { color: GL.Color }
 

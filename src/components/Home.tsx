@@ -1,5 +1,5 @@
 import { AppContainer } from './AppContainer.tsx'
-import * as R from '../systems/room.ts'
+import * as R from '~/systems/room.ts'
 import { useNavigate } from '@solidjs/router'
 import { Button } from './Button.tsx'
 

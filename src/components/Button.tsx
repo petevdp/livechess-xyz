@@ -1,7 +1,7 @@
 import { createEffect, createSignal, JSX, mergeProps, onMount } from 'solid-js'
 import { filterProps } from '@solid-primitives/props'
 import styles from './Button.module.css'
-import { tippy } from '../utils/tippy.tsx'
+import { tippy } from '~/utils/tippy.tsx'
 
 tippy
 export const buttonPrimary: Record<string, boolean> = {
