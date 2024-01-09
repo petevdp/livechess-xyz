@@ -13,7 +13,7 @@ export type ButtonProps = {
 	size: 'small' | 'medium' | 'large'
 } & JSX.ButtonHTMLAttributes<HTMLButtonElement>
 
-export function Button(props: ButtonProps) {
+export function Game(props: ButtonProps) {
 	const baseProps: JSX.ButtonHTMLAttributes<HTMLButtonElement> = {
 		'aria-label': props.children instanceof HTMLElement ? props.children.innerText : '',
 	}

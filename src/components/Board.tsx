@@ -6,7 +6,7 @@ import * as PC from '../systems/piece.ts'
 import * as Modal from './Modal.tsx'
 import styles from './Board.module.css'
 import toast from 'solid-toast'
-import { Button } from './Button.tsx'
+import { Game } from './Game.tsx'
 import FirstSvg from '../assets/icons/first.svg'
 import FlipBoardSvg from '../assets/icons/flip-board.svg'
 import LastSvg from '../assets/icons/last.svg'
@@ -359,12 +359,12 @@ export function Board(props: { gameId: string }) {
 					<div class="flex flex-col items-center space-y-1">
 						<GameOutcomeDisplay outcome={game.outcome!} />
 						<div class="space-x-1">
-							<Button size="medium" kind="primary" onclick={() => game.room.configureNewGame()}>
+							<Game size="medium" kind="primary" onclick={() => game.room.configureNewGame()}>
 								New Game
-							</Button>
-							<Button size="medium" kind="secondary" onclick={() => _props.onCompleted(false)}>
+							</Game>
+							<Game size="medium" kind="secondary" onclick={() => _props.onCompleted(false)}>
 								Continue
-							</Button>
+							</Game>
 						</div>
 					</div>
 				)
@@ -429,9 +429,9 @@ export function Board(props: { gameId: string }) {
 				<Player class={styles.opponent} player={game.opponent} />
 				<Clock class={styles.clockOpponent} clock={game.clock[game.opponent.color]} ticking={!game.isPlayerTurn} />
 				<div class={`${styles.topLeftActions} flex flex-col items-start space-x-1`}>
-					<Button title={'Flip Board'} kind="tertiary" size="small" onclick={() => setBoardFlipped((f) => !f)} class="mb-1">
+					<Game title={'Flip Board'} kind="tertiary" size="small" onclick={() => setBoardFlipped((f) => !f)} class="mb-1">
 						<FlipBoardSvg />
-					</Button>
+					</Game>
 				</div>
 				<CapturedPieces size={boardSize() / 2} layout={layout()} pieces={game.capturedPieces(game.opponent.color)} is={'opponent'} />
 				<CapturedPieces size={boardSize() / 2} layout={layout()} pieces={game.capturedPieces(game.player.color)} is={'player'} />
@@ -480,30 +480,30 @@ function ActionsPanel(props: { class: string }) {
 			<Switch>
 				<Match when={!game.outcome}>
 					<Show when={game.drawIsOfferedBy === null}>
-						<Button title="Offer Draw" size="small" kind="tertiary" onclick={() => game.offerDraw()}>
+						<Game title="Offer Draw" size="small" kind="tertiary" onclick={() => game.offerDraw()}>
 							<OfferDrawSvg />
-						</Button>
-						<Button title="Resign" kind="tertiary" size="small" onclick={() => game.resign()}>
+						</Game>
+						<Game title="Resign" kind="tertiary" size="small" onclick={() => game.resign()}>
 							<ResignSvg />
-						</Button>
+						</Game>
 					</Show>
 					<Switch>
 						<Match when={game.drawIsOfferedBy === game.player.color}>
-							<Button kind="primary" size="small" onClick={() => game.cancelDraw()}>
+							<Game kind="primary" size="small" onClick={() => game.cancelDraw()}>
 								Cancel Draw
-							</Button>
+							</Game>
 						</Match>
 						<Match when={game.drawIsOfferedBy === game.opponent.color}>
-							<Button kind="primary" size="small" onClick={() => game.offerDraw()}>
+							<Game kind="primary" size="small" onClick={() => game.offerDraw()}>
 								Accept Draw
-							</Button>
+							</Game>
 						</Match>
 					</Switch>
 				</Match>
 				<Match when={game.outcome}>
-					<Button size="small" kind="primary" onclick={() => game.room.configureNewGame()}>
+					<Game size="small" kind="primary" onclick={() => game.room.configureNewGame()}>
 						New Game
-					</Button>
+					</Game>
 				</Match>
 			</Switch>
 		</span>
@@ -521,9 +521,9 @@ function MoveHistory() {
 					<code> 0.</code>
 				</pre>
 				<div>
-					<Button size="small" kind={game.viewedMoveIndex() === -1 ? 'secondary' : 'tertiary'} onClick={() => _setViewedMove(-1)}>
+					<Game size="small" kind={game.viewedMoveIndex() === -1 ? 'secondary' : 'tertiary'} onClick={() => _setViewedMove(-1)}>
 						Start
-					</Button>
+					</Game>
 				</div>
 			</div>
 			<For each={game.moveHistoryAsNotation}>
@@ -541,23 +541,23 @@ function MoveHistory() {
 								<code>{(index() + 1).toString().padStart(2, ' ')}.</code>
 							</pre>
 							<div>
-								<Button
+								<Game
 									class={viewingFirstMove() ? '' : 'font-light'}
 									size="small"
 									kind={viewingFirstMove() ? 'secondary' : 'tertiary'}
 									onClick={() => _setViewedMove(index() * 2)}
 								>
 									{move[0]}
-								</Button>{' '}
+								</Game>{' '}
 								<Show when={move[1]}>
-									<Button
+									<Game
 										size="small"
 										class={viewingSecondMove() ? '' : 'font-light'}
 										kind={viewingSecondMove() ? 'secondary' : 'tertiary'}
 										onClick={() => _setViewedMove(index() * 2 + 1)}
 									>
 										{move[1]}
-									</Button>
+									</Game>
 								</Show>
 							</div>
 						</div>
@@ -596,10 +596,10 @@ function MoveNav() {
 	const _setViewedMove = setViewedMove(game)
 	return (
 		<div class="flex justify-evenly">
-			<Button kind="tertiary" size="small" disabled={game.viewedMoveIndex() === -1} onClick={() => _setViewedMove(-1)}>
+			<Game kind="tertiary" size="small" disabled={game.viewedMoveIndex() === -1} onClick={() => _setViewedMove(-1)}>
 				<FirstSvg />
-			</Button>
-			<Button
+			</Game>
+			<Game
 				class="text-blue-600"
 				kind="tertiary"
 				size="small"
@@ -607,18 +607,18 @@ function MoveNav() {
 				onClick={() => _setViewedMove(game.viewedMoveIndex() - 1)}
 			>
 				<PrevSvg />
-			</Button>
-			<Button kind="tertiary" size="small" onClick={() => _setViewedMove(game.viewedMoveIndex() + 1)}>
+			</Game>
+			<Game kind="tertiary" size="small" onClick={() => _setViewedMove(game.viewedMoveIndex() + 1)}>
 				<NextSvg />
-			</Button>
-			<Button
+			</Game>
+			<Game
 				kind="tertiary"
 				size="small"
 				disabled={game.viewedMoveIndex() === game.rollbackState.moveHistory.length - 1}
 				onClick={() => _setViewedMove('live')}
 			>
 				<LastSvg />
-			</Button>
+			</Game>
 		</div>
 	)
 }

@@ -7,7 +7,7 @@ import { Choice, MultiChoiceButton } from '../MultiChoiceButton.tsx'
 import * as GL from '../systems/game/gameLogic.ts'
 import * as R from '../systems/room.ts'
 import { tippy } from '../utils/tippy.tsx'
-import { Button } from './Button.tsx'
+import { Game } from './Game.tsx'
 import { until } from '@solid-primitives/promise'
 import SwapSvg from '../assets/icons/swap.svg'
 import * as TIP from 'tippy.js'
@@ -23,6 +23,39 @@ function CenterPanel(props: ParentProps) {
 export function Room() {
 	const room = R.room()!
 	if (!room) throw new Error('room is not initialized')
+
+	//#region toast basic room events
+	const sub = room.action$.subscribe((action) => {
+		console.log({ action })
+		switch (action.type) {
+			case 'player-connected':
+				if (action.player.id === P.playerId()) {
+					toast('Connected to room')
+				} else {
+					toast(`${action.player.name} connected`)
+				}
+				break
+			case 'player-disconnected':
+				if (action.player.id === P.playerId()) {
+					toast('Disconnected from room')
+				} else {
+					toast(`${action.player.name} disconnected`)
+				}
+				break
+			case 'player-reconnected':
+				if (action.player.id === P.playerId()) {
+					toast('Reconnected to room')
+				} else {
+					toast(`${action.player.name} reconnected`)
+				}
+				break
+		}
+	})
+	//#endregion
+
+	onCleanup(() => {
+		sub.unsubscribe()
+	})
 
 	return (
 		<Switch>
@@ -52,15 +85,15 @@ function Lobby() {
 			<div class="flex flex-col space-y-1">
 				<GameConfigForm />
 				<div class="col-span-1 flex w-full justify-center space-x-1">
-					<Button size="medium" kind="primary" class="whitespace-nowrap" onclick={copyInviteLink}>
+					<Game size="medium" kind="primary" class="whitespace-nowrap" onclick={copyInviteLink}>
 						Copy Invite Link
-					</Button>
-					<Button kind="primary" size="medium">
+					</Game>
+					<Game kind="primary" size="medium">
 						Share
-					</Button>
-					<Button kind="primary" size="medium">
+					</Game>
+					<Game kind="primary" size="medium">
 						Show QR Code
-					</Button>
+					</Game>
 				</div>
 			</div>
 		</CenterPanel>
@@ -128,14 +161,14 @@ function PlayerAwareness() {
 				toast(`Swapped Pieces! You are now ${playerColor()}`)
 				break
 			case 'decline-or-cancel-piece-swap':
-				if (action.origin.id === room.opponent?.id) {
+				if (action.player.id === room.opponent?.id) {
 					toast(`${room.opponent.name} declined piece swap`)
 				} else {
 					toast('Piece swap cancelled')
 				}
 				break
 			case 'initiate-piece-swap':
-				if (action.origin.id === room.opponent?.id) {
+				if (action.player.id === room.opponent?.id) {
 				} else {
 					toast('Waiting for opponent to accept piece swap')
 				}
@@ -189,7 +222,7 @@ function SwapButton(props: { initiatePieceSwap: () => void; alreadySwapping: boo
 	return (
 		<div class="m-auto ml-auto mr-auto flex flex-col items-center justify-end">
 			<div class="flex flex-col justify-center">
-				<Button
+				<Game
 					disabled={props.alreadySwapping}
 					title="Swap Pieces"
 					kind="tertiary"
@@ -198,7 +231,7 @@ function SwapButton(props: { initiatePieceSwap: () => void; alreadySwapping: boo
 					onClick={requestSwap}
 				>
 					<SwapSvg />
-				</Button>
+				</Game>
 			</div>
 		</div>
 	)
@@ -216,7 +249,7 @@ function PlayerConfigDisplay(props: {
 	const cancelSwapModalContent = (
 		<div class="space-x-1">
 			<span class="text-xs">Asking Opponent for piece swap</span>
-			<Button
+			<Game
 				onclick={() => {
 					tip()?.hide()
 					props.cancelPieceSwap()
@@ -225,7 +258,7 @@ function PlayerConfigDisplay(props: {
 				kind="secondary"
 			>
 				Decline
-			</Button>
+			</Game>
 		</div>
 	) as HTMLDivElement
 
@@ -250,15 +283,15 @@ function PlayerConfigDisplay(props: {
 				{props.player.name} (You)
 			</span>
 			<Show when={!props.player.isReadyForGame}>
-				<Button size="medium" kind="primary" onclick={() => props.toggleReady()}>
+				<Game size="medium" kind="primary" onclick={() => props.toggleReady()}>
 					{props.canStartGame ? 'Start Game!' : 'Ready Up!'}
-				</Button>
+				</Game>
 			</Show>
 			<Show when={props.player.isReadyForGame}>
 				<span>Ready!</span>{' '}
-				<Button kind={'secondary'} size="small" onClick={() => props.toggleReady()}>
+				<Game kind={'secondary'} size="small" onClick={() => props.toggleReady()}>
 					Unready
-				</Button>
+				</Game>
 			</Show>
 		</PlayerDisplayContainer>
 	)
@@ -276,7 +309,7 @@ function OpponentConfigDisplay(props: {
 	const changeColorModalContent = (
 		<div class="space-x-1">
 			<span class="text-xs">{props.opponent.name} wants to swap colors</span>
-			<Button
+			<Game
 				onClick={() => {
 					tip()?.hide()
 					props.agreePieceSwap()
@@ -285,8 +318,8 @@ function OpponentConfigDisplay(props: {
 				kind="primary"
 			>
 				Accept
-			</Button>
-			<Button
+			</Game>
+			<Game
 				onclick={() => {
 					tip()?.hide()
 					props.declinePieceSwap()
@@ -295,7 +328,7 @@ function OpponentConfigDisplay(props: {
 				kind="secondary"
 			>
 				Decline
-			</Button>
+			</Game>
 		</div>
 	) as HTMLDivElement
 

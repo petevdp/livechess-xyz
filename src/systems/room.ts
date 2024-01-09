@@ -2,12 +2,12 @@ import * as P from './player.ts'
 import * as GL from './game/gameLogic.ts'
 import { PLAYER_TIMEOUT, SERVER_HOST } from '../config.ts'
 import { initSharedStore, newNetwork, SharedStore, SharedStoreProvider, StoreMutation } from '../utils/sharedStore.ts'
-import { createEffect, createRoot, createSignal, on, onCleanup } from 'solid-js'
+import { createEffect, createMemo, createRoot, createSignal, getOwner, onCleanup, Owner, runWithOwner, untrack } from 'solid-js'
 import { until } from '@solid-primitives/promise'
-import { trackStore } from '@solid-primitives/deep'
-import { Observable } from 'rxjs'
-import { map } from 'rxjs/operators'
+import { trackDeep, trackStore } from '@solid-primitives/deep'
 import { createIdSync } from '../utils/ids.ts'
+import { unwrap } from 'solid-js/store'
+import { concatMap } from 'rxjs'
 
 // TODO normalize language from "color swap" to "pieces swap"
 
@@ -18,7 +18,17 @@ export type RoomParticipant = P.Player & {
 	disconnectedAt?: number
 }
 
-export type RoomActionType = 'initiate-piece-swap' | 'agree-piece-swap' | 'decline-or-cancel-piece-swap'
+// not exhaustive of all state mutations, just the ones we want to name for convenience
+export type RoomEvent = {
+	type:
+		| 'initiate-piece-swap'
+		| 'agree-piece-swap'
+		| 'decline-or-cancel-piece-swap'
+		| 'player-connected'
+		| 'player-disconnected'
+		| 'player-reconnected'
+	playerId: string
+}
 
 export type RoomState = {
 	players: RoomParticipant[]
@@ -27,7 +37,6 @@ export type RoomState = {
 	whitePlayerId?: string
 	gameStates: Record<string, GL.GameState>
 	activeGameId?: string
-	messages: ChatMessage[]
 }
 
 export type ChatMessage = {
@@ -41,11 +50,6 @@ type ClientOwnedState = {
 	playerId: string
 }
 
-type RoomAction = {
-	type: RoomActionType
-	origin: RoomParticipant
-}
-
 export const [room, setRoom] = createSignal<Room | null>(null)
 
 let disposePrevious = () => {}
@@ -54,8 +58,8 @@ export async function createRoom() {
 	return await newNetwork(SERVER_HOST)
 }
 
-export async function connectToRoom(roomId: string, player: P.Player, abort?: () => void) {
-	const provider = new SharedStoreProvider<RoomActionType>(SERVER_HOST, roomId)
+export async function connectToRoom(roomId: string, player: P.Player, parentOwner: Owner, abort?: () => void) {
+	const provider = new SharedStoreProvider<RoomEvent>(SERVER_HOST, roomId)
 	provider.disconnected$.then(() => abort && abort())
 
 	// will only be used if the room is new
@@ -73,26 +77,26 @@ export async function connectToRoom(roomId: string, player: P.Player, abort?: ()
 			players: [],
 			status: 'pregame',
 			gameConfig: GL.defaultGameConfig,
-			messages: [],
 			gameStates: {},
 		}
 	}
 
-	let store = null as unknown as SharedStore<RoomState, ClientOwnedState, RoomActionType>
+	let store = null as unknown as SharedStore<RoomState, ClientOwnedState, RoomEvent>
+	let instanceOwner = null as unknown as Owner
 	disposePrevious()
 	createRoot((_dispose) => {
-		store = initSharedStore<RoomState, ClientOwnedState, RoomActionType>(provider, { playerId: player.id }, state)
+		store = initSharedStore<RoomState, ClientOwnedState, RoomEvent>(provider, { playerId: player.id }, state)
 
 		//#region try to take state snapshot on page unload
-		// createEffect(() => {
-		// 	trackStore(store.lockstepStore)
-		// 	const now = Date.now()
-		// 	if (lastSnaphotTs === -1 || now - lastSnaphotTs > 5000) {
-		// 		localStorage.setItem(`roomSnapshot:roomId`, roomId)
-		// 		localStorage.setItem(`roomSnapshot`, JSON.stringify(store.lockstepStore))
-		// 		lastSnaphotTs = now
-		// 	}
-		// })
+		createEffect(() => {
+			trackStore(store.lockstepStore)
+			const now = Date.now()
+			if (lastSnaphotTs === -1 || now - lastSnaphotTs > 5000) {
+				localStorage.setItem(`roomSnapshot:roomId`, roomId)
+				localStorage.setItem(`roomSnapshot`, JSON.stringify(store.lockstepStore))
+				lastSnaphotTs = now
+			}
+		})
 
 		function unloadListener() {
 			localStorage.setItem(`roomSnapshot`, JSON.stringify(store.lockstepStore))
@@ -101,25 +105,27 @@ export async function connectToRoom(roomId: string, player: P.Player, abort?: ()
 
 		window.addEventListener('beforeunload', unloadListener)
 		//#endregion
+		instanceOwner = getOwner()!
 
 		disposePrevious = () => {
 			window.removeEventListener('beforeunload', unloadListener)
+			setRoom(null)
 			_dispose()
 		}
 	})
-	console.log('initializing store')
+
+	runWithOwner(parentOwner, () => {
+		onCleanup(disposePrevious)
+	})
+
 	await until(() => store.initialized())
-	console.log('store initialized')
 	await store.setStoreWithRetries((state) => {
+		// leader will report player reconnection
 		if (state.players.some((p) => p.id === player.id)) return []
 		const mutations: StoreMutation[] = [
 			{
 				path: ['players', '__push__'],
 				value: { id: player.id, name: P.playerName(), isReadyForGame: false, agreeColorSwap: false },
-			},
-			{
-				path: ['messages', '__push__'],
-				value: { type: 'system', text: `${player.name} has joined`, sender: null, ts: Date.now() },
 			},
 		]
 
@@ -129,9 +135,11 @@ export async function connectToRoom(roomId: string, player: P.Player, abort?: ()
 			mutations.push({ path: ['whitePlayerId'], value: player.id })
 		}
 
-		return mutations
+		return { mutations, events: [{ type: 'player-connected', playerId: player.id }] }
 	})
-	return new Room(store, provider, store.rollbackStore.players.find((p) => player.id === p.id)!)
+	const room = runWithOwner(instanceOwner, () => new Room(store, provider, store.rollbackStore.players.find((p) => player.id === p.id)!))!
+	setRoom(room)
+	return room
 }
 
 export class Room {
@@ -141,11 +149,54 @@ export class Room {
 	}
 
 	constructor(
-		public sharedStore: SharedStore<RoomState, ClientOwnedState, RoomActionType>,
-		public provider: SharedStoreProvider<RoomActionType>,
+		public sharedStore: SharedStore<RoomState, ClientOwnedState, RoomEvent>,
+		public provider: SharedStoreProvider<RoomEvent>,
 		public player: RoomParticipant
 	) {
-		this.setupListeners()
+		//#region track player events
+		const connectedPlayers = createMemo(() => {
+			trackDeep(this.sharedStore.clientControlledStates)
+			let playerIds: string[] = Object.values(this.sharedStore.clientControlledStates).map((s) => s.playerId)
+			console.log('changing connected players', playerIds)
+			return this.players.filter((p) => playerIds.includes(p.id) && p.name)
+		})
+
+		const previouslyConnected = new Set<string>()
+		createEffect(() => {
+			const _connectedPlayers = unwrap(connectedPlayers())
+			untrack(() => {
+				console.log('connected players changed', _connectedPlayers)
+				for (let player of this.players) {
+					const isConnected = _connectedPlayers.some((p) => p.id === player.id)
+					if (!previouslyConnected.has(player.id) && isConnected) {
+						previouslyConnected.add(player.id)
+						if (!this.sharedStore.isLeader()) return
+						this.sharedStore.setStoreWithRetries((state) => {
+							const playerIndex = state.players.findIndex((p) => p.id === player.id)
+							if (playerIndex === -1 || !player.disconnectedAt) return []
+							return {
+								events: [{ type: 'player-reconnected', playerId: player.id }],
+								mutations: [{ path: ['players', playerIndex, 'disconnectedAt'], value: undefined }],
+							}
+						})
+					} else if (previouslyConnected.has(player.id) && !isConnected) {
+						const disconnectedAt = Date.now()
+						previouslyConnected.delete(player.id)
+						if (!this.sharedStore.isLeader()) return
+						this.sharedStore.setStoreWithRetries((state) => {
+							const playerIndex = state.players.findIndex((p) => p.id === player.id)
+							if (playerIndex === -1) return []
+							console.log('player disconnected', player.id, 'at', disconnectedAt, 'state', state)
+							return {
+								events: [{ type: 'player-disconnected', playerId: player.id }],
+								mutations: [{ path: ['players', playerIndex, 'disconnectedAt'], value: disconnectedAt }],
+							}
+						})
+					}
+				}
+			})
+		})
+		//#endregion
 	}
 
 	//#region helpers
@@ -171,40 +222,28 @@ export class Room {
 		return this.sharedStore.rollbackStore.players
 	}
 
-	// players with an active websocket connection
-	get connectedPlayers() {
-		trackStore(this.sharedStore.clientControlledStates)
-		let playerIds: string[] = Object.values(this.sharedStore.clientControlledStates).map((s) => s.playerId)
-		return this.players.filter((p) => playerIds.includes(p.id) && p.name)
-	}
-
 	// players that are connected, or have been disconnected for less than the timeout window
 	get activePlayers() {
-		return this.connectedPlayers.filter((p) => !p.disconnectedAt || Date.now() - p.disconnectedAt < PLAYER_TIMEOUT)
+		return this.players.filter((p) => !p.disconnectedAt || Date.now() - p.disconnectedAt < PLAYER_TIMEOUT)
 	}
 
-	get setState() {
-		return this.sharedStore.setStore
-	}
-
-	get chatMessages() {
-		this.state.messages.length
-		return [...this.state.messages].sort((a, b) => a.ts - b.ts)
-	}
-
-	get action$(): Observable<RoomAction> {
+	get action$() {
 		return this.sharedStore.action$.pipe(
-			map((a) => {
-				const playerId = this.sharedStore.clientControlledStates[a.origin].playerId
-				return {
-					type: a.type,
-					origin: this.players.find((p) => p.id === playerId)!,
+			concatMap((a) => {
+				let player = this.players.find((p) => p.id === a.playerId)!
+				if (!player) {
+					console.warn('unknown player id in action', a)
+					return []
 				}
+				return [
+					{
+						type: a.type as RoomEvent['type'],
+						player: unwrap(player),
+					},
+				]
 			})
 		)
 	}
-
-	destroy: Function = () => {}
 
 	//#endregion
 
@@ -229,17 +268,6 @@ export class Room {
 		})
 	}
 
-	async sendMessage(text: string, isSystem = false) {
-		const newMessage: ChatMessage = {
-			type: isSystem ? 'system' : 'player',
-			sender: this.player.name,
-			text: text,
-			ts: Date.now(),
-		}
-
-		await this.sharedStore.setStore({ path: ['messages', '__push__'], value: newMessage }, undefined, [], false)
-	}
-
 	configureNewGame() {
 		this.sharedStore.setStoreWithRetries(() => {
 			if (!this.opponent || !this.rollbackState.activeGameId) return
@@ -261,7 +289,7 @@ export class Room {
 			if (this.state.status !== 'pregame') return
 			if (!this.opponent) {
 				return {
-					actions: ['agree-piece-swap'],
+					events: [{ type: 'agree-piece-swap', playerId: this.player.id }],
 					mutations: [
 						{
 							path: ['whitePlayerId'],
@@ -273,7 +301,7 @@ export class Room {
 			if (this.opponent.agreeColorSwap) return
 
 			return {
-				actions: ['initiate-piece-swap'],
+				events: [{ type: 'initiate-piece-swap', playerId: this.player.id }],
 				mutations: [
 					{
 						path: ['players', this.players.findIndex((p) => p.id === this.player.id), 'agreeColorSwap'],
@@ -290,7 +318,7 @@ export class Room {
 			if (!this.opponent || !this.opponent.agreeColorSwap) return []
 
 			return {
-				actions: ['agree-piece-swap'],
+				events: [{ type: 'agree-piece-swap', playerId: this.player.id }],
 				mutations: [
 					{ path: ['players', this.players.findIndex((p) => p.id === this.player.id), 'agreeColorSwap'], value: false },
 					{
@@ -311,7 +339,7 @@ export class Room {
 			if (this.state.status !== 'pregame') return []
 			if (!this.opponent) return []
 			return {
-				actions: ['decline-or-cancel-piece-swap'],
+				events: [{ type: 'decline-or-cancel-piece-swap', playerId: this.player.id }],
 				mutations: [
 					{ path: ['players', this.players.findIndex((p) => p.id === this.player.id), 'agreeColorSwap'], value: false },
 					{
@@ -357,73 +385,6 @@ export class Room {
 			})
 		}
 	}
+
 	//#endregion
-
-	private setupListeners() {
-		createRoot((dispose) => {
-			this.destroy = dispose
-
-			//#region track player disconnects
-			const previouslyConnected = new Set<string>()
-			createEffect(() => {
-				on(
-					() => this.connectedPlayers.length,
-					() => {
-						for (let player of this.players) {
-							const isConnected = this.connectedPlayers.some((p) => p.id === player.id)
-							if (!previouslyConnected.has(player.id) && isConnected) {
-								previouslyConnected.add(player.id)
-								this.sharedStore.setStoreWithRetries((state) => {
-									const playerIndex = state.players.findIndex((p) => p.id === player.id)
-									if (playerIndex === -1) return []
-									return [{ path: ['players', playerIndex, 'disconnectedAt'], value: undefined }]
-								})
-							} else if (previouslyConnected.has(player.id) && !isConnected) {
-								const disconnectedAt = Date.now()
-								previouslyConnected.delete(player.id)
-								this.sharedStore.setStoreWithRetries((state) => {
-									const playerIndex = state.players.findIndex((p) => p.id === player.id)
-									if (playerIndex === -1) return []
-									return [{ path: ['players', playerIndex, 'disconnectedAt'], value: disconnectedAt }]
-								})
-							}
-						}
-					}
-				)
-			})
-			//#endregion
-
-			//#region messages on active player change
-			let prevActivePlayers = new Set<string>(this.activePlayers.map((p) => p.id))
-
-			const checkActiveConnections = () => {
-				const hasPreviouslyDisconnected = (player: P.Player, state: RoomState) => {
-					return state.messages.some((m) => m.text.match(`${player.name} has disconnected`))
-				}
-
-				// make sure we're the only client sending these messages
-				if (!this.sharedStore.isLeader()) return
-				for (let player of this.activePlayers) {
-					if (!prevActivePlayers.has(player.id) && hasPreviouslyDisconnected(player, this.state)) {
-						this.sendMessage(`${player.name} has reconnected`, true)
-					}
-					prevActivePlayers.add(player.id)
-				}
-				for (let playerId of prevActivePlayers.values()) {
-					const player = this.players.find((p) => p.id === playerId)!
-					if (!this.activePlayers.some((p) => p.id === playerId)) {
-						prevActivePlayers.delete(playerId)
-						this.sendMessage(`${player.name} has disconnected`, true)
-					}
-				}
-			}
-
-			until(() => this.activePlayers.length).then(checkActiveConnections)
-			const interval = setInterval(checkActiveConnections, 1000)
-			onCleanup(() => {
-				clearInterval(interval)
-			})
-			//#endregion
-		})
-	}
 }

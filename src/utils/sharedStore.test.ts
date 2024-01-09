@@ -327,13 +327,13 @@ describe('network provider/shared store', () => {
 		})
 
 		leaderStore.setStoreWithRetries(() => {
-			return { mutations: [{ path: ['ayy'], value: 'lmao' }], actions: ['action1'] }
+			return { mutations: [{ path: ['ayy'], value: 'lmao' }], events: ['action1'] }
 		})
 
 		expect((await firstValueFrom(followerStore.action$)).type).toEqual('action1')
 
 		followerStore.setStoreWithRetries(() => {
-			return { mutations: [{ path: ['lmao'], value: 'ayy' }], actions: ['action2'] }
+			return { mutations: [{ path: ['lmao'], value: 'ayy' }], events: ['action2'] }
 		})
 
 		expect((await firstValueFrom(leaderStore.action$)).type).toEqual('action2')
