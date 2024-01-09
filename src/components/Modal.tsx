@@ -1,5 +1,5 @@
 import { Accessor, createEffect, createRoot, createSignal, getOwner, JSXElement, onCleanup, onMount, runWithOwner, Show } from 'solid-js'
-import { Game } from './Game.tsx'
+import { Button } from './Button.tsx'
 import { myUntil } from '../utils/solid.ts'
 
 let modalContainer: HTMLDivElement | null = null
@@ -60,7 +60,7 @@ export function ModalContainer() {
 							<h5 class="text-lg font-medium leading-normal text-neutral-800 dark:text-neutral-200" id="modalLabel">
 								{activeModal()!.title}
 							</h5>
-							<Game size="medium" kind={'secondary'} onclick={() => setActiveModal(null)}>
+							<Button size="medium" kind={'secondary'} onclick={() => setActiveModal(null)}>
 								<svg
 									xmlns="http://www.w3.org/2000/svg"
 									fill="none"
@@ -71,7 +71,7 @@ export function ModalContainer() {
 								>
 									<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
 								</svg>
-							</Game>
+							</Button>
 						</div>
 					</Show>
 					<div class="p-3">{activeModal()?.elt}</div>
@@ -175,9 +175,9 @@ export async function prompt<T>(
 			return (
 				<div class="flex items-center">
 					<p class="mr-2 text-lg">{rendered}</p>
-					<Game size="medium" tabindex={1} ref={buttonRef!} kind="primary" onclick={() => onCompleted(defaultValue)}>
+					<Button size="medium" tabindex={1} ref={buttonRef!} kind="primary" onclick={() => onCompleted(defaultValue)}>
 						OK
-					</Game>
+					</Button>
 				</div>
 			)
 		} else {

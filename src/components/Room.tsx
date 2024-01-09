@@ -1,16 +1,18 @@
-import { createEffect, createSignal, Match, onCleanup, onMount, ParentProps, Show, Switch } from 'solid-js'
+import { createEffect, createResource, createSignal, Match, onCleanup, onMount, ParentProps, Show, Switch } from 'solid-js'
 import toast from 'solid-toast'
 import * as PC from '../systems/piece.ts'
 import * as P from '../systems/player.ts'
-import { Board } from './Board.tsx'
+import QRCode from 'qrcode'
+import { Game } from './Game.tsx'
 import { Choice, MultiChoiceButton } from '../MultiChoiceButton.tsx'
 import * as GL from '../systems/game/gameLogic.ts'
 import * as R from '../systems/room.ts'
 import { tippy } from '../utils/tippy.tsx'
-import { Game } from './Game.tsx'
+import { Button } from './Button.tsx'
 import { until } from '@solid-primitives/promise'
 import SwapSvg from '../assets/icons/swap.svg'
 import * as TIP from 'tippy.js'
+import { prompt } from './Modal.tsx'
 
 function CenterPanel(props: ParentProps) {
 	return (
@@ -63,7 +65,7 @@ export function Room() {
 				<Lobby />
 			</Match>
 			<Match when={room.rollbackState.activeGameId}>
-				<Board gameId={room.rollbackState.activeGameId!} />
+				<Game gameId={room.rollbackState.activeGameId!} />
 			</Match>
 			<Match when={true}>
 				<div>idk</div>
@@ -80,20 +82,43 @@ function Lobby() {
 		navigator.clipboard.writeText(window.location.href)
 	}
 
+	const [dataUrl] = createResource(() => QRCode.toDataURL(window.location.href, { scale: 12 }))
+
+	const [isShowingQRCode, setIsShowingQRCode] = createSignal(false)
+	const toggleShowQRCode = async () => {
+		setIsShowingQRCode(!isShowingQRCode())
+		if (!isShowingQRCode()) return
+		await prompt(
+			(props) => (
+				<div>
+					<img class="aspect-square w-[90vw]" src={dataUrl()!}>
+						{}
+					</img>
+					<Button size="medium" kind="primary" onclick={() => props.onCompleted(true)}>
+						Close
+					</Button>
+				</div>
+			),
+			true,
+			() => !isShowingQRCode()
+		)
+		setIsShowingQRCode(false)
+	}
+
 	return (
 		<CenterPanel>
 			<div class="flex flex-col space-y-1">
 				<GameConfigForm />
 				<div class="col-span-1 flex w-full justify-center space-x-1">
-					<Game size="medium" kind="primary" class="whitespace-nowrap" onclick={copyInviteLink}>
+					<Button size="medium" kind="primary" class="whitespace-nowrap" onclick={copyInviteLink}>
 						Copy Invite Link
-					</Game>
-					<Game kind="primary" size="medium">
+					</Button>
+					<Button kind="primary" size="medium">
 						Share
-					</Game>
-					<Game kind="primary" size="medium">
+					</Button>
+					<Button kind="primary" size="medium" onclick={toggleShowQRCode}>
 						Show QR Code
-					</Game>
+					</Button>
 				</div>
 			</div>
 		</CenterPanel>
@@ -222,7 +247,7 @@ function SwapButton(props: { initiatePieceSwap: () => void; alreadySwapping: boo
 	return (
 		<div class="m-auto ml-auto mr-auto flex flex-col items-center justify-end">
 			<div class="flex flex-col justify-center">
-				<Game
+				<Button
 					disabled={props.alreadySwapping}
 					title="Swap Pieces"
 					kind="tertiary"
@@ -231,7 +256,7 @@ function SwapButton(props: { initiatePieceSwap: () => void; alreadySwapping: boo
 					onClick={requestSwap}
 				>
 					<SwapSvg />
-				</Game>
+				</Button>
 			</div>
 		</div>
 	)
@@ -249,7 +274,7 @@ function PlayerConfigDisplay(props: {
 	const cancelSwapModalContent = (
 		<div class="space-x-1">
 			<span class="text-xs">Asking Opponent for piece swap</span>
-			<Game
+			<Button
 				onclick={() => {
 					tip()?.hide()
 					props.cancelPieceSwap()
@@ -258,7 +283,7 @@ function PlayerConfigDisplay(props: {
 				kind="secondary"
 			>
 				Decline
-			</Game>
+			</Button>
 		</div>
 	) as HTMLDivElement
 
@@ -283,15 +308,15 @@ function PlayerConfigDisplay(props: {
 				{props.player.name} (You)
 			</span>
 			<Show when={!props.player.isReadyForGame}>
-				<Game size="medium" kind="primary" onclick={() => props.toggleReady()}>
+				<Button size="medium" kind="primary" onclick={() => props.toggleReady()}>
 					{props.canStartGame ? 'Start Game!' : 'Ready Up!'}
-				</Game>
+				</Button>
 			</Show>
 			<Show when={props.player.isReadyForGame}>
 				<span>Ready!</span>{' '}
-				<Game kind={'secondary'} size="small" onClick={() => props.toggleReady()}>
+				<Button kind={'secondary'} size="small" onClick={() => props.toggleReady()}>
 					Unready
-				</Game>
+				</Button>
 			</Show>
 		</PlayerDisplayContainer>
 	)
@@ -309,7 +334,7 @@ function OpponentConfigDisplay(props: {
 	const changeColorModalContent = (
 		<div class="space-x-1">
 			<span class="text-xs">{props.opponent.name} wants to swap colors</span>
-			<Game
+			<Button
 				onClick={() => {
 					tip()?.hide()
 					props.agreePieceSwap()
@@ -318,8 +343,8 @@ function OpponentConfigDisplay(props: {
 				kind="primary"
 			>
 				Accept
-			</Game>
-			<Game
+			</Button>
+			<Button
 				onclick={() => {
 					tip()?.hide()
 					props.declinePieceSwap()
@@ -328,7 +353,7 @@ function OpponentConfigDisplay(props: {
 				kind="secondary"
 			>
 				Decline
-			</Game>
+			</Button>
 		</div>
 	) as HTMLDivElement
 

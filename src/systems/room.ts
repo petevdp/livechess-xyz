@@ -119,6 +119,8 @@ export async function connectToRoom(roomId: string, player: P.Player, parentOwne
 	})
 
 	await until(() => store.initialized())
+
+	//#region connect player
 	await store.setStoreWithRetries((state) => {
 		// leader will report player reconnection
 		if (state.players.some((p) => p.id === player.id)) return []
@@ -137,6 +139,8 @@ export async function connectToRoom(roomId: string, player: P.Player, parentOwne
 
 		return { mutations, events: [{ type: 'player-connected', playerId: player.id }] }
 	})
+	//#endregion
+
 	const room = runWithOwner(instanceOwner, () => new Room(store, provider, store.rollbackStore.players.find((p) => player.id === p.id)!))!
 	setRoom(room)
 	return room
