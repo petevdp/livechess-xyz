@@ -1,10 +1,12 @@
-import { AppContainer } from './AppContainer.tsx'
+import { AppContainer, ScreenFittingContent } from './AppContainer.tsx'
 import * as R from '~/systems/room.ts'
 import { useNavigate } from '@solidjs/router'
-import { Button } from './Button.tsx'
+import { Button } from '~/components/ui/button.tsx'
+import { Card, CardContent, CardHeader } from '~/components/ui/card.tsx'
 
 export function Home() {
 	const navigate = useNavigate()
+
 	async function createRoom() {
 		const res = await R.createRoom()
 		navigate(`/rooms/${res.networkId}`)
@@ -12,15 +14,19 @@ export function Home() {
 
 	return (
 		<AppContainer>
-			<div class="grid h-[calc(100vh_-_4rem)] place-items-center">
-				<div class="flex w-[24em] flex-col rounded bg-gray-800 p-2">
-					<h2 class="text-center">Welcome!</h2>
-					<p class="mb-2 text-sm">Click below to host a new game, or copy the link from your opponent into your browser to join theirs.</p>
-					<Button size="large" kind="primary" onClick={createRoom}>
-						Play
-					</Button>
-				</div>
-			</div>
+			<ScreenFittingContent class="grid place-items-center">
+				<Card class="h-min w-80">
+					<CardHeader>Welcome to LiveChess!</CardHeader>
+					<CardContent>
+						<p>Click below to host a new game, or copy the link from your opponent into your browser to join theirs.</p>
+						<div class="flex justify-center">
+							<Button variant="default" onclick={createRoom}>
+								Play
+							</Button>
+						</div>
+					</CardContent>
+				</Card>
+			</ScreenFittingContent>
 		</AppContainer>
 	)
 }

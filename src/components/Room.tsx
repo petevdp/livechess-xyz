@@ -1,26 +1,23 @@
-import { createEffect, createResource, createSignal, Match, onCleanup, onMount, ParentProps, Show, Switch } from 'solid-js'
+import { createResource, createSignal, Match, onCleanup, onMount, ParentProps, Show, Switch } from 'solid-js'
 import toast from 'solid-toast'
 import * as PC from '~/systems/piece.ts'
 import * as P from '~/systems/player.ts'
 import QRCode from 'qrcode'
 import { Game } from './Game.tsx'
-import { Choice, MultiChoiceButton } from './MultiChoiceButton.tsx'
 import * as GL from '~/systems/game/gameLogic.ts'
 import * as R from '~/systems/room.ts'
 import { tippy } from '~/utils/tippy.tsx'
-import { Button } from './Button.tsx'
 import { until } from '@solid-primitives/promise'
 import SwapSvg from '~/assets/icons/swap.svg'
 import * as TIP from 'tippy.js'
-import { prompt } from './Modal.tsx'
-
-function CenterPanel(props: ParentProps) {
-	return (
-		<div class="ml-1 mr-1 grid h-[calc(100vh_-_4rem)] place-items-center">
-			<div class="rounded bg-gray-800 p-[.5rem]">{props.children}</div>
-		</div>
-	)
-}
+import { ScreenFittingContent } from '~/components/AppContainer.tsx'
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '~/components/ui/card.tsx'
+import { Button } from '~/components/ui/button.tsx'
+import { Choice, MultiChoiceButton } from '~/components/MultiChoiceButton.tsx'
+import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip.tsx'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog'
+import { Input } from '~/components/ui/input.tsx'
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '~/components/ui/hover-card.tsx'
 
 export function Room() {
 	const room = R.room()!
@@ -81,47 +78,37 @@ function Lobby() {
 	const copyInviteLink = () => {
 		navigator.clipboard.writeText(window.location.href)
 	}
+	return (
+		<ScreenFittingContent class="grid place-items-center p-2">
+			<Card class="w-[95vw] p-1 sm:w-auto">
+				<CardHeader>
+					<CardTitle class="text-center">Configure Game</CardTitle>
+				</CardHeader>
+				<CardContent class="p-1">
+					<GameConfigForm />
+				</CardContent>
+				<CardFooter class="flex justify-center space-x-1">
+					<QrCodeDialog />
+					<Button onclick={copyInviteLink}>Copy Invite Link</Button>
+				</CardFooter>
+			</Card>
+		</ScreenFittingContent>
+	)
+}
 
+function QrCodeDialog() {
 	const [dataUrl] = createResource(() => QRCode.toDataURL(window.location.href, { scale: 12 }))
 
-	const [isShowingQRCode, setIsShowingQRCode] = createSignal(false)
-	const toggleShowQRCode = async () => {
-		setIsShowingQRCode(!isShowingQRCode())
-		if (!isShowingQRCode()) return
-		await prompt(
-			(props) => (
-				<div>
-					<img class="aspect-square w-[90vw]" src={dataUrl()!}>
-						{}
-					</img>
-					<Button size="medium" kind="primary" onclick={() => props.onCompleted(true)}>
-						Close
-					</Button>
-				</div>
-			),
-			true,
-			() => !isShowingQRCode()
-		)
-		setIsShowingQRCode(false)
-	}
-
 	return (
-		<CenterPanel>
-			<div class="flex flex-col space-y-1">
-				<GameConfigForm />
-				<div class="col-span-1 flex w-full justify-center space-x-1">
-					<Button size="medium" kind="primary" class="whitespace-nowrap" onclick={copyInviteLink}>
-						Copy Invite Link
-					</Button>
-					<Button kind="primary" size="medium">
-						Share
-					</Button>
-					<Button kind="primary" size="medium" onclick={toggleShowQRCode}>
-						Show QR Code
-					</Button>
-				</div>
-			</div>
-		</CenterPanel>
+		<Dialog>
+			<DialogTrigger as={Button}>Show QR Code</DialogTrigger>
+			<DialogContent>
+				<DialogHeader>
+					<DialogTitle>Scan to Join LiveChess Room</DialogTitle>
+					<img alt="QR Code for Room" class="aspect-square" src={dataUrl()!} />
+				</DialogHeader>
+			</DialogContent>
+		</Dialog>
 	)
 }
 
@@ -131,28 +118,16 @@ function GameConfigForm() {
 	const gameConfig = () => room!.rollbackState.gameConfig
 
 	return (
-		<div class="grid grid-cols-2 grid-rows-[min-content_auto_auto] gap-3 ">
+		<div class="flex flex-col gap-y-1">
 			<MultiChoiceButton
 				label="Variant"
-				classList={{
-					grid: true,
-					'grid-rows-1': true,
-					'grid-cols-4': true,
-					'col-span-full': true,
-					'grid-rows-[min-content_5em]': true,
-				}}
+				listClass="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 text-sm space-x-0 gap-1"
 				choices={GL.VARIANTS.map((c) => ({ label: c, id: c }) satisfies Choice<GL.Variant>)}
 				selected={gameConfig().variant}
 				onChange={(v) => room!.setGameConfig({ variant: v })}
 			/>
 			<MultiChoiceButton
-				classList={{
-					grid: true,
-					'grid-rows-1': true,
-					'grid-cols-5': true,
-					'w-full': true,
-					'text-sm': true,
-				}}
+				listClass="grid grid-rows-1 grid-cols-3 md:grid-cols-5 w-full tex-sm space-x-0 gap-1"
 				label="Time Control"
 				choices={GL.TIME_CONTROLS.map((tc) => ({ label: tc, id: tc }) satisfies Choice<GL.TimeControl>)}
 				selected={gameConfig().timeControl}
@@ -160,12 +135,7 @@ function GameConfigForm() {
 			/>
 			<MultiChoiceButton
 				label="Increment"
-				classList={{
-					grid: true,
-					'grid-rows-1': true,
-					'grid-cols-4': true,
-					'text-sm': true,
-				}}
+				listClass="grid  grid-cols-4 text-sm"
 				choices={GL.INCREMENTS.map((i) => ({ label: `${i}s`, id: i }) satisfies Choice<GL.Increment>)}
 				selected={gameConfig().increment}
 				onChange={(v) => room!.setGameConfig({ increment: v })}
@@ -232,7 +202,7 @@ function PlayerAwareness() {
 
 function PlayerColorDisplay(props: { color: GL.Color }) {
 	return (
-		<div class="ml-auto mr-auto flex w-40 items-center justify-center">
+		<div class="ml-auto mr-auto flex w-[5rem] items-center justify-center">
 			<img alt={`${props.color} king`} src={PC.resolvePieceImagePath({ type: 'king', color: props.color })} />
 		</div>
 	)
@@ -247,16 +217,15 @@ function SwapButton(props: { initiatePieceSwap: () => void; alreadySwapping: boo
 	return (
 		<div class="m-auto ml-auto mr-auto flex flex-col items-center justify-end">
 			<div class="flex flex-col justify-center">
-				<Button
-					disabled={props.alreadySwapping}
-					title="Swap Pieces"
-					kind="tertiary"
-					size="small"
-					class="rounded-full bg-gray-800 p-1"
-					onClick={requestSwap}
-				>
-					<SwapSvg />
-				</Button>
+				<Tooltip>
+					<TooltipTrigger>
+						<Button onclick={requestSwap} size="icon" variant="ghost">
+							{' '}
+							<SwapSvg class="fill-white" />
+						</Button>
+					</TooltipTrigger>
+					<TooltipContent>Swap Pieces</TooltipContent>
+				</Tooltip>
 			</div>
 		</div>
 	)
@@ -279,8 +248,6 @@ function PlayerConfigDisplay(props: {
 					tip()?.hide()
 					props.cancelPieceSwap()
 				}}
-				size="small"
-				kind="secondary"
 			>
 				Decline
 			</Button>
@@ -308,15 +275,17 @@ function PlayerConfigDisplay(props: {
 				{props.player.name} (You)
 			</span>
 			<Show when={!props.player.isReadyForGame}>
-				<Button size="medium" kind="primary" onclick={() => props.toggleReady()}>
-					{props.canStartGame ? 'Start Game!' : 'Ready Up!'}
+				<Button size="sm" class="whitespace-nowrap" onclick={() => props.toggleReady()}>
+					{props.canStartGame ? 'Start Game' : 'Ready Up!'}
 				</Button>
 			</Show>
 			<Show when={props.player.isReadyForGame}>
-				<span>Ready!</span>{' '}
-				<Button kind={'secondary'} size="small" onClick={() => props.toggleReady()}>
-					Unready
-				</Button>
+				<div class="flex flex-row items-center space-x-1">
+					<span>Ready!</span>
+					<Button size="sm" variant="secondary" onclick={() => props.toggleReady()}>
+						Unready
+					</Button>
+				</div>
 			</Show>
 		</PlayerDisplayContainer>
 	)
@@ -328,65 +297,38 @@ function OpponentConfigDisplay(props: {
 	agreePieceSwap: () => void
 	declinePieceSwap: () => void
 }) {
-	let ref = null as unknown as HTMLSpanElement
-	const [tip, setTip] = createSignal<TIP.Instance | null>(null)
-
-	const changeColorModalContent = (
-		<div class="space-x-1">
-			<span class="text-xs">{props.opponent.name} wants to swap colors</span>
-			<Button
-				onClick={() => {
-					tip()?.hide()
-					props.agreePieceSwap()
-				}}
-				size="small"
-				kind="primary"
-			>
-				Accept
-			</Button>
-			<Button
-				onclick={() => {
-					tip()?.hide()
-					props.declinePieceSwap()
-				}}
-				size="small"
-				kind="secondary"
-			>
-				Decline
-			</Button>
-		</div>
-	) as HTMLDivElement
-
-	onMount(() => {
-		setTip(
-			tippy(ref, {
-				theme: 'material',
-				allowHTML: true,
-				content: changeColorModalContent,
-				hideOnClick: false,
-				placement: 'top',
-				trigger: 'manual',
-				interactive: true,
-				showOnCreate: false,
-				appendTo: document.body,
-			})
-		)
-	})
-
-	onCleanup(() => {
-		tip()?.hide()
-	})
-
-	createEffect(() => {
-		const _tip = tip()
-		if (!_tip) {
-		} else if (props.opponent.agreeColorSwap) _tip.show()
-		else _tip.hide()
-	})
-
 	return (
 		<PlayerDisplayContainer color={props.color}>
-			<span ref={ref}>{props.opponent.name}</span>
+			{/*<span ref={ref}>{props.opponent.name}</span>*/}
+			<HoverCard open={props.opponent.agreeColorSwap}>
+				<HoverCardTrigger>
+					<span>{props.opponent.name}</span>
+				</HoverCardTrigger>
+				<HoverCardContent>
+					<div class="flex flex-col space-y-1">
+						<span class="text-xs">{props.opponent.name} wants to swap colors</span>
+						<div class="space-x-1">
+							<Button
+								size="sm"
+								onClick={() => {
+									props.agreePieceSwap()
+								}}
+							>
+								Accept
+							</Button>
+							<Button
+								size="sm"
+								onclick={() => {
+									props.declinePieceSwap()
+								}}
+								variant="secondary"
+							>
+								Decline
+							</Button>
+						</div>
+					</div>
+				</HoverCardContent>
+			</HoverCard>
 			<Show when={props.opponent.isReadyForGame} fallback={<div>Not Ready</div>}>
 				<div>Ready</div>
 			</Show>
@@ -396,7 +338,7 @@ function OpponentConfigDisplay(props: {
 
 function PlayerDisplayContainer(props: ParentProps<{ color: GL.Color }>) {
 	return (
-		<div class="ml-auto mr-auto flex h-min w-40 flex-col items-center">
+		<div class="ml-auto mr-auto flex h-min w-[5rem] flex-col items-center">
 			<div class="2 flex flex-col items-center justify-center rounded border-solid border-gray-700 text-center">{props.children}</div>
 		</div>
 	)
@@ -420,20 +362,27 @@ export function NickForm() {
 	}
 
 	return (
-		<CenterPanel>
-			<form onSubmit={onSubmit}>
-				<div>Set your Display Name</div>
-				<input
-					type="text"
-					class="bg-gray-800 p-1 text-white"
-					value={displayName()}
-					disabled={!initialized()}
-					required={true}
-					pattern={'[a-zA-Z0-9]+'}
-					onInput={(e) => setDisplayName(e.target.value.trim())}
-				/>
-				<input type="submit" value="Submit" />
-			</form>
-		</CenterPanel>
+		<ScreenFittingContent class="grid place-items-center p-2">
+			<Card>
+				<CardHeader>
+					<CardTitle class="text-center">Set your Display Name</CardTitle>
+				</CardHeader>
+				<CardContent>
+					<form onSubmit={onSubmit} class="flex space-x-1">
+						<Input
+							type="text"
+							value={displayName()}
+							disabled={!initialized()}
+							required={true}
+							pattern={'[a-zA-Z0-9 ]+'}
+							onchange={(e) => setDisplayName(e.target.value.trim())}
+						/>
+						<Button type="submit" value="Submit">
+							Submit
+						</Button>
+					</form>
+				</CardContent>
+			</Card>
+		</ScreenFittingContent>
 	)
 }

@@ -4,9 +4,9 @@ import * as G from '~/systems/game/game.ts'
 import * as GL from '~/systems/game/gameLogic.ts'
 import * as PC from '~/systems/piece.ts'
 import * as Modal from './Modal.tsx'
-import styles from './Board.module.css'
+import styles from './Game.module.css'
 import toast from 'solid-toast'
-import { Button } from './Button.tsx'
+import { Button } from './ui/button.tsx'
 import FirstSvg from '~/assets/icons/first.svg'
 import FlipBoardSvg from '~/assets/icons/flip-board.svg'
 import LastSvg from '~/assets/icons/last.svg'
@@ -316,8 +316,11 @@ export function Game(props: { gameId: string }) {
 	const promoteModalPosition = () => {
 		if (!game.promotion()) return undefined
 		let [x, y] = squareNotationToDisplayCoords(game.promotion()!.to, boardFlipped(), squareSize())
-		x += canvas.getBoundingClientRect().left
-		y += canvas.getBoundingClientRect().top
+		y += canvas.getBoundingClientRect().top + window.scrollY
+		x += canvas.getBoundingClientRect().left + window.scrollX
+		if (boardSize() / 2 < x) {
+			x -= 180
+		}
 
 		return [x, y].map((c) => `${c}px`) as [string, string]
 	}
@@ -325,12 +328,17 @@ export function Game(props: { gameId: string }) {
 	Modal.addModal({
 		title: null,
 		render: () => (
-			<div class="flex flex-row">
+			<div class="flex w-[180px] flex-row justify-between space-x-1">
 				<For each={GL.PROMOTION_PIECES}>
 					{(pp) => (
-						<button onclick={() => setPromotion(pp)}>
+						<Button
+							classList={{ 'bg-neutral-200': game.player.color !== 'white' }}
+							variant={game.player.color === 'white' ? 'ghost' : 'default'}
+							size="icon"
+							onclick={() => setPromotion(pp)}
+						>
 							<img alt={pp} src={PC.resolvePieceImagePath({ color: game.player.color, type: pp })} />
-						</button>
+						</Button>
 					)}
 				</For>
 			</div>
@@ -359,12 +367,8 @@ export function Game(props: { gameId: string }) {
 					<div class="flex flex-col items-center space-y-1">
 						<GameOutcomeDisplay outcome={game.outcome!} />
 						<div class="space-x-1">
-							<Button size="medium" kind="primary" onclick={() => game.room.configureNewGame()}>
-								New Game
-							</Button>
-							<Button size="medium" kind="secondary" onclick={() => _props.onCompleted(false)}>
-								Continue
-							</Button>
+							<Button onclick={() => game.room.configureNewGame()}>New Game</Button>
+							<Button onclick={() => _props.onCompleted(false)}>Continue</Button>
 						</div>
 					</div>
 				)
@@ -429,7 +433,7 @@ export function Game(props: { gameId: string }) {
 				<Player class={styles.opponent} player={game.opponent} />
 				<Clock class={styles.clockOpponent} clock={game.clock[game.opponent.color]} ticking={!game.isPlayerTurn} />
 				<div class={`${styles.topLeftActions} flex flex-col items-start space-x-1`}>
-					<Button title={'Flip Board'} kind="tertiary" size="small" onclick={() => setBoardFlipped((f) => !f)} class="mb-1">
+					<Button variant="ghost" size="icon" onclick={() => setBoardFlipped((f) => !f)} class="mb-1">
 						<FlipBoardSvg />
 					</Button>
 				</div>
@@ -480,28 +484,24 @@ function ActionsPanel(props: { class: string }) {
 			<Switch>
 				<Match when={!game.outcome}>
 					<Show when={game.drawIsOfferedBy === null}>
-						<Button title="Offer Draw" size="small" kind="tertiary" onclick={() => game.offerDraw()}>
+						<Button title="Offer Draw" size="icon" variant="ghost" onclick={() => game.offerDraw()}>
 							<OfferDrawSvg />
 						</Button>
-						<Button title="Resign" kind="tertiary" size="small" onclick={() => game.resign()}>
+						<Button title="Resign" size="icon" variant="ghost" onclick={() => game.resign()}>
 							<ResignSvg />
 						</Button>
 					</Show>
 					<Switch>
 						<Match when={game.drawIsOfferedBy === game.player.color}>
-							<Button kind="primary" size="small" onClick={() => game.cancelDraw()}>
-								Cancel Draw
-							</Button>
+							<Button onClick={() => game.cancelDraw()}>Cancel Draw</Button>
 						</Match>
 						<Match when={game.drawIsOfferedBy === game.opponent.color}>
-							<Button kind="primary" size="small" onClick={() => game.offerDraw()}>
-								Accept Draw
-							</Button>
+							<Button onClick={() => game.offerDraw()}>Accept Draw</Button>
 						</Match>
 					</Switch>
 				</Match>
 				<Match when={game.outcome}>
-					<Button size="small" kind="primary" onclick={() => game.room.configureNewGame()}>
+					<Button size="sm" onclick={() => game.room.configureNewGame()}>
 						New Game
 					</Button>
 				</Match>
@@ -521,7 +521,7 @@ function MoveHistory() {
 					<code> 0.</code>
 				</pre>
 				<div>
-					<Button size="small" kind={game.viewedMoveIndex() === -1 ? 'secondary' : 'tertiary'} onClick={() => _setViewedMove(-1)}>
+					<Button size="sm" variant={game.viewedMoveIndex() === -1 ? 'secondary' : 'ghost'} onClick={() => _setViewedMove(-1)}>
 						Start
 					</Button>
 				</div>
@@ -531,36 +531,43 @@ function MoveHistory() {
 					const viewingFirstMove = () => game.viewedMoveIndex() === index() * 2
 					const viewingSecondMove = () => game.viewedMoveIndex() === index() * 2 + 1
 					return (
-						<div
-							classList={{
-								[styles.moveHistoryEntry]: true,
-								[styles.singleMove]: index() + 1 === game.moveHistoryAsNotation.length && game.rollbackState.moveHistory.length % 2 === 1,
-							}}
-						>
-							<pre class="mr-1">
-								<code>{(index() + 1).toString().padStart(2, ' ')}.</code>
-							</pre>
-							<div>
-								<Button
-									class={viewingFirstMove() ? '' : 'font-light'}
-									size="small"
-									kind={viewingFirstMove() ? 'secondary' : 'tertiary'}
-									onClick={() => _setViewedMove(index() * 2)}
-								>
-									{move[0]}
-								</Button>{' '}
-								<Show when={move[1]}>
+						<>
+							<div
+								classList={{
+									[styles.moveHistoryEntry]: true,
+									[styles.singleMove]: index() + 1 === game.moveHistoryAsNotation.length && game.rollbackState.moveHistory.length % 2 === 1,
+								}}
+							>
+								<pre class="mr-1">
+									<code>{(index() + 1).toString().padStart(2, ' ')}.</code>
+								</pre>
+								<div>
 									<Button
-										size="small"
-										class={viewingSecondMove() ? '' : 'font-light'}
-										kind={viewingSecondMove() ? 'secondary' : 'tertiary'}
-										onClick={() => _setViewedMove(index() * 2 + 1)}
+										class="p-[.25rem"
+										classList={{
+											'font-light': !viewingFirstMove(),
+										}}
+										size="sm"
+										variant={viewingFirstMove() ? 'secondary' : 'ghost'}
+										onClick={() => _setViewedMove(index() * 2)}
 									>
-										{move[1]}
-									</Button>
-								</Show>
+										{move[0]}
+									</Button>{' '}
+									<Show when={move[1]}>
+										<Button
+											size="sm"
+											classList={{
+												'font-light': viewingSecondMove(),
+											}}
+											variant={viewingSecondMove() ? 'secondary' : 'ghost'}
+											onClick={() => _setViewedMove(index() * 2 + 1)}
+										>
+											{move[1]}
+										</Button>
+									</Show>
+								</div>
 							</div>
-						</div>
+						</>
 					)
 				}}
 			</For>
@@ -596,24 +603,29 @@ function MoveNav() {
 	const _setViewedMove = setViewedMove(game)
 	return (
 		<div class="flex justify-evenly">
-			<Button kind="tertiary" size="small" disabled={game.viewedMoveIndex() === -1} onClick={() => _setViewedMove(-1)}>
+			<Button size="icon" variant="ghost" disabled={game.viewedMoveIndex() === -1} onClick={() => _setViewedMove(-1)}>
 				<FirstSvg />
 			</Button>
 			<Button
 				class="text-blue-600"
-				kind="tertiary"
-				size="small"
+				variant="ghost"
+				size="icon"
 				disabled={game.viewedMoveIndex() === -1}
 				onClick={() => _setViewedMove(game.viewedMoveIndex() - 1)}
 			>
 				<PrevSvg />
 			</Button>
-			<Button kind="tertiary" size="small" onClick={() => _setViewedMove(game.viewedMoveIndex() + 1)}>
+			<Button
+				disabled={game.viewedMoveIndex() === game.rollbackState.moveHistory.length - 1}
+				variant="ghost"
+				size="icon"
+				onClick={() => _setViewedMove(game.viewedMoveIndex() + 1)}
+			>
 				<NextSvg />
 			</Button>
 			<Button
-				kind="tertiary"
-				size="small"
+				variant="ghost"
+				size="icon"
 				disabled={game.viewedMoveIndex() === game.rollbackState.moveHistory.length - 1}
 				onClick={() => _setViewedMove('live')}
 			>

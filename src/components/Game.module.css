@@ -5,7 +5,7 @@
 }
 
 .boardContainer {
-	@apply rounded bg-gray-800 p-[.5rem];
+	@apply bg-card text-card-foreground rounded-lg border shadow-sm p-2;
 
 	display: grid;
 	grid-template-columns: max-content 1fr max-content 1fr max-content;
@@ -37,14 +37,15 @@
 
 	@media screen and (max-width: 700px) {
 		.boardContainer {
-			grid-template-columns: 1fr min-content 1fr;
-			grid-template-rows: repeat(4, min-content) 1fr;
+			grid-template-columns: 1fr min-content 1fr min-content;
+			grid-template-rows: repeat(4, min-content) 1fr auto;
 			grid-template-areas:
 			'top-left-actions    opponent        opponent          clock-opponent'
 			'board               board           board             board'
 			'bottom-left-actions player          player            clock-player'
 			'captured-player     captured-player captured-opponent captured-opponent'
-			'move-history        move-history    move-history      move-history';
+			'move-history        move-history    move-history      move-history'
+			'move-nav            move-nav        move-nav          move-nav';
 		}
 
 		.moveNav {
@@ -141,7 +142,8 @@
 }
 
 .capturedPieces {
-	@apply bg-gray-700 rounded;
+	@apply rounded;
+	background-color: #eaaa69;
 	display: flex;
 	min-width: 30px;
 	flex-wrap: wrap;

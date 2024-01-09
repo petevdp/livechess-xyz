@@ -17,6 +17,9 @@ const [activeModal, setActiveModal] = createSignal<ActiveModal | null>(null)
 
 export function ModalContainer() {
 	modalContainer?.remove()
+	createEffect(() => {
+		console.log('active modal', activeModal())
+	})
 	onCleanup(() => {
 		modalContainer?.remove()
 		modalContainer = null
@@ -37,7 +40,7 @@ export function ModalContainer() {
 			aria-hidden={!activeModal()}
 		>
 			<div
-				class="activeModal pointer-events-auto flex w-max items-center"
+				class="activeModal pointer-events-auto flex w-max items-center overflow-hidden"
 				classList={{
 					['absolute -translate-x-1/2 -translate-y-1/2 left-[50%] top-[50%]']: !activeModal()?.position(),
 				}}
@@ -46,13 +49,14 @@ export function ModalContainer() {
 					left: (activeModal()?.position() || [])[0],
 					top: (activeModal()?.position() || [])[1],
 					display: activeModal()?.visible() ? undefined : 'none',
+					visibility: activeModal()?.visible() ? undefined : 'hidden',
 				}}
 				onclick={(e) => e.stopPropagation()}
 			>
-				<div class="pointer-events-auto relative flex w-full flex-col rounded-md border-none bg-gray-800 text-current shadow-lg outline-none">
+				<div class="bg-card text-card-foreground pointer-events-auto relative flex w-full flex-col rounded-md border shadow-sm outline-none">
 					<Show when={activeModal()?.title}>
 						<div
-							class="flex flex-shrink-0 flex-row items-center rounded-t-md border-b-2 border-b-gray-500 p-2"
+							class="flex flex-shrink-0 flex-row items-center rounded-t-md p-2"
 							classList={{
 								[activeModal()!.title ? 'justify-between' : 'justify-end']: true,
 							}}

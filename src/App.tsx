@@ -18,7 +18,8 @@ function App() {
 				storageManager={{
 					type: 'localStorage',
 					ssr: false,
-					get: (fallback: 'light' | 'dark' | 'system' | undefined) => (localStorage.getItem('colorMode') as ColorMode) || fallback,
+					get: (fallback: 'light' | 'dark' | 'system' | undefined) =>
+						(localStorage.getItem('colorMode') as ColorMode) || fallback || 'dark',
 					set: (value: 'light' | 'dark' | 'system') => localStorage.setItem('colorMode', value),
 				}}
 			>
@@ -28,6 +29,7 @@ function App() {
 					<Route path="/rooms/:id" component={RoomGuard} />
 				</Router>
 			</ColorModeProvider>
+			<Toaster />
 		</>
 	)
 }

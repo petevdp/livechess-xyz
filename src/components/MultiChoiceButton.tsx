@@ -1,4 +1,6 @@
 import { For } from 'solid-js'
+import { Button, ButtonProps } from '~/components/ui/button.tsx'
+import { cn } from '~/lib/utils.ts'
 
 export type Choice<T> = { id: T; label: string }
 
@@ -7,28 +9,28 @@ export function MultiChoiceButton<T extends string>(props: {
 	choices: Choice<T>[]
 	selected: string
 	onChange: (id: T) => void
-	class?: string
+	listClass?: string
 	classList?: Record<string, boolean>
 	classListButton?: Record<string, boolean>
+	variant?: ButtonProps['variant']
 }) {
 	props.classList ||= {}
 	return (
-		<div classList={props.classList}>
+		<div class="flex flex-col">
 			<label class="col-span-full text-center">{props.label}</label>
-			<For each={props.choices}>
-				{(choice) => (
-					<button
-						class="m-0.5 rounded border-solid border-white bg-blue-500"
-						classList={{
-							'bg-blue-800': choice.id == props.selected,
-							...props.classListButton,
-						}}
-						onClick={() => props.onChange(choice.id)}
-					>
-						{choice.label}
-					</button>
-				)}
-			</For>
+			<div class={cn('space-x-1', props.listClass || '')} classList={props.classList}>
+				<For each={props.choices}>
+					{(choice) => (
+						<Button
+							variant={props.variant || 'outline'}
+							class={choice.id === props.selected ? 'bg-accent' : ''}
+							onClick={() => props.onChange(choice.id)}
+						>
+							{choice.label}
+						</Button>
+					)}
+				</For>
+			</div>
 		</div>
 	)
 }
