@@ -2,7 +2,7 @@ import * as R from '../room.ts'
 import * as GL from './gameLogic.ts'
 import { BoardHistoryEntry, coordsFromNotation, GameOutcome } from './gameLogic.ts'
 import * as P from '../player.ts'
-import { Accessor, createEffect, createRoot, createSignal, from, observable, onCleanup } from 'solid-js'
+import {Accessor, createEffect, createMemo, createRoot, createSignal, from, observable, onCleanup} from 'solid-js'
 import { combineLatest, concatMap, distinctUntilChanged, EMPTY, from as rxFrom, Observable, ReplaySubject, skip } from 'rxjs'
 import { isEqual } from 'lodash'
 import { map } from 'rxjs/operators'
@@ -37,6 +37,7 @@ export class Game {
 	destroyed = false
 	viewedMoveIndex: Accessor<number>
 	drawEvent$: Observable<DrawEvent> = EMPTY
+	private _currentBoardView: Accessor<BoardView>;
 	private gameConfig: GL.GameConfig
 
 	get outcome() {
@@ -63,14 +64,20 @@ export class Game {
 		this.setViewedMove = setViewedMove
 		//#endregion
 
+		this._currentBoardView = createMemo(() => this.getCurrentBoardView())
+
 		this.registerListeners()
+	}
+
+	get currentBoardView() {
+		return this._currentBoardView()
 	}
 
 	getColorPlayer(color: GL.Color) {
 		return this.players.find((p) => p.color === color)!
 	}
 
-	get currentBoardView(): BoardView {
+	getCurrentBoardView(): BoardView {
 		const lastMove = this.rollbackState.moveHistory[this.viewedMoveIndex()] || null
 		const entry = this.rollbackState.boardHistory[this.viewedMoveIndex() + 1]
 
@@ -130,6 +137,7 @@ export class Game {
 	}
 
 	getLegalMovesForSquare(startingSquare: string) {
+		if (!this.board.pieces[startingSquare]) return []
 		return GL.getLegalMoves([coordsFromNotation(startingSquare)], this.rollbackState)
 	}
 
@@ -179,12 +187,13 @@ export class Game {
 
 	async tryMakeMove(from: string, to: string, promotionPiece?: GL.PromotionPiece) {
 		console.log('trying move', { from, to, promotionPiece })
-		if (this.outcome) return
+		if (this.outcome || !this.board.pieces[from]) return
 		let expectedMoveIndex = this.rollbackState.moveHistory.length
 		const result = GL.validateAndPlayMove(from, to, this.rollbackState, promotionPiece)
 		if (!result) return false
 
 		return this.room.sharedStore.setStoreWithRetries(() => {
+			console.log('trying move for real')
 			if (this.viewedMoveIndex() !== this.rollbackState.moveHistory.length - 1 || this.outcome) return
 			// check that we're still on the same move
 			if (this.rollbackState.moveHistory.length !== expectedMoveIndex) return
@@ -209,6 +218,7 @@ export class Game {
 				hash: GL.hashBoard(result!.board),
 			}
 
+			console.log('setting move')
 			return [
 				{
 					path: [...this.gameStatePath, 'boardHistory', newBoardIndex],

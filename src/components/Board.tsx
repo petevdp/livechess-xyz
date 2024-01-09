@@ -1,4 +1,16 @@
-import { batch, createEffect, createMemo, createReaction, createSignal, For, Match, onCleanup, onMount, Show, Switch } from 'solid-js'
+import {
+	batch,
+	createEffect,
+	createMemo,
+	createReaction,
+	createSignal,
+	For,
+	Match,
+	onCleanup,
+	onMount,
+	Show,
+	Switch
+} from 'solid-js'
 import * as R from '../systems/room.ts'
 import * as G from '../systems/game/game.ts'
 import * as GL from '../systems/game/gameLogic.ts'
@@ -6,7 +18,7 @@ import * as PC from '../systems/piece.ts'
 import * as Modal from './Modal.tsx'
 import styles from './Board.module.css'
 import toast from 'solid-toast'
-import { Button } from './Button.tsx'
+import {Button} from './Button.tsx'
 import FirstSvg from '../assets/icons/first.svg'
 import FlipBoardSvg from '../assets/icons/flip-board.svg'
 import LastSvg from '../assets/icons/last.svg'
@@ -14,8 +26,8 @@ import NextSvg from '../assets/icons/next.svg'
 import OfferDrawSvg from '../assets/icons/offer-draw.svg'
 import PrevSvg from '../assets/icons/prev.svg'
 import ResignSvg from '../assets/icons/resign.svg'
-import { BOARD_COLORS } from '../config.ts'
-import { isEqual } from 'lodash'
+import {BOARD_COLORS} from '../config.ts'
+import {isEqual} from 'lodash'
 
 //TODO provide some method to view the current game's config
 //TODO component duplicates on reload sometimes for some reason
@@ -69,25 +81,23 @@ export function Board(props: { gameId: string }) {
 	const [clickedSquare, setClickedSquare] = createSignal(null as null | string)
 	const [grabbedSquareMousePos, setGrabbedSquareMousePos] = createSignal(null as null | { x: number; y: number })
 
+	// createEffect(() => {
+	// 	console.log('current board view: in check', game.currentBoardView.inCheck)
+	// })
+
 	const activeSquare = () => grabbedSquare() || clickedSquare()
 
 	const legalMovesForActivePiece = createMemo(() => {
 		const _square = activeSquare()
 		if (!_square) return []
-		const moves = game.getLegalMovesForSquare(_square)
-		console.log({ moves })
-		return moves
-	})
-
-	createEffect(() => {
-		console.log('grabbed: ', grabbedSquare())
-		console.log('hovered: ', hoveredSquare())
+		return game.getLegalMovesForSquare(_square)
 	})
 
 	// TODO Lots of optimization to be done here
 	//#region rendering
 	function render() {
 		if (game.destroyed || !game.rollbackState) {
+			console.log('early return from render')
 			return
 		}
 
@@ -414,16 +424,16 @@ export function Board(props: { gameId: string }) {
 					toast.success(`Offered Draw. Awaiting response from ${game.opponent.name}`)
 					break
 				case 'declined':
-					toast.success('Draw was declined')
+					toast.error('Draw was declined')
 					break
 				case 'offered-by-opponent':
 					toast.success(`${game.opponent.name} has offered a draw`)
 					break
 				case 'opponent-cancelled':
-					toast.success(`${game.opponent.name} has cancelled their draw offer`)
+					toast.error(`${game.opponent.name} has cancelled their draw offer`)
 					break
 				case 'player-cancelled':
-					toast.success('Draw offer cancelled')
+					toast.error('Draw offer cancelled')
 					break
 			}
 		})

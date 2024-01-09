@@ -124,7 +124,7 @@ export function initSharedStore<
 
 	//#region stores
 	const [rollbackStore, _setRollbackStore] = createStore<S>({} as S)
-	const setRollbackStore = (...args: any[]) => {
+const setRollbackStore = (...args: any[]) => {
 		const path = args.slice(0, -1)
 		//@ts-ignore
 		_setRollbackStore(...interpolatePath(path, rollbackStore), args[args.length - 1])
@@ -207,6 +207,7 @@ export function initSharedStore<
 				applyMutationsToStore(transaction.mutations, setRollbackStore)
 				applyMutationsToStore(transaction.mutations, setLockstepStore)
 			})
+			console.log('set')
 			let orderedTransaction: SharedStoreOrderedTransaction<ActionType>
 			if (transaction.index == null) {
 				orderedTransaction = {
@@ -243,10 +244,13 @@ export function initSharedStore<
 						}
 					}
 				})
+				console.log('applied to stores')
 				appliedTransactions.push(transaction)
 				previousValues.set(transaction.index!, previous)
 			}
-			return await provider.tryCommit(transaction)
+			const res =  await provider.tryCommit(transaction)
+			console.log('after commit: ' ,res)
+			return  res
 		}
 	}
 
