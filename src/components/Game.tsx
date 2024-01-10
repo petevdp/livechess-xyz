@@ -79,25 +79,27 @@ export function Game(props: { gameId: string }) {
 	function render() {
 		const ctx = canvas.getContext('2d')!
 		//#region draw board
+		const shouldHideNonVisible = game.gameConfig.variant === 'fog-of-war' && !game.outcome
 
 		// fill in light squares as background
-		ctx.fillStyle = game.gameConfig.variant === 'fog-of-war' ? BOARD_COLORS.lightFog : BOARD_COLORS.light
+		ctx.fillStyle = shouldHideNonVisible ? BOARD_COLORS.lightFog : BOARD_COLORS.light
 		ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-		if (game.gameConfig.variant === 'fog-of-war') {
+		if (shouldHideNonVisible) {
 			ctx.fillStyle = BOARD_COLORS.light
 			for (let square of game.currentBoardView.visibleSquares) {
-				const [x, y] = squareNotationToDisplayCoords(square, boardFlipped(), squareSize())
+				let {x, y} = GL.coordsFromNotation(square)
 				if ((x + y) % 2 === 0) continue
+				[x, y] = boardCoordsToDisplayCoords({x,y}, boardFlipped(), squareSize())
 				ctx.fillRect(x, y, squareSize(), squareSize())
 			}
 		}
 
 		// fill in dark squares
 		for (let i = 0; i < 8; i++) {
-			for (let j = (i + 1) % 2; j < 8; j += 2) {
+			for (let j = i % 2; j < 8; j += 2) {
 				let visible =
-					game.gameConfig.variant !== 'fog-of-war' ||
+					!shouldHideNonVisible ||
 					game.currentBoardView.visibleSquares.has(
 						GL.notationFromCoords({
 							x: j,
@@ -116,7 +118,7 @@ export function Game(props: { gameId: string }) {
 
 		//#region draw last move highlight
 		const highlightColor = '#aff682'
-		if (game.currentBoardView.lastMove && game.gameConfig.variant !== 'fog-of-war') {
+		if (game.currentBoardView.lastMove && !shouldHideNonVisible) {
 			const highlightedSquares = [game.currentBoardView.lastMove.from, game.currentBoardView.lastMove.to]
 			for (let square of highlightedSquares) {
 				if (!square) continue
@@ -149,7 +151,7 @@ export function Game(props: { gameId: string }) {
 		//#region draw pieces
 		for (let [square, piece] of Object.entries(game.currentBoardView.board.pieces)) {
 			if (
-				square === grabbedSquare() || game.gameConfig.variant === 'fog-of-war' ? !game.currentBoardView.visibleSquares.has(square) : false
+				square === grabbedSquare() || (shouldHideNonVisible ? !game.currentBoardView.visibleSquares.has(square) : false)
 			) {
 				continue
 			}
@@ -711,6 +713,8 @@ function GameOutcomeDisplay(props: { outcome: GL.GameOutcome }) {
 			return `${winnerTitle} wins by resignation`
 		case 'flagged':
 			return `${winnerTitle} wins on time`
+		case 'king-captured':
+			return `${winnerTitle} captured the king`
 	}
 }
 
