@@ -16,6 +16,7 @@ import PrevSvg from '~/assets/icons/prev.svg'
 import ResignSvg from '~/assets/icons/resign.svg'
 import { BOARD_COLORS } from '~/config.ts'
 import { isEqual } from 'lodash'
+import { cn } from '~/lib/utils.ts'
 
 //TODO provide some method to view the current game's config
 //TODO component duplicates on reload sometimes for some reason
@@ -88,9 +89,9 @@ export function Game(props: { gameId: string }) {
 		if (shouldHideNonVisible) {
 			ctx.fillStyle = BOARD_COLORS.light
 			for (let square of game.currentBoardView.visibleSquares) {
-				let {x, y} = GL.coordsFromNotation(square)
+				let { x, y } = GL.coordsFromNotation(square)
 				if ((x + y) % 2 === 0) continue
-				[x, y] = boardCoordsToDisplayCoords({x,y}, boardFlipped(), squareSize())
+				;[x, y] = boardCoordsToDisplayCoords({ x, y }, boardFlipped(), squareSize())
 				ctx.fillRect(x, y, squareSize(), squareSize())
 			}
 		}
@@ -107,10 +108,10 @@ export function Game(props: { gameId: string }) {
 						})
 					)
 
-				const [x,y] = boardCoordsToDisplayCoords({ x: j, y: i }, boardFlipped(), squareSize())
+				const [x, y] = boardCoordsToDisplayCoords({ x: j, y: i }, boardFlipped(), squareSize())
 
 				ctx.fillStyle = visible ? BOARD_COLORS.dark : BOARD_COLORS.darkFog
-				ctx.fillRect(x,y, squareSize(), squareSize())
+				ctx.fillRect(x, y, squareSize(), squareSize())
 			}
 		}
 
@@ -150,9 +151,7 @@ export function Game(props: { gameId: string }) {
 
 		//#region draw pieces
 		for (let [square, piece] of Object.entries(game.currentBoardView.board.pieces)) {
-			if (
-				square === grabbedSquare() || (shouldHideNonVisible ? !game.currentBoardView.visibleSquares.has(square) : false)
-			) {
+			if (square === grabbedSquare() || (shouldHideNonVisible ? !game.currentBoardView.visibleSquares.has(square) : false)) {
 				continue
 			}
 			const _promotionSelection = game.promotion()
@@ -462,6 +461,7 @@ export function Game(props: { gameId: string }) {
 					clock={game.clock[game.opponent.color]}
 					ticking={!game.isPlayerTurn && game.clock[game.opponent.color] > 0}
 					timeControl={game.gameConfig.timeControl}
+					color={game.opponent.color}
 				/>
 				<div class={`${styles.topLeftActions} flex flex-col items-start space-x-1`}>
 					<Button variant="ghost" size="icon" onclick={() => setBoardFlipped((f) => !f)} class="mb-1">
@@ -478,6 +478,7 @@ export function Game(props: { gameId: string }) {
 					clock={game.clock[game.player.color]}
 					ticking={game.isPlayerTurn && game.clock[game.player.color] > 0}
 					timeControl={game.gameConfig.timeControl}
+					color={game.player.color}
 				/>
 				<div class={styles.moveNav}>
 					<MoveNav />
@@ -495,7 +496,7 @@ function Player(props: { player: G.PlayerWithColor; class: string }) {
 	)
 }
 
-function Clock(props: { clock: number; class: string; ticking: boolean; timeControl: GL.TimeControl }) {
+function Clock(props: { clock: number; class: string; ticking: boolean; timeControl: GL.TimeControl; color: GL.Color }) {
 	const formattedClock = () => {
 		// clock is in ms
 		const minutes = Math.floor(props.clock / 1000 / 60)
@@ -503,9 +504,9 @@ function Clock(props: { clock: number; class: string; ticking: boolean; timeCont
 		if (minutes === 0) {
 			const tenths = Math.floor((props.clock / 100) % 10)
 			const hundredths = Math.floor((props.clock / 10) % 10)
-			return `${seconds}.${tenths}${hundredths}`
+			return `${seconds}.${tenths}${hundredths}`.padStart(5, '0')
 		}
-		return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`
+		return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`.padStart(5, '0')
 	}
 	const pastWarnThreshold = createMemo(() => {
 		switch (props.timeControl) {
@@ -523,16 +524,19 @@ function Clock(props: { clock: number; class: string; ticking: boolean; timeCont
 	})
 
 	return (
-		<span
-			class="flex justify-end text-xl"
-			classList={{
-				'text-red-500': pastWarnThreshold(),
-				'animate-pulse': props.ticking && pastWarnThreshold(),
-				'text-neutral-400': !props.ticking,
-			}}
-		>
-			{formattedClock()}
-		</span>
+		<div class={cn('flex items-center justify-end space-x-3 text-xl', props.class)}>
+			<Show when={props.ticking}>
+				<div class="hidden font-light md:block">{props.color} to move</div>
+			</Show>
+			<span
+				class="mt-[0.4em] font-mono"
+				classList={{
+					'text-red-500': pastWarnThreshold(),
+					'animate-pulse': props.ticking && pastWarnThreshold(),
+					'text-neutral-400': !props.ticking,
+				}}
+			>{`${formattedClock()}`}</span>
+		</div>
 	)
 }
 
