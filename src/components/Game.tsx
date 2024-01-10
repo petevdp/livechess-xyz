@@ -476,7 +476,12 @@ export function Game(props: { gameId: string }) {
 	//#endregion
 
 	//#region sound effects
+	let initAudio = false
 	createEffect(() => {
+		if (!initAudio) {
+			initAudio = true
+			return
+		}
 		const move = game.currentBoardView.lastMove
 		if (!move) return
 		untrack(() => {
@@ -508,7 +513,12 @@ export function Game(props: { gameId: string }) {
 	})
 
 	const [pastWarnThreshold, setPastWarnThreshold] = createSignal(false)
+	let initWarn = false
 	createEffect(() => {
+		if (!initWarn) {
+			initWarn = true
+			return
+		}
 		if (checkPastWarnThreshold(game.gameConfig.timeControl, game.clock[game.player.color])) {
 			setPastWarnThreshold(true)
 		}
