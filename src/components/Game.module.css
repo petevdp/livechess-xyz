@@ -37,19 +37,15 @@
 
 	@media screen and (max-width: 700px) {
 		.boardContainer {
-			grid-template-columns: 1fr min-content 1fr min-content;
-			grid-template-rows: repeat(4, min-content) 1fr auto;
+			grid-template-columns: 1fr max-content max-content 1fr;
+			grid-template-rows: repeat(6, auto);
 			grid-template-areas:
 			'top-left-actions    opponent        opponent          clock-opponent'
 			'board               board           board             board'
 			'bottom-left-actions player          player            clock-player'
 			'captured-player     captured-player captured-opponent captured-opponent'
-			'move-history        move-history    move-history      move-history'
-			'move-nav            move-nav        move-nav          move-nav';
-		}
-
-		.moveNav {
-			display: none;
+		  'move-nav            move-nav        move-nav          move-nav'
+			'move-history        move-history    move-history      move-history';
 		}
 	}
 }

@@ -1,13 +1,23 @@
 import * as P from './player.ts'
 import * as GL from './game/gameLogic.ts'
-import { PLAYER_TIMEOUT, SERVER_HOST } from '../config.ts'
-import { initSharedStore, newNetwork, SharedStore, SharedStoreProvider, StoreMutation } from '~/utils/sharedStore.ts'
-import { createEffect, createMemo, createRoot, createSignal, getOwner, onCleanup, Owner, runWithOwner, untrack } from 'solid-js'
-import { until } from '@solid-primitives/promise'
-import { trackDeep, trackStore } from '@solid-primitives/deep'
-import { createIdSync } from '~/utils/ids.ts'
-import { unwrap } from 'solid-js/store'
-import { concatMap } from 'rxjs'
+import {PLAYER_TIMEOUT, SERVER_HOST} from '../config.ts'
+import {initSharedStore, newNetwork, SharedStore, SharedStoreProvider, StoreMutation} from '~/utils/sharedStore.ts'
+import {
+	createEffect,
+	createMemo,
+	createRoot,
+	createSignal,
+	getOwner,
+	onCleanup,
+	Owner,
+	runWithOwner,
+	untrack
+} from 'solid-js'
+import {until} from '@solid-primitives/promise'
+import {trackDeep, trackStore} from '@solid-primitives/deep'
+import {createIdSync} from '~/utils/ids.ts'
+import {unwrap} from 'solid-js/store'
+import {concatMap} from 'rxjs'
 
 // TODO normalize language from "color swap" to "pieces swap"
 
@@ -39,20 +49,14 @@ export type RoomState = {
 	activeGameId?: string
 }
 
-export type ChatMessage = {
-	type: 'player' | 'system'
-	ts: number
-	sender: string | null
-	text: string
-}
-
 type ClientOwnedState = {
 	playerId: string
 }
 
 export const [room, setRoom] = createSignal<Room | null>(null)
 
-let disposePrevious = () => {}
+let disposePrevious = () => {
+}
 
 export async function createRoom() {
 	return await newNetwork(SERVER_HOST)
@@ -85,7 +89,7 @@ export async function connectToRoom(roomId: string, player: P.Player, parentOwne
 	let instanceOwner = null as unknown as Owner
 	disposePrevious()
 	createRoot((_dispose) => {
-		store = initSharedStore<RoomState, ClientOwnedState, RoomEvent>(provider, { playerId: player.id }, state)
+		store = initSharedStore<RoomState, ClientOwnedState, RoomEvent>(provider, {playerId: player.id}, state)
 
 		//#region try to take state snapshot on page unload
 		createEffect(() => {
@@ -127,17 +131,17 @@ export async function connectToRoom(roomId: string, player: P.Player, parentOwne
 		const mutations: StoreMutation[] = [
 			{
 				path: ['players', '__push__'],
-				value: { id: player.id, name: P.playerName(), isReadyForGame: false, agreeColorSwap: false },
+				value: {id: player.id, name: P.playerName(), isReadyForGame: false, agreeColorSwap: false},
 			},
 		]
 
 		if (!state.whitePlayerId && state.players.length > 0) {
-			mutations.push({ path: ['whitePlayerId'], value: player.id })
+			mutations.push({path: ['whitePlayerId'], value: player.id})
 		} else if (!state.whitePlayerId && state.players.length === 0 && Math.random() < 0.5) {
-			mutations.push({ path: ['whitePlayerId'], value: player.id })
+			mutations.push({path: ['whitePlayerId'], value: player.id})
 		}
 
-		return { mutations, events: [{ type: 'player-connected', playerId: player.id }] }
+		return {mutations, events: [{type: 'player-connected', playerId: player.id}]}
 	})
 	//#endregion
 
@@ -179,8 +183,8 @@ export class Room {
 							const playerIndex = state.players.findIndex((p) => p.id === player.id)
 							if (playerIndex === -1 || !player.disconnectedAt) return []
 							return {
-								events: [{ type: 'player-reconnected', playerId: player.id }],
-								mutations: [{ path: ['players', playerIndex, 'disconnectedAt'], value: undefined }],
+								events: [{type: 'player-reconnected', playerId: player.id}],
+								mutations: [{path: ['players', playerIndex, 'disconnectedAt'], value: undefined}],
 							}
 						})
 					} else if (previouslyConnected.has(player.id) && !isConnected) {
@@ -192,8 +196,8 @@ export class Room {
 							if (playerIndex === -1) return []
 							console.log('player disconnected', player.id, 'at', disconnectedAt, 'state', state)
 							return {
-								events: [{ type: 'player-disconnected', playerId: player.id }],
-								mutations: [{ path: ['players', playerIndex, 'disconnectedAt'], value: disconnectedAt }],
+								events: [{type: 'player-disconnected', playerId: player.id}],
+								mutations: [{path: ['players', playerIndex, 'disconnectedAt'], value: disconnectedAt}],
 							}
 						})
 					}
@@ -253,7 +257,7 @@ export class Room {
 
 	//#region actions
 	setGameConfig(config: Partial<GL.GameConfig>) {
-		this.sharedStore.setStore({ path: ['gameConfig'], value: config })
+		this.sharedStore.setStore({path: ['gameConfig'], value: config})
 	}
 
 	async setPlayerName(name: string) {
@@ -268,7 +272,7 @@ export class Room {
 				_name = `${name} (${duplicates.length})`
 			}
 
-			return [{ path: ['players', state.players.findIndex((p) => p.id === this.player.id), 'name'], value: _name }]
+			return [{path: ['players', state.players.findIndex((p) => p.id === this.player.id), 'name'], value: _name}]
 		})
 	}
 
@@ -276,14 +280,14 @@ export class Room {
 		this.sharedStore.setStoreWithRetries(() => {
 			if (!this.opponent || !this.rollbackState.activeGameId) return
 			return [
-				{ path: ['players', this.players.findIndex((p) => p.id === this.player.id), 'isReadyForGame'], value: false },
-				{ path: ['players', this.players.findIndex((p) => p.id === this.opponent!.id), 'isReadyForGame'], value: false },
+				{path: ['players', this.players.findIndex((p) => p.id === this.player.id), 'isReadyForGame'], value: false},
+				{path: ['players', this.players.findIndex((p) => p.id === this.opponent!.id), 'isReadyForGame'], value: false},
 				{
 					path: ['whitePlayerId'],
 					value: this.rollbackState.whitePlayerId === this.player.id ? this.opponent!.id : this.player.id,
 				},
-				{ path: ['status'], value: 'pregame' },
-				{ path: ['activeGameId'], value: undefined },
+				{path: ['status'], value: 'pregame'},
+				{path: ['activeGameId'], value: undefined},
 			]
 		})
 	}
@@ -293,7 +297,7 @@ export class Room {
 			if (this.state.status !== 'pregame') return
 			if (!this.opponent) {
 				return {
-					events: [{ type: 'agree-piece-swap', playerId: this.player.id }],
+					events: [{type: 'agree-piece-swap', playerId: this.player.id}],
 					mutations: [
 						{
 							path: ['whitePlayerId'],
@@ -305,7 +309,7 @@ export class Room {
 			if (this.opponent.agreeColorSwap) return
 
 			return {
-				events: [{ type: 'initiate-piece-swap', playerId: this.player.id }],
+				events: [{type: 'initiate-piece-swap', playerId: this.player.id}],
 				mutations: [
 					{
 						path: ['players', this.players.findIndex((p) => p.id === this.player.id), 'agreeColorSwap'],
@@ -322,9 +326,9 @@ export class Room {
 			if (!this.opponent || !this.opponent.agreeColorSwap) return []
 
 			return {
-				events: [{ type: 'agree-piece-swap', playerId: this.player.id }],
+				events: [{type: 'agree-piece-swap', playerId: this.player.id}],
 				mutations: [
-					{ path: ['players', this.players.findIndex((p) => p.id === this.player.id), 'agreeColorSwap'], value: false },
+					{path: ['players', this.players.findIndex((p) => p.id === this.player.id), 'agreeColorSwap'], value: false},
 					{
 						path: ['players', this.players.findIndex((p) => p.id === this.opponent!.id), 'agreeColorSwap'],
 						value: false,
@@ -343,9 +347,9 @@ export class Room {
 			if (this.state.status !== 'pregame') return []
 			if (!this.opponent) return []
 			return {
-				events: [{ type: 'decline-or-cancel-piece-swap', playerId: this.player.id }],
+				events: [{type: 'decline-or-cancel-piece-swap', playerId: this.player.id}],
 				mutations: [
-					{ path: ['players', this.players.findIndex((p) => p.id === this.player.id), 'agreeColorSwap'], value: false },
+					{path: ['players', this.players.findIndex((p) => p.id === this.player.id), 'agreeColorSwap'], value: false},
 					{
 						path: ['players', this.players.findIndex((p) => p.id === this.opponent!.id), 'agreeColorSwap'],
 						value: false,
@@ -368,15 +372,15 @@ export class Room {
 					})
 					const gameId = createIdSync(6)
 					return [
-						{ path: ['players', playerIndex, 'isReadyForGame'], value: false },
-						{ path: ['players', opponentIndex, 'isReadyForGame'], value: false },
-						{ path: ['whitePlayerId'], value: undefined },
-						{ path: ['status'], value: 'playing' },
-						{ path: ['activeGameId'], value: gameId },
-						{ path: ['gameStates', gameId], value: gameState },
+						{path: ['players', playerIndex, 'isReadyForGame'], value: false},
+						{path: ['players', opponentIndex, 'isReadyForGame'], value: false},
+						{path: ['whitePlayerId'], value: undefined},
+						{path: ['status'], value: 'playing'},
+						{path: ['activeGameId'], value: gameId},
+						{path: ['gameStates', gameId], value: gameState},
 					]
 				} else {
-					return [{ path: ['players', playerIndex, 'isReadyForGame'], value: true }]
+					return [{path: ['players', playerIndex, 'isReadyForGame'], value: true}]
 				}
 			})
 		} else {
@@ -385,7 +389,7 @@ export class Room {
 
 				const playerIndex = this.players.findIndex((p) => p.id === this.player.id)
 
-				return [{ path: ['players', playerIndex, 'isReadyForGame'], value: false }]
+				return [{path: ['players', playerIndex, 'isReadyForGame'], value: false}]
 			})
 		}
 	}

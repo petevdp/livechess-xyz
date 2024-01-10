@@ -305,8 +305,6 @@ export function Game(props: { gameId: string }) {
 
 	//#endregion
 
-	// @ts-ignore
-
 	//#region promotion
 	const setPromotion = (piece: GL.PromotionPiece) => {
 		game.tryMakeMove(game.promotion()!.from, game.promotion()!.to, piece)

@@ -1,6 +1,6 @@
 import { Accessor, createEffect, createRoot, createSignal, getOwner, JSXElement, onCleanup, onMount, runWithOwner, Show } from 'solid-js'
-import { Button } from './Button.tsx'
 import { myUntil } from '~/utils/solid.ts'
+import { Button } from '~/components/ui/button.tsx'
 
 let modalContainer: HTMLDivElement | null = null
 // for some reason checking for reference equality on the JSXElement itself isn't working, so we're wrap it in an object as a workaround
@@ -53,7 +53,7 @@ export function ModalContainer() {
 				}}
 				onclick={(e) => e.stopPropagation()}
 			>
-				<div class="bg-card text-card-foreground pointer-events-auto relative flex w-full flex-col rounded-md border shadow-sm outline-none">
+				<div class="pointer-events-auto relative flex w-full flex-col rounded-md border bg-card text-card-foreground shadow-sm outline-none">
 					<Show when={activeModal()?.title}>
 						<div
 							class="flex flex-shrink-0 flex-row items-center rounded-t-md p-2"
@@ -64,7 +64,7 @@ export function ModalContainer() {
 							<h5 class="text-lg font-medium leading-normal text-neutral-800 dark:text-neutral-200" id="modalLabel">
 								{activeModal()!.title}
 							</h5>
-							<Button size="medium" kind={'secondary'} onclick={() => setActiveModal(null)}>
+							<Button variant="secondary" onclick={() => setActiveModal(null)}>
 								<svg
 									xmlns="http://www.w3.org/2000/svg"
 									fill="none"
@@ -179,7 +179,7 @@ export async function prompt<T>(
 			return (
 				<div class="flex items-center">
 					<p class="mr-2 text-lg">{rendered}</p>
-					<Button size="medium" tabindex={1} ref={buttonRef!} kind="primary" onclick={() => onCompleted(defaultValue)}>
+					<Button tabindex={1} ref={buttonRef!} onclick={() => onCompleted(defaultValue)}>
 						OK
 					</Button>
 				</div>

@@ -1,23 +1,21 @@
-import { createResource, createSignal, Match, onCleanup, onMount, ParentProps, Show, Switch } from 'solid-js'
+import {createResource, createSignal, Match, onCleanup, onMount, ParentProps, Show, Switch} from 'solid-js'
 import toast from 'solid-toast'
 import * as PC from '~/systems/piece.ts'
 import * as P from '~/systems/player.ts'
 import QRCode from 'qrcode'
-import { Game } from './Game.tsx'
+import {Game} from './Game.tsx'
 import * as GL from '~/systems/game/gameLogic.ts'
 import * as R from '~/systems/room.ts'
-import { tippy } from '~/utils/tippy.tsx'
-import { until } from '@solid-primitives/promise'
+import {until} from '@solid-primitives/promise'
 import SwapSvg from '~/assets/icons/swap.svg'
-import * as TIP from 'tippy.js'
-import { ScreenFittingContent } from '~/components/AppContainer.tsx'
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '~/components/ui/card.tsx'
-import { Button } from '~/components/ui/button.tsx'
-import { Choice, MultiChoiceButton } from '~/components/MultiChoiceButton.tsx'
-import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip.tsx'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog'
-import { Input } from '~/components/ui/input.tsx'
-import { HoverCard, HoverCardContent, HoverCardTrigger } from '~/components/ui/hover-card.tsx'
+import {ScreenFittingContent} from '~/components/AppContainer.tsx'
+import {Card, CardContent, CardFooter, CardHeader, CardTitle} from '~/components/ui/card.tsx'
+import {Button} from '~/components/ui/button.tsx'
+import {Choice, MultiChoiceButton} from '~/components/MultiChoiceButton.tsx'
+import {Tooltip, TooltipContent, TooltipTrigger} from '~/components/ui/tooltip.tsx'
+import {Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger} from '~/components/ui/dialog'
+import {Input} from '~/components/ui/input.tsx'
+import {HoverCard, HoverCardContent, HoverCardTrigger} from '~/components/ui/hover-card.tsx'
 
 export function Room() {
 	const room = R.room()!
@@ -220,8 +218,7 @@ function SwapButton(props: { initiatePieceSwap: () => void; alreadySwapping: boo
 				<Tooltip>
 					<TooltipTrigger>
 						<Button onclick={requestSwap} size="icon" variant="ghost">
-							{' '}
-							<SwapSvg class="fill-white" />
+							<SwapSvg />
 						</Button>
 					</TooltipTrigger>
 					<TooltipContent>Swap Pieces</TooltipContent>
@@ -238,40 +235,9 @@ function PlayerConfigDisplay(props: {
 	cancelPieceSwap: () => void
 	canStartGame: boolean
 }) {
-	const [tip, setTip] = createSignal<TIP.Instance | null>(null)
-	let playerNameRef = null as unknown as HTMLSpanElement
-	const cancelSwapModalContent = (
-		<div class="space-x-1">
-			<span class="text-xs">Asking Opponent for piece swap</span>
-			<Button
-				onclick={() => {
-					tip()?.hide()
-					props.cancelPieceSwap()
-				}}
-			>
-				Decline
-			</Button>
-		</div>
-	) as HTMLDivElement
-
-	onMount(() => {
-		setTip(
-			tippy(playerNameRef, {
-				theme: 'material',
-				allowHTML: true,
-				content: cancelSwapModalContent,
-				hideOnClick: false,
-				placement: 'top',
-				trigger: 'manual',
-				interactive: true,
-				showOnCreate: false,
-				appendTo: document.body,
-			})
-		)
-	})
 	return (
 		<PlayerDisplayContainer color={props.color}>
-			<span ref={playerNameRef} class="whitespace-nowrap text-xs">
+			<span class="whitespace-nowrap text-xs">
 				{props.player.name} (You)
 			</span>
 			<Show when={!props.player.isReadyForGame}>
