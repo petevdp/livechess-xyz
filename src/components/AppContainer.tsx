@@ -1,5 +1,5 @@
 import { ComponentProps, ParentProps, splitProps } from 'solid-js'
-import { ModalContainer } from './Modal.tsx'
+import { ModalContainer } from './utils/Modal.tsx'
 import { A } from '@solidjs/router'
 import Logo from '~/assets/logo.svg'
 import styles from './AppContainer.module.css'
