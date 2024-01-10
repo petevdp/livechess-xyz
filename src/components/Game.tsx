@@ -402,51 +402,6 @@ export function Game(props: { gameId: string }) {
 	})
 	//#endregion
 
-	//#region game over modal
-
-	// const [isGameOverModalDisposed, setIsGameOverModalDisposed] = createSignal(false)
-	// const [canShowGameOverModal, setCanShowGameOverModal] = createSignal(false)
-	// onCleanup(() => {
-	// 	console.log('disposing game over modal')
-	// 	setIsGameOverModalDisposed(true)
-	// })
-	//
-	// const trackGameOver = createReaction(async () => {
-	// 	Modal.prompt(
-	// 		(_props) => {
-	// 			return (
-	// 				<div class="flex flex-col items-center space-y-1">
-	// 					<GameOutcomeDisplay outcome={game.outcome!} />
-	// 					<div class="space-x-1">
-	// 						<Button onclick={() => game.room.configureNewGame()}>New Game</Button>
-	// 						<Button onclick={() => _props.onCompleted(false)}>Continue</Button>
-	// 					</div>
-	// 				</div>
-	// 			)
-	// 		},
-	// 		false,
-	// 		isGameOverModalDisposed
-	// 	)
-	// 		.catch((err) => {
-	// 			console.log('received error after modal prompt')
-	// 			console.trace(err)
-	// 		})
-	// 		.then(() => {
-	// 			setIsGameOverModalDisposed(true)
-	// 		})
-	// })
-	//
-	// trackGameOver(canShowGameOverModal)
-	//
-	// let loadTime = Date.now()
-	// createEffect(() => {
-	// 	if (game.outcome && !isGameOverModalDisposed() && Date.now() - loadTime > 100) {
-	// 		setCanShowGameOverModal(true)
-	// 	}
-	// })
-	//
-	//#endregion
-
 	//#region draw offer events
 	{
 		const sub = game.drawEvent$.subscribe((eventType) => {
