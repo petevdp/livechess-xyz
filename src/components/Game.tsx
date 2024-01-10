@@ -47,8 +47,8 @@ export function Game(props: { gameId: string }) {
 	const boardSize = (): number => {
 		if (windowSize().width < windowSize().height && windowSize().width > 700) {
 			return windowSize().width - 80
-		} else if (windowSize().width < windowSize().height && windowSize().width < 700) {
-			return windowSize().width - 20
+		} else if (windowSize().width < windowSize().height && windowSize().width <= 700) {
+			return windowSize().width - 30
 		} else {
 			return windowSize().height - 170
 		}
@@ -429,7 +429,12 @@ export function Game(props: { gameId: string }) {
 					<MoveHistory />
 				</div>
 				<Player class={styles.opponent} player={game.opponent} />
-				<Clock class={styles.clockOpponent} clock={game.clock[game.opponent.color]} ticking={!game.isPlayerTurn} />
+				<Clock
+					class={styles.clockOpponent}
+					clock={game.clock[game.opponent.color]}
+					ticking={!game.isPlayerTurn && game.clock[game.opponent.color] > 0}
+					timeControl={game.gameConfig.timeControl}
+				/>
 				<div class={`${styles.topLeftActions} flex flex-col items-start space-x-1`}>
 					<Button variant="ghost" size="icon" onclick={() => setBoardFlipped((f) => !f)} class="mb-1">
 						<FlipBoardSvg />
@@ -440,7 +445,12 @@ export function Game(props: { gameId: string }) {
 				<div class={styles.board}>{canvas}</div>
 				<ActionsPanel class={styles.bottomLeftActions} />
 				<Player class={styles.player} player={game.player} />
-				<Clock class={styles.clockPlayer} clock={game.clock[game.player.color]} ticking={game.isPlayerTurn} />
+				<Clock
+					class={styles.clockPlayer}
+					clock={game.clock[game.player.color]}
+					ticking={game.isPlayerTurn && game.clock[game.player.color] > 0}
+					timeControl={game.gameConfig.timeControl}
+				/>
 				<div class={styles.moveNav}>
 					<MoveNav />
 				</div>
@@ -457,7 +467,7 @@ function Player(props: { player: G.PlayerWithColor; class: string }) {
 	)
 }
 
-function Clock(props: { clock: number; class: string; ticking: boolean }) {
+function Clock(props: { clock: number; class: string; ticking: boolean; timeControl: GL.TimeControl }) {
 	const formattedClock = () => {
 		// clock is in ms
 		const minutes = Math.floor(props.clock / 1000 / 60)
@@ -469,10 +479,33 @@ function Clock(props: { clock: number; class: string; ticking: boolean }) {
 		}
 		return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`
 	}
-	// TODO add warning threshold for time
-	// const warnThreshold = () => game.gameConfig
+	const pastWarnThreshold = createMemo(() => {
+		switch (props.timeControl) {
+			case '1m':
+				return props.clock < 1000 * 15
+			case '3m':
+				return props.clock < 1000 * 30
+			case '5m':
+				return props.clock < 1000 * 45
+			case '10m':
+				return props.clock < 1000 * 60
+			case '15m':
+				return props.clock < 1000 * 60 * 2
+		}
+	})
 
-	return <span class={`flex justify-end text-xl ${props.class} ${!props.ticking ? 'text-neutral-400' : ''}`}>{formattedClock()}</span>
+	return (
+		<span
+			class="flex justify-end text-xl"
+			classList={{
+				'text-red-500': pastWarnThreshold(),
+				'animate-pulse': props.ticking && pastWarnThreshold(),
+				'text-neutral-400': !props.ticking,
+			}}
+		>
+			{formattedClock()}
+		</span>
+	)
 }
 
 function ActionsPanel(props: { class: string }) {

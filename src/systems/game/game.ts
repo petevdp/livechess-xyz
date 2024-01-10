@@ -37,7 +37,7 @@ export class Game {
 	viewedMoveIndex: Accessor<number>
 	drawEvent$: Observable<DrawEvent> = EMPTY
 	currentBoardView: BoardView
-	private gameConfig: GL.GameConfig
+	gameConfig: GL.GameConfig
 	private getMoveHistoryAsNotation: Accessor<[string, string | null][]>
 
 	get outcome() {
