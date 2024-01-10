@@ -81,21 +81,42 @@ export function Game(props: { gameId: string }) {
 		//#region draw board
 
 		// fill in light squares as background
-		ctx.fillStyle = BOARD_COLORS.light
+		ctx.fillStyle = game.gameConfig.variant === 'fog-of-war' ? BOARD_COLORS.lightFog : BOARD_COLORS.light
 		ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-		// fill in dark squares
-		ctx.fillStyle = BOARD_COLORS.dark
-		for (let i = 0; i < 8; i++) {
-			for (let j = (i + 1) % 2; j < 8; j += 2) {
-				ctx.fillRect(j * squareSize(), i * squareSize(), squareSize(), squareSize())
+		if (game.gameConfig.variant === 'fog-of-war') {
+			ctx.fillStyle = BOARD_COLORS.light
+			for (let square of game.currentBoardView.visibleSquares) {
+				const [x, y] = squareNotationToDisplayCoords(square, boardFlipped(), squareSize())
+				if ((x + y) % 2 === 0) continue
+				ctx.fillRect(x, y, squareSize(), squareSize())
 			}
 		}
+
+		// fill in dark squares
+		for (let i = 0; i < 8; i++) {
+			for (let j = (i + 1) % 2; j < 8; j += 2) {
+				let visible =
+					game.gameConfig.variant !== 'fog-of-war' ||
+					game.currentBoardView.visibleSquares.has(
+						GL.notationFromCoords({
+							x: j,
+							y: i,
+						})
+					)
+
+				const [x,y] = boardCoordsToDisplayCoords({ x: j, y: i }, boardFlipped(), squareSize())
+
+				ctx.fillStyle = visible ? BOARD_COLORS.dark : BOARD_COLORS.darkFog
+				ctx.fillRect(x,y, squareSize(), squareSize())
+			}
+		}
+
 		//#endregion
 
 		//#region draw last move highlight
 		const highlightColor = '#aff682'
-		if (game.currentBoardView.lastMove) {
+		if (game.currentBoardView.lastMove && game.gameConfig.variant !== 'fog-of-war') {
 			const highlightedSquares = [game.currentBoardView.lastMove.from, game.currentBoardView.lastMove.to]
 			for (let square of highlightedSquares) {
 				if (!square) continue
@@ -127,7 +148,9 @@ export function Game(props: { gameId: string }) {
 
 		//#region draw pieces
 		for (let [square, piece] of Object.entries(game.currentBoardView.board.pieces)) {
-			if (square === grabbedSquare()) {
+			if (
+				square === grabbedSquare() || game.gameConfig.variant === 'fog-of-war' ? !game.currentBoardView.visibleSquares.has(square) : false
+			) {
 				continue
 			}
 			const _promotionSelection = game.promotion()
@@ -225,7 +248,10 @@ export function Game(props: { gameId: string }) {
 		} else if (
 			hoveredSquare() &&
 			game.currentBoardView.board.pieces[hoveredSquare()!] &&
-			game.currentBoardView.board.pieces[hoveredSquare()!]!.color === game.player.color
+			game.currentBoardView.board.pieces[hoveredSquare()!]!.color === game.player.color &&
+			game.gameConfig.variant === 'fog-of-war'
+				? game.currentBoardView.visibleSquares.has(hoveredSquare()!)
+				: true
 		) {
 			canvas.style.cursor = 'grab'
 		} else {

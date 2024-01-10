@@ -5,4 +5,7 @@ export const PLAYER_TIMEOUT = 5000
 export const BOARD_COLORS = {
 	light: '#eaaa69',
 	dark: '#a05a2c',
+	lightFog: '#a96f40',
+	darkFog: '#623211',
+
 }

@@ -1,4 +1,5 @@
 import hash from 'object-hash'
+import { partition } from 'lodash'
 //#region primitives
 
 export const PIECES = ['pawn', 'knight', 'bishop', 'rook', 'queen', 'king'] as const
@@ -17,9 +18,9 @@ export type Move = {
 	from: string
 	to: string
 	piece: Piece
-	castle: boolean
+	castle?: 'king' | 'queen'
 	promotion?: PromotionPiece
-	enPassant: boolean
+	enPassant?: string
 	capture: boolean
 	ts: Timestamp
 }
@@ -68,7 +69,15 @@ export const startPos = () =>
 //#region organization
 export type GameOutcome = {
 	winner: 'white' | 'black' | null
-	reason: 'checkmate' | 'stalemate' | 'insufficient-material' | 'threefold-repetition' | 'resigned' | 'draw-accepted' | 'flagged'
+	reason:
+		| 'checkmate'
+		| 'stalemate'
+		| 'insufficient-material'
+		| 'threefold-repetition'
+		| 'resigned'
+		| 'draw-accepted'
+		| 'flagged'
+		| 'king-captured'
 }
 
 export const VARIANTS = ['regular', 'fog-of-war', 'duck', 'fischer-random'] as const
@@ -94,7 +103,6 @@ export const defaultGameConfig: GameConfig = {
 	timeControl: '5m',
 	increment: '1',
 }
-
 
 export type GameState = {
 	players: { [id: string]: Color }
@@ -179,12 +187,12 @@ function moveToCandidateMove(move: Move): CandidateMove {
 
 //#region game status
 
-export function inCheck(board: Board) {
-	return _inCheck(board)
-}
-
 function checkmated(game: GameState) {
 	return inCheck(getBoard(game)) && noMoves(game)
+}
+
+function kingCaptured(game: GameState) {
+	return !Object.values(getBoard(game).pieces).some((piece) => piece.type === 'king' && piece.color === getBoard(game).toMove)
 }
 
 function stalemated(game: GameState) {
@@ -211,18 +219,21 @@ export function getBoard(game: GameState) {
 	return game.boardHistory[game.boardHistory.length - 1].board
 }
 
-export function getGameOutcome(state: GameState) {
+export function getGameOutcome(state: GameState, config: ParsedGameConfig) {
 	let winner: GameOutcome['winner']
 	let reason: GameOutcome['reason']
 	if (state.resigned) {
-		winner = state.resigned === 'white' ? 'black' : 'white'
+		winner = oppositeColor(state.resigned)
 		reason = 'resigned'
 	} else if (!Object.values(state.drawOffers).includes(null)) {
 		winner = null
 		reason = 'draw-accepted'
-	} else if (checkmated(state)) {
-		winner = getBoard(state).toMove === 'white' ? 'black' : 'white'
+	} else if (config.variant !== 'fog-of-war' && checkmated(state)) {
+		winner = oppositeColor(getBoard(state).toMove)
 		reason = 'checkmate'
+	} else if (config.variant === 'fog-of-war' && kingCaptured(state)) {
+		winner = oppositeColor(getBoard(state).toMove)
+		reason = 'king-captured'
 	} else if (stalemated(state)) {
 		winner = null
 		reason = 'stalemate'
@@ -244,7 +255,13 @@ export function getGameOutcome(state: GameState) {
 //#region move application
 
 // returns new board and  returns null if move is invalid
-export function validateAndPlayMove(from: string, to: string, game: GameState, promotionPiece?: PromotionPiece) {
+export function validateAndPlayMove(
+	from: string,
+	to: string,
+	game: GameState,
+	gameConfig: ParsedGameConfig,
+	promotionPiece?: PromotionPiece
+) {
 	if (getBoard(game).pieces[from].color !== getBoard(game).toMove) {
 		return
 	}
@@ -252,7 +269,7 @@ export function validateAndPlayMove(from: string, to: string, game: GameState, p
 	if (from === to) {
 		return
 	}
-	const candidateMoves = getLegalMoves([coordsFromNotation(from)], game)
+	const candidateMoves = getLegalMoves([coordsFromNotation(from)], game, gameConfig.variant === 'fog-of-war')
 	const candidate = candidateMoves.find((m) => notationFromCoords(m.to) === to && (promotionPiece ? m.promotion === promotionPiece : true))
 	if (!candidate) {
 		return
@@ -314,8 +331,8 @@ export type CandidateMove = {
 	from: Coords
 	to: Coords
 	piece: Piece
-	castle: boolean
-	enPassant: boolean
+	castle?: 'king' | 'queen'
+	enPassant?: string
 	promotion?: PromotionPiece
 }
 
@@ -323,12 +340,12 @@ export type CandidateMoveOptions = {
 	from: Coords
 	to: Coords
 	piece: Piece
-	castle?: boolean
-	enPassant?: boolean
+	castle?: 'king' | 'queen'
+	enPassant?: string
 	promotion?: PromotionPiece
 }
 
-export function getLegalMoves(piecePositions: Coords[], game: GameState): CandidateMove[] {
+export function getLegalMoves(piecePositions: Coords[], game: GameState, allowSelfChecks = false): CandidateMove[] {
 	let candidateMoves: CandidateMove[] = []
 
 	for (const start of piecePositions) {
@@ -339,11 +356,13 @@ export function getLegalMoves(piecePositions: Coords[], game: GameState): Candid
 		candidateMoves = [...candidateMoves, ...getMovesFromCoords(start, getBoard(game), game.moveHistory, piece)]
 	}
 
-	candidateMoves = candidateMoves.filter((move) => {
-		const [newBoard] = applyMoveToBoard(move, getBoard(game))
-		newBoard.toMove = getBoard(game).toMove
-		return !_inCheck(newBoard)
-	})
+	if (!allowSelfChecks) {
+		candidateMoves = candidateMoves.filter((move) => {
+			const [newBoard] = applyMoveToBoard(move, getBoard(game))
+			newBoard.toMove = getBoard(game).toMove
+			return !inCheck(newBoard)
+		})
+	}
 
 	return candidateMoves
 }
@@ -455,7 +474,7 @@ function pawnMoves(start: Coords, board: Board, history: MoveHistory) {
 		if (movedTwoRanks && isHorizontallyAdjacent) {
 			addMove({
 				to: { x: lastMoveX, y: lastMoveY + direction },
-				enPassant: true,
+				enPassant: notationFromCoords({ x: lastMoveX, y: lastMoveY }),
 			})
 		}
 	})()
@@ -465,8 +484,6 @@ function pawnMoves(start: Coords, board: Board, history: MoveHistory) {
 
 function newCandidateMove(options: CandidateMoveOptions) {
 	options.promotion ??= undefined
-	options.enPassant ??= false
-	options.castle ??= false
 	return options as CandidateMove
 }
 
@@ -604,7 +621,7 @@ function kingMoves(start: Coords, board: Board, history: MoveHistory, checkCastl
 				from: start,
 				to: newKingSquare,
 				piece: 'king',
-				castle: true,
+				castle: direction.x === 1 ? 'king' : 'queen',
 			})
 		)
 	}
@@ -653,7 +670,7 @@ function findPiece(piece: ColoredPiece, board: Board) {
 	return Object.entries(board.pieces).find(([_, _piece]) => _piece?.type === piece.type && _piece.color === piece.color)![0]
 }
 
-function _inCheck(board: Board) {
+export function inCheck(board: Board) {
 	const king = coordsFromNotation(findPiece({ color: board.toMove, type: 'king' }, board))
 	return squareAttacked(king, board)
 }
@@ -697,6 +714,10 @@ export function hashBoard(board: Board) {
 	return hash.sha1(board)
 }
 
+function oppositeColor(color: Color) {
+	return color === 'white' ? 'black' : 'white'
+}
+
 //#endregion
 
 //#region parsing
@@ -724,7 +745,6 @@ function toShortPieceName(piece: Piece) {
 	return piece[0].toUpperCase()
 }
 
-
 export function moveToChessNotation(moveIndex: number, state: GameState): string {
 	const move = state.moveHistory[moveIndex]
 	const piece = move.piece === 'pawn' ? '' : toShortPieceName(move.piece)
@@ -735,7 +755,7 @@ export function moveToChessNotation(moveIndex: number, state: GameState): string
 	const checkmate = check && checkmated(state) ? '#' : ''
 
 	if (move.castle) {
-		return move.to[0] === 'c' ? 'O-O-O' : 'O-O'
+		return move.castle === 'queen' ? 'O-O-O' : 'O-O'
 	}
 	return piece + capture + to + promotion + check + checkmate
 }
@@ -750,3 +770,55 @@ export function getDrawIsOfferedBy(state: GameState) {
 export function isPlayerTurn(board: Board, color: Color) {
 	return board.toMove === color
 }
+
+//#region fog of war
+export function getVisibleSquares(game: GameState, color: Color) {
+	const board = getBoard(game)
+
+	let simulated: GameState
+
+	const [playerPieces, opponentPieces] = partition(Object.entries(board.pieces), ([_, piece]) => piece.color === color)
+	if (getBoard(game).toMove === color) {
+		simulated = game
+	} else {
+		simulated = JSON.parse(JSON.stringify(game)) as GameState
+		const [noopSquare, noopPiece] = opponentPieces.find(([_, piece]) =>
+			 piece.type === 'king'
+		)!
+		const noopCoords = coordsFromNotation(noopSquare)
+		const candidateMove = { from: noopCoords, to: noopCoords, piece: noopPiece.type } satisfies CandidateMove
+		const [newBoard] = applyMoveToBoard(candidateMove, getBoard(game))
+
+		simulated.boardHistory.push({
+			board: newBoard,
+			index: game.boardHistory.length,
+			hash: hashBoard(newBoard),
+		})
+		simulated.moveHistory.push(candidateMoveToMove(candidateMove))
+	}
+
+	const visibleSquares = new Set<string>()
+	for (let [notation] of playerPieces) {
+		visibleSquares.add(notation)
+	}
+	const coords = playerPieces.map(([notation]) => coordsFromNotation(notation))
+	const candidateMoves = getLegalMoves(coords, simulated, true)
+	for (let move of candidateMoves) {
+		visibleSquares.add(notationFromCoords(move.to))
+		if (move.enPassant) {
+			visibleSquares.add(move.enPassant)
+		}
+
+		if (move.castle) {
+			const rank = board.toMove === 'white' ? 0 : 7
+			const startingRookFile = move.to.x === 2 ? 0 : 7
+			const endingRookFile = move.to.x === 2 ? 3 : 5
+			for (let i = startingRookFile; i <= endingRookFile; i++) {
+				visibleSquares.add(notationFromCoords({ x: i, y: rank }))
+			}
+		}
+	}
+	return visibleSquares
+}
+
+//#endregion

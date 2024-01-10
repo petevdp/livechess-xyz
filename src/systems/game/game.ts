@@ -1,12 +1,12 @@
 import * as R from '../room.ts'
 import * as GL from './gameLogic.ts'
-import { BoardHistoryEntry, coordsFromNotation, GameOutcome } from './gameLogic.ts'
 import * as P from '../player.ts'
 import { Accessor, createEffect, createMemo, createSignal, from, getOwner, observable, onCleanup } from 'solid-js'
 import { combineLatest, concatMap, distinctUntilChanged, EMPTY, from as rxFrom, Observable, ReplaySubject, skip } from 'rxjs'
 import { isEqual } from 'lodash'
 import { map } from 'rxjs/operators'
 import { trackAndUnwrap } from '~/utils/solid.ts'
+import {unwrap} from "solid-js/store";
 
 export type PlayerWithColor = P.Player & { color: GL.Color }
 
@@ -27,6 +27,7 @@ type BoardView = {
 	board: GL.Board
 	inCheck: boolean
 	lastMove: GL.Move | null
+	visibleSquares: Set<string>
 }
 export type DrawEvent = 'offered-by-opponent' | 'awaiting-response' | 'declined' | 'player-cancelled' | 'opponent-cancelled'
 
@@ -69,10 +70,21 @@ export class Game {
 		const lastMove = () => this.rollbackState.moveHistory[this.viewedMoveIndex()] || null
 		const board = () => this.rollbackState.boardHistory[this.viewedMoveIndex() + 1].board
 
-		const inCheck = createMemo(() => GL.inCheck(this.rollbackState.boardHistory[this.rollbackState.boardHistory.length - 1].board))
+		const stateUnwrapped = createMemo(() => trackAndUnwrap(this.rollbackState))
+		const inCheck = createMemo(() => GL.inCheck(stateUnwrapped().boardHistory[stateUnwrapped().boardHistory.length - 1].board))
+		const visibleSquares = createMemo(() => {
+			if (this.gameConfig.variant === 'fog-of-war') {
+				return GL.getVisibleSquares(trackAndUnwrap(this.rollbackState), this.player.color)
+			}
+			// just avoid computing this when not needed
+			return new Set()
+		})
 		this.currentBoardView = {
 			get board() {
 				return board()
+			},
+			get visibleSquares() {
+				return visibleSquares()
 			},
 			get inCheck() {
 				return inCheck()
@@ -81,7 +93,7 @@ export class Game {
 				return lastMove()
 			},
 		} as BoardView
-		this.getMoveHistoryAsNotation = createMemo(() => getMoveHistoryAsNotation(trackAndUnwrap(this.rollbackState)))
+		this.getMoveHistoryAsNotation = createMemo(() => getMoveHistoryAsNotation(stateUnwrapped()))
 
 		//#endregion
 
@@ -89,7 +101,7 @@ export class Game {
 		const move$ = observeMoves(this.rollbackState)
 		this.getClocks = useClock(move$, this.parsedGameConfig, () => !!this.outcome)
 
-		const gameOutcome$ = rxFrom(observable(() => GL.getGameOutcome(trackAndUnwrap(this.lockstepState))))
+		const gameOutcome$ = rxFrom(observable(() => GL.getGameOutcome(trackAndUnwrap(this.lockstepState), this.parsedGameConfig)))
 		type Timeouts = {
 			white: boolean
 			black: boolean
@@ -106,7 +118,7 @@ export class Game {
 			distinctUntilChanged(isEqual)
 		)
 		const outcome$ = combineLatest([gameOutcome$, timeout$]).pipe(
-			map(([outcome, timeouts]): GameOutcome | undefined => {
+			map(([outcome, timeouts]): GL.GameOutcome | undefined => {
 				if (timeouts.white) return { winner: 'black', reason: 'flagged' }
 				if (timeouts.black) return { winner: 'white', reason: 'flagged' }
 				return outcome || undefined
@@ -217,11 +229,16 @@ export class Game {
 
 	getLegalMovesForSquare(startingSquare: string) {
 		if (!this.board.pieces[startingSquare]) return []
-		return GL.getLegalMoves([coordsFromNotation(startingSquare)], trackAndUnwrap(this.rollbackState))
+		return GL.getLegalMoves(
+			[GL.coordsFromNotation(startingSquare)],
+			trackAndUnwrap(this.rollbackState),
+			this.gameConfig.variant === 'fog-of-war'
+		)
 	}
 
 	capturedPieces(color: GL.Color) {
 		const pieces = trackAndUnwrap(this.board.pieces)
+
 		function getPieceCounts(pieces: GL.Piece[]) {
 			const counts = {} as Record<GL.Piece, number>
 
@@ -268,17 +285,19 @@ export class Game {
 		console.log('trying move', { from, to, promotionPiece })
 		if (this.outcome || !this.board.pieces[from]) return
 		let expectedMoveIndex = this.rollbackState.moveHistory.length
-		const result = GL.validateAndPlayMove(from, to, this.rollbackState, promotionPiece)
+		const state = unwrap(this.rollbackState)
+		const result = GL.validateAndPlayMove(from, to, state, this.parsedGameConfig, promotionPiece)
 		if (!result) return false
 
 		return this.room.sharedStore.setStoreWithRetries(() => {
 			console.log('trying move for real')
-			if (this.viewedMoveIndex() !== this.rollbackState.moveHistory.length - 1 || this.outcome) return
+			const state = unwrap(this.rollbackState)
+			if (this.viewedMoveIndex() !== state.moveHistory.length - 1 || this.outcome) return
 			// check that we're still on the same move
 			if (this.rollbackState.moveHistory.length !== expectedMoveIndex) return
-			let board = GL.getBoard(this.rollbackState)
+			let board = GL.getBoard(state)
 			if (!GL.isPlayerTurn(board, this.getPlayerColor(this.playerId)) || !board.pieces[from]) return
-			let result = GL.validateAndPlayMove(from, to, this.rollbackState, promotionPiece)
+			let result = GL.validateAndPlayMove(from, to, state,this.parsedGameConfig, promotionPiece)
 			if (!result) {
 				console.error('invalid move')
 				return
@@ -289,9 +308,9 @@ export class Game {
 				return
 			}
 
-			const newBoardIndex = this.rollbackState.boardHistory.length
+			const newBoardIndex = state.boardHistory.length
 
-			const newBoardHistoryEntry: BoardHistoryEntry = {
+			const newBoardHistoryEntry: GL.BoardHistoryEntry = {
 				board: result!.board,
 				index: newBoardIndex,
 				hash: GL.hashBoard(result!.board),
@@ -315,7 +334,7 @@ export class Game {
 		const moveOffered = this.rollbackState.moveHistory.length
 		const offerTime = Date.now()
 		this.room.sharedStore.setStoreWithRetries(() => {
-			if (!this.rollbackState || this.rollbackState.moveHistory.length !== moveOffered || GL.getGameOutcome(this.rollbackState)) return
+			if (!this.rollbackState || this.rollbackState.moveHistory.length !== moveOffered || GL.getGameOutcome(this.rollbackState, this.parsedGameConfig)) return
 			const drawIsOfferedBy = GL.getDrawIsOfferedBy(this.rollbackState)
 			if (drawIsOfferedBy === this.getPlayerColor(this.playerId)) return
 			return [{ path: [...this.gameStatePath, 'drawOffers', this.getPlayerColor(this.playerId)], value: offerTime }]
@@ -325,7 +344,7 @@ export class Game {
 	cancelDraw() {
 		const moveOffered = this.lockstepState.moveHistory.length
 		this.room.sharedStore.setStoreWithRetries(() => {
-			if (!this.rollbackState || this.lockstepState.moveHistory.length !== moveOffered || GL.getGameOutcome(this.rollbackState)) return
+			if (!this.rollbackState || this.lockstepState.moveHistory.length !== moveOffered || GL.getGameOutcome(this.rollbackState, this.parsedGameConfig)) return
 			const drawIsOfferedBy = GL.getDrawIsOfferedBy(this.rollbackState)
 			if (drawIsOfferedBy !== this.getPlayerColor(this.playerId)) return
 			return [{ path: [...this.gameStatePath, 'drawOffers', this.getPlayerColor(this.playerId)], value: null }]
@@ -335,7 +354,7 @@ export class Game {
 	declineDraw() {
 		const moveOffered = this.lockstepState.moveHistory.length
 		this.room.sharedStore.setStoreWithRetries(() => {
-			if (!this.rollbackState || this.rollbackState.moveHistory.length !== moveOffered || GL.getGameOutcome(this.rollbackState)) return
+			if (!this.rollbackState || this.rollbackState.moveHistory.length !== moveOffered || GL.getGameOutcome(this.rollbackState, this.parsedGameConfig)) return
 			const drawIsOfferedBy = GL.getDrawIsOfferedBy(this.rollbackState)
 			if (drawIsOfferedBy === this.getPlayerColor(this.playerId) || !this.drawIsOfferedBy) return
 			return [
@@ -358,7 +377,7 @@ export class Game {
 
 	resign() {
 		this.room.sharedStore.setStoreWithRetries(() => {
-			if (!this.rollbackState || GL.getGameOutcome(this.rollbackState)) return
+			if (!this.rollbackState || GL.getGameOutcome(this.rollbackState, this.parsedGameConfig)) return
 			return [
 				{
 					path: [...this.gameStatePath, 'resigned'],
