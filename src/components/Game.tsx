@@ -525,9 +525,11 @@ export function Game(props: { gameId: string }) {
 function GameOutcomeDialog() {
 	const game = G.game()!
 	const [open, setOpen] = createSignal(false)
+	const [showedOutcome, setShowedOutcome] = createSignal(false)
 	createEffect(() => {
-		if (game.outcome && !open()) {
+		if (game.outcome && !open() && !showedOutcome()) {
 			setOpen(true)
+			setShowedOutcome(true)
 		}
 	})
 	return (
