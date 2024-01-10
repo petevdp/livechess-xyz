@@ -1,5 +1,5 @@
-import { createEffect, createRoot } from 'solid-js'
-import { trackStore } from '@solid-primitives/deep'
+import { Accessor, createEffect, createRoot, createSignal, untrack } from 'solid-js'
+import { captureStoreUpdates, trackStore } from '@solid-primitives/deep'
 import { unwrap } from 'solid-js/store'
 
 // reg until seems to be broken
@@ -21,4 +21,44 @@ export function myUntil(fn: () => {}) {
 export function trackAndUnwrap<T extends object>(store: T) {
 	trackStore(store)
 	return unwrap(store)
+}
+
+/**
+ * Creates a signal that updates when the store updates.
+ * This is much more lightweight for read heavy operations as it returns the same plain object. However, tracking will subscribe to ALL store changes
+ * @param store
+ */
+export function storeToSignal<T extends {}>(store: T): Accessor<T> {
+	const delta = captureStoreUpdates(store)
+	let state = JSON.parse(JSON.stringify(delta()[0].value))
+	const [signal, setSignal] = createSignal(state, { equals: false })
+	let init = false
+	createEffect(() => {
+		const _delta = delta()
+		if (!init) {
+			init = true
+			return
+		}
+		untrack(() => {
+			let current = state
+			for (const { path, value } of _delta) {
+				const last = path.pop()
+				if (last === undefined) {
+					state = JSON.parse(JSON.stringify(value))
+					//@ts-ignore
+					setSignal(state)
+					return
+				}
+				for (const key of path) {
+					//@ts-ignore
+					current = current[key]
+				}
+				//@ts-ignore
+				current[last] = JSON.parse(JSON.stringify(value))
+				//@ts-ignore
+				setSignal(state)
+			}
+		})
+	})
+	return signal
 }

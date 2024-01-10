@@ -17,9 +17,6 @@ const [activeModal, setActiveModal] = createSignal<ActiveModal | null>(null)
 
 export function ModalContainer() {
 	modalContainer?.remove()
-	createEffect(() => {
-		console.log('active modal', activeModal())
-	})
 	onCleanup(() => {
 		modalContainer?.remove()
 		modalContainer = null
@@ -207,9 +204,7 @@ export async function prompt<T>(
 		})
 	})
 
-	console.log('before received output')
 	await myUntil(() => output() !== null)
-	console.log('received output')
 	disposeOwner()
 	return output()!.out
 }

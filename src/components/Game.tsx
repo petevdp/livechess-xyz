@@ -1,4 +1,17 @@
-import { batch, createEffect, createMemo, createReaction, createSignal, For, Match, onCleanup, onMount, Show, Switch } from 'solid-js'
+import {
+	batch,
+	createEffect,
+	createMemo,
+	createReaction,
+	createSignal,
+	For,
+	Match,
+	onCleanup,
+	onMount,
+	Show,
+	Switch,
+	untrack,
+} from 'solid-js'
 import * as R from '~/systems/room.ts'
 import * as G from '~/systems/game/game.ts'
 import * as GL from '~/systems/game/gameLogic.ts'
@@ -17,6 +30,12 @@ import ResignSvg from '~/assets/icons/resign.svg'
 import { BOARD_COLORS } from '~/config.ts'
 import { isEqual } from 'lodash'
 import { cn } from '~/lib/utils.ts'
+import moveSelfSound from '~/assets/audio/move-self.mp3'
+import moveOpponentSound from '~/assets/audio/move-opponent.mp3'
+import captureSound from '~/assets/audio/capture.mp3'
+import checkSound from '~/assets/audio/move-check.mp3'
+import promoteSound from '~/assets/audio/promote.mp3'
+import castleSound from '~/assets/audio/castle.mp3'
 
 //TODO provide some method to view the current game's config
 //TODO component duplicates on reload sometimes for some reason
@@ -293,7 +312,11 @@ export function Game(props: { gameId: string }) {
 		canvas.addEventListener('mousedown', (e) => {
 			batch(() => {
 				if (clickedSquare() && hoveredSquare() && clickedSquare() !== hoveredSquare()) {
-					game.tryMakeMove(clickedSquare()!, hoveredSquare()!)
+					const makingMove = game.tryMakeMove(clickedSquare()!, hoveredSquare()!)
+					if (makingMove) {
+						console.log('playing')
+						audio.movePlayer.play()
+					}
 					setClickedSquare(null)
 				}
 
@@ -449,6 +472,36 @@ export function Game(props: { gameId: string }) {
 
 	//#endregion
 
+	//#region sound effects
+	createEffect(() => {
+		const move = game.currentBoardView.lastMove
+		if (!move) return
+		untrack(() => {
+			if (game.currentBoardView.inCheck) {
+				audio.check.play()
+				return
+			}
+			if (move.promotion) {
+				audio.promote.play()
+				return
+			}
+			if (move.castle) {
+				audio.castle.play()
+				return
+			}
+			if (move.capture) {
+				audio.capture.play()
+				return
+			}
+			if (game.currentBoardView.board.toMove === game.player.color) {
+				audio.movePlayer.play()
+				return
+			}
+			audio.moveOpponent.play()
+		})
+	})
+	//#endregion
+
 	return (
 		<div class={styles.boardPageWrapper}>
 			<div class={styles.boardContainer}>
@@ -598,7 +651,7 @@ function MoveHistory() {
 							<div
 								classList={{
 									[styles.moveHistoryEntry]: true,
-									[styles.singleMove]: index() + 1 === game.moveHistoryAsNotation.length && game.rollbackState.moveHistory.length % 2 === 1,
+									[styles.singleMove]: index() + 1 === game.moveHistoryAsNotation.length && game.state.moveHistory.length % 2 === 1,
 								}}
 							>
 								<pre class="mr-1">
@@ -655,8 +708,8 @@ function CapturedPieces(props: { pieces: GL.ColoredPiece[]; is: 'player' | 'oppo
 
 const setViewedMove = (game: G.Game) => (move: number | 'live') => {
 	if (move === 'live') {
-		game.setViewedMove(game.rollbackState.moveHistory.length - 1)
-	} else if (move >= -1 && move < game.rollbackState.moveHistory.length) {
+		game.setViewedMove(game.state.moveHistory.length - 1)
+	} else if (move >= -1 && move < game.state.moveHistory.length) {
 		game.setViewedMove(move)
 	}
 }
@@ -679,7 +732,7 @@ function MoveNav() {
 				<PrevSvg />
 			</Button>
 			<Button
-				disabled={game.viewedMoveIndex() === game.rollbackState.moveHistory.length - 1}
+				disabled={game.viewedMoveIndex() === game.state.moveHistory.length - 1}
 				variant="ghost"
 				size="icon"
 				onClick={() => _setViewedMove(game.viewedMoveIndex() + 1)}
@@ -689,7 +742,7 @@ function MoveNav() {
 			<Button
 				variant="ghost"
 				size="icon"
-				disabled={game.viewedMoveIndex() === game.rollbackState.moveHistory.length - 1}
+				disabled={game.viewedMoveIndex() === game.state.moveHistory.length - 1}
 				onClick={() => _setViewedMove('live')}
 			>
 				<LastSvg />
@@ -736,3 +789,13 @@ function squareNotationToDisplayCoords(square: string, boardFlipped: boolean, sq
 	const { x, y } = GL.coordsFromNotation(square)
 	return boardCoordsToDisplayCoords({ x, y }, boardFlipped, squareSize)
 }
+
+const audio = {
+	movePlayer: new Audio(moveSelfSound),
+	moveOpponent: new Audio(moveOpponentSound),
+	capture: new Audio(captureSound),
+	check: new Audio(checkSound),
+	promote: new Audio(promoteSound),
+	castle: new Audio(castleSound),
+}
+
