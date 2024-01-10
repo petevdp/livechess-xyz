@@ -74,8 +74,10 @@ function Lobby() {
 	if (!room) throw new Error('room is not initialized')
 
 	const copyInviteLink = () => {
+		toast('Copied invite link to clipboard')
 		navigator.clipboard.writeText(window.location.href)
 	}
+
 	return (
 		<ScreenFittingContent class="grid place-items-center p-2">
 			<Card class="w-[95vw] p-1 sm:w-auto">
