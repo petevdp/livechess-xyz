@@ -36,9 +36,12 @@ import captureSound from '~/assets/audio/capture.mp3'
 import checkSound from '~/assets/audio/move-check.mp3'
 import promoteSound from '~/assets/audio/promote.mp3'
 import castleSound from '~/assets/audio/castle.mp3'
+import lowTimeSound from '~/assets/audio/low-time.mp3'
+import { Dialog, DialogContent, DialogDescription, DialogHeader } from '~/components/ui/dialog.tsx'
 
 //TODO provide some method to view the current game's config
 //TODO component duplicates on reload sometimes for some reason
+// TODO fix horizontal scrolling on large viewport
 
 const imageCache: Record<string, HTMLImageElement> = {}
 
@@ -401,47 +404,47 @@ export function Game(props: { gameId: string }) {
 
 	//#region game over modal
 
-	const [isGameOverModalDisposed, setIsGameOverModalDisposed] = createSignal(false)
-	const [canShowGameOverModal, setCanShowGameOverModal] = createSignal(false)
-	onCleanup(() => {
-		console.log('disposing game over modal')
-		setIsGameOverModalDisposed(true)
-	})
-
-	const trackGameOver = createReaction(async () => {
-		Modal.prompt(
-			(_props) => {
-				return (
-					<div class="flex flex-col items-center space-y-1">
-						<GameOutcomeDisplay outcome={game.outcome!} />
-						<div class="space-x-1">
-							<Button onclick={() => game.room.configureNewGame()}>New Game</Button>
-							<Button onclick={() => _props.onCompleted(false)}>Continue</Button>
-						</div>
-					</div>
-				)
-			},
-			false,
-			isGameOverModalDisposed
-		)
-			.catch((err) => {
-				console.log('received error after modal prompt')
-				console.trace(err)
-			})
-			.then(() => {
-				setIsGameOverModalDisposed(true)
-			})
-	})
-
-	trackGameOver(canShowGameOverModal)
-
-	let loadTime = Date.now()
-	createEffect(() => {
-		if (game.outcome && !isGameOverModalDisposed() && Date.now() - loadTime > 100) {
-			setCanShowGameOverModal(true)
-		}
-	})
-
+	// const [isGameOverModalDisposed, setIsGameOverModalDisposed] = createSignal(false)
+	// const [canShowGameOverModal, setCanShowGameOverModal] = createSignal(false)
+	// onCleanup(() => {
+	// 	console.log('disposing game over modal')
+	// 	setIsGameOverModalDisposed(true)
+	// })
+	//
+	// const trackGameOver = createReaction(async () => {
+	// 	Modal.prompt(
+	// 		(_props) => {
+	// 			return (
+	// 				<div class="flex flex-col items-center space-y-1">
+	// 					<GameOutcomeDisplay outcome={game.outcome!} />
+	// 					<div class="space-x-1">
+	// 						<Button onclick={() => game.room.configureNewGame()}>New Game</Button>
+	// 						<Button onclick={() => _props.onCompleted(false)}>Continue</Button>
+	// 					</div>
+	// 				</div>
+	// 			)
+	// 		},
+	// 		false,
+	// 		isGameOverModalDisposed
+	// 	)
+	// 		.catch((err) => {
+	// 			console.log('received error after modal prompt')
+	// 			console.trace(err)
+	// 		})
+	// 		.then(() => {
+	// 			setIsGameOverModalDisposed(true)
+	// 		})
+	// })
+	//
+	// trackGameOver(canShowGameOverModal)
+	//
+	// let loadTime = Date.now()
+	// createEffect(() => {
+	// 	if (game.outcome && !isGameOverModalDisposed() && Date.now() - loadTime > 100) {
+	// 		setCanShowGameOverModal(true)
+	// 	}
+	// })
+	//
 	//#endregion
 
 	//#region draw offer events
@@ -500,6 +503,17 @@ export function Game(props: { gameId: string }) {
 			audio.moveOpponent.play()
 		})
 	})
+	const warnReaction = createReaction(() => {
+		audio.lowTime.play()
+	})
+
+	const [pastWarnThreshold, setPastWarnThreshold] = createSignal(false)
+	createEffect(() => {
+		if (checkPastWarnThreshold(game.gameConfig.timeControl, game.clock[game.player.color])) {
+			setPastWarnThreshold(true)
+		}
+	})
+	warnReaction(pastWarnThreshold)
 	//#endregion
 
 	return (
@@ -537,7 +551,31 @@ export function Game(props: { gameId: string }) {
 					<MoveNav />
 				</div>
 			</div>
+			<GameOutcomeDialog/>
 		</div>
+	)
+}
+
+
+function GameOutcomeDialog() {
+	const game = G.game()!
+	const [open, setOpen] = createSignal(false)
+	createEffect(() => {
+		if (game.outcome && !open()) {
+			setOpen(true)
+		}
+	})
+	return (
+		<Dialog open={open()}>
+			<DialogContent class="w-max">
+				<DialogHeader><span class="mt-1">{showGameOutcome(game.outcome!)[0]}</span></DialogHeader>
+				<DialogDescription>{showGameOutcome(game.outcome!)[1]}</DialogDescription>
+				<div class="space-x-1 flex justify-center">
+					<Button onclick={() => game.room.configureNewGame()}>New Game</Button>
+					<Button variant="secondary" onclick={() => setOpen(false)}>Continue</Button>
+				</div>
+			</DialogContent>
+		</Dialog>
 	)
 }
 
@@ -561,20 +599,6 @@ function Clock(props: { clock: number; class: string; ticking: boolean; timeCont
 		}
 		return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`.padStart(5, '0')
 	}
-	const pastWarnThreshold = createMemo(() => {
-		switch (props.timeControl) {
-			case '1m':
-				return props.clock < 1000 * 15
-			case '3m':
-				return props.clock < 1000 * 30
-			case '5m':
-				return props.clock < 1000 * 45
-			case '10m':
-				return props.clock < 1000 * 60
-			case '15m':
-				return props.clock < 1000 * 60 * 2
-		}
-	})
 
 	return (
 		<div class={cn('flex items-center justify-end space-x-3 text-xl', props.class)}>
@@ -584,8 +608,8 @@ function Clock(props: { clock: number; class: string; ticking: boolean; timeCont
 			<span
 				class="mt-[0.4em] font-mono"
 				classList={{
-					'text-red-500': pastWarnThreshold(),
-					'animate-pulse': props.ticking && pastWarnThreshold(),
+					'text-red-500': checkPastWarnThreshold(props.timeControl, props.clock),
+					'animate-pulse': props.ticking && checkPastWarnThreshold(props.timeControl, props.clock),
 					'text-neutral-400': !props.ticking,
 				}}
 			>{`${formattedClock()}`}</span>
@@ -751,27 +775,27 @@ function MoveNav() {
 	)
 }
 
-function GameOutcomeDisplay(props: { outcome: GL.GameOutcome }) {
+function showGameOutcome(outcome: GL.GameOutcome): [string, string] {
 	const game = G.game()!
-	const winner = props.outcome.winner ? game.getColorPlayer(props.outcome.winner) : null
+	const winner = outcome.winner ? game.getColorPlayer(outcome.winner) : null
 	const winnerTitle = `${winner?.name} (${winner?.color})`
-	switch (props.outcome.reason) {
+	switch (outcome.reason) {
 		case 'checkmate':
-			return `${winnerTitle} wins by checkmate!`
+			return [`${winnerTitle} wins`, ` checkmate`]
 		case 'stalemate':
-			return 'Draw! (Stalemate)'
+			return ['Draw!', 'Stalemate']
 		case 'insufficient-material':
-			return 'Draw! Insufficient Material'
+			return ['Draw!', 'Insufficient Material']
 		case 'threefold-repetition':
-			return 'Draw! Threefold Repetition'
+			return ['Draw!', 'Threefold Repetition']
 		case 'draw-accepted':
-			return 'Agreed to a draw'
+			return ['Agreed to a draw', '']
 		case 'resigned':
-			return `${winnerTitle} wins by resignation`
+			return [`${winnerTitle} wins`, 'resignation']
 		case 'flagged':
-			return `${winnerTitle} wins on time`
+			return [`${winnerTitle} wins`, 'out of time']
 		case 'king-captured':
-			return `${winnerTitle} captured the king`
+			return [`${winnerTitle} wins`, `king captured`]
 	}
 }
 
@@ -790,6 +814,21 @@ function squareNotationToDisplayCoords(square: string, boardFlipped: boolean, sq
 	return boardCoordsToDisplayCoords({ x, y }, boardFlipped, squareSize)
 }
 
+function checkPastWarnThreshold(timeControl: GL.TimeControl, clock: number) {
+	switch (timeControl) {
+		case '1m':
+			return clock < 1000 * 15
+		case '3m':
+			return clock < 1000 * 30
+		case '5m':
+			return clock < 1000 * 45
+		case '10m':
+			return clock < 1000 * 60
+		case '15m':
+			return clock < 1000 * 60 * 2
+	}
+}
+
 const audio = {
 	movePlayer: new Audio(moveSelfSound),
 	moveOpponent: new Audio(moveOpponentSound),
@@ -797,5 +836,6 @@ const audio = {
 	check: new Audio(checkSound),
 	promote: new Audio(promoteSound),
 	castle: new Audio(castleSound),
+	lowTime: new Audio(lowTimeSound)
 }
 
