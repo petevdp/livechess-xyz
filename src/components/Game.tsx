@@ -500,8 +500,20 @@ export function Game(props: { gameId: string }) {
 						<FlipBoardSvg />
 					</Button>
 				</div>
-				<CapturedPieces size={boardSize() / 2} layout={layout()} pieces={game.capturedPieces(game.opponent.color)} is={'opponent'} />
-				<CapturedPieces size={boardSize() / 2} layout={layout()} pieces={game.capturedPieces(game.player.color)} is={'player'} />
+				<CapturedPieces
+					size={boardSize() / 2}
+					layout={layout()}
+					pieces={game.capturedPieces(game.opponent.color)}
+					capturedBy={'opponent'}
+					pieceColor={game.player.color}
+				/>
+				<CapturedPieces
+					size={boardSize() / 2}
+					layout={layout()}
+					pieces={game.capturedPieces(game.player.color)}
+					capturedBy={'player'}
+					pieceColor={game.opponent.color}
+				/>
 				<div class={styles.board}>{canvas}</div>
 				<ActionsPanel class={styles.bottomLeftActions} />
 				<Player class={styles.player} player={game.player} />
@@ -516,11 +528,10 @@ export function Game(props: { gameId: string }) {
 					<MoveNav />
 				</div>
 			</div>
-			<GameOutcomeDialog/>
+			<GameOutcomeDialog />
 		</div>
 	)
 }
-
 
 function GameOutcomeDialog() {
 	const game = G.game()!
@@ -535,11 +546,15 @@ function GameOutcomeDialog() {
 	return (
 		<Dialog open={open()}>
 			<DialogContent class="w-max">
-				<DialogHeader><span class="mt-1">{showGameOutcome(game.outcome!)[0]}</span></DialogHeader>
+				<DialogHeader>
+					<span class="mt-1">{showGameOutcome(game.outcome!)[0]}</span>
+				</DialogHeader>
 				<DialogDescription>{showGameOutcome(game.outcome!)[1]}</DialogDescription>
-				<div class="space-x-1 flex justify-center">
+				<div class="flex justify-center space-x-1">
 					<Button onclick={() => game.room.configureNewGame()}>New Game</Button>
-					<Button variant="secondary" onclick={() => setOpen(false)}>Continue</Button>
+					<Button variant="secondary" onclick={() => setOpen(false)}>
+						Continue
+					</Button>
 				</div>
 			</DialogContent>
 		</Dialog>
@@ -617,7 +632,6 @@ function ActionsPanel(props: { class: string }) {
 	)
 }
 
-//TODO fix current viewed move highlight
 function MoveHistory() {
 	const game = G.game()!
 	const _setViewedMove = setViewedMove(game)
@@ -682,12 +696,9 @@ function MoveHistory() {
 	)
 }
 
-function CapturedPieces(props: { pieces: GL.ColoredPiece[]; is: 'player' | 'opponent'; size: number; layout: 'column' | 'row' }) {
+function CapturedPieces(props: { pieces: GL.ColoredPiece[]; capturedBy: 'player' | 'opponent'; size: number; layout: 'column' | 'row' }) {
 	return (
-		<div
-			class={`${styles.capturedPieces} ${styles[props.is]}`}
-			// style={{ [props.layout === 'row' ? 'width' : 'height']: `${props.size - 20}px` }}
-		>
+		<div class={`${styles.capturedPieces} ${styles[props.capturedBy]}`}>
 			<For each={props.pieces}>
 				{(piece) => (
 					<img class={styles.capturedPiece} src={PC.resolvePieceImagePath(piece)} alt={piece.type} title={`${piece.color} ${piece.type}`} />
@@ -803,6 +814,5 @@ const audio = {
 	check: new Audio(checkSound),
 	promote: new Audio(promoteSound),
 	castle: new Audio(castleSound),
-	lowTime: new Audio(lowTimeSound)
+	lowTime: new Audio(lowTimeSound),
 }
-

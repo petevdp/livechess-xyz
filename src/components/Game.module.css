@@ -139,11 +139,11 @@
 
 .capturedPieces {
 	@apply rounded;
-	background-color: #919090;
 	display: flex;
 	min-width: 30px;
 	flex-wrap: wrap;
 	height: 100%;
+	background-color: hsl(var(--secondary));
 }
 
 .capturedPieces.player {
