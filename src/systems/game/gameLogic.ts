@@ -2,16 +2,18 @@ import hash from 'object-hash'
 import { partition } from 'lodash'
 //#region primitives
 
-export const PIECES = ['pawn', 'knight', 'bishop', 'rook', 'queen', 'king'] as const
+export const PIECES = ['pawn', 'knight', 'bishop', 'rook', 'queen', 'king', 'duck'] as const
 export type Piece = (typeof PIECES)[number]
 export const PROMOTION_PIECES = ['knight', 'bishop', 'rook', 'queen'] as const
 export type PromotionPiece = (typeof PROMOTION_PIECES)[number]
 export const COLORS = ['white', 'black'] as const
+export type PieceColors = (typeof COLORS)[number] | 'duck'
 export type Color = (typeof COLORS)[number]
 export type ColoredPiece = {
-	color: Color
+	color: PieceColors
 	type: (typeof PIECES)[number]
 }
+
 type Timestamp = number
 
 export type Move = {
@@ -22,6 +24,7 @@ export type Move = {
 	promotion?: PromotionPiece
 	enPassant?: string
 	capture: boolean
+	duck?: string
 	ts: Timestamp
 }
 
@@ -64,6 +67,12 @@ export const startPos = () =>
 		},
 		toMove: 'white',
 	}) as Board
+//#endregion
+
+
+//#region QUACK
+
+export const DUCK = {type: 'duck', color: 'duck'} satisfies ColoredPiece
 //#endregion
 
 //#region organization
@@ -113,12 +122,7 @@ export type GameState = {
 	resigned?: Color
 }
 
-export type Board = {
-	pieces: {
-		[squad: string]: ColoredPiece
-	}
-	toMove: Color
-}
+export type Board = { pieces: { [square: string]: ColoredPiece }; toMove: Color }
 export type MoveHistory = Move[]
 export type BoardHistoryEntry = { hash: string; board: Board; index: number }
 export type Coords = {
@@ -260,9 +264,10 @@ export function validateAndPlayMove(
 	to: string,
 	game: GameState,
 	gameConfig: ParsedGameConfig,
-	promotionPiece?: PromotionPiece
+	promotionPiece?: PromotionPiece,
+	duck?: string
 ) {
-	if (getBoard(game).pieces[from].color !== getBoard(game).toMove) {
+	if (!getBoard(game).pieces[from] || getBoard(game).pieces[from].color !== getBoard(game).toMove) {
 		return
 	}
 
@@ -277,6 +282,14 @@ export function validateAndPlayMove(
 	const isCapture = !!getBoard(game).pieces[to]
 	const move = candidateMoveToMove(candidate, undefined, isCapture)
 	const [newBoard, promoted] = applyMoveToBoard(candidate, getBoard(game))
+
+	if (duck) {
+		if (newBoard.pieces[duck] && from !== duck && newBoard.pieces[duck].type !== 'duck') return
+		newBoard.pieces[duck] = {
+			color: 'duck',
+			type: 'duck',
+		}
+	}
 
 	return {
 		board: newBoard,
@@ -295,6 +308,14 @@ function applyMoveToBoard(move: CandidateMove | Move, board: Board) {
 	let moveFromCoords = notationFromCoords(_move.from)
 	delete newBoard.pieces[moveFromCoords]
 	newBoard.pieces[moveToCoords] = piece
+
+	for (let [square, piece] of Object.entries(newBoard.pieces)) {
+		if (piece.type === 'duck') {
+			delete newBoard.pieces[square]
+			break
+		}
+	}
+
 	if (_move.castle) {
 		// move rook
 		const rank = board.toMove === 'white' ? 0 : 7
@@ -391,6 +412,8 @@ function getMovesFromCoords(
 			return [...rookMoves(coords, board), ...bishopMoves(coords, board)]
 		case 'king':
 			return kingMoves(coords, board, history, checkCastling)
+		case 'duck':
+			throw new Error('quack?')
 		default:
 			throw new Error('invalid piece type')
 	}
@@ -649,7 +672,7 @@ function castLegalMoves(start: Coords, direction: Coords, max: number, board: Bo
 			break
 		}
 		const piece = board.pieces[notationFromCoords(coords)]
-		if (piece && piece.color === board.toMove) {
+		if ((piece && piece.color === board.toMove) || piece?.color === 'duck') {
 			terminateReason = 'piece'
 			break
 		}
@@ -679,7 +702,7 @@ function squareAttacked(square: Coords, board: Board) {
 	const opponentPieces = [
 		...new Set(
 			Object.values(board.pieces)
-				.filter((piece) => piece.color !== board.toMove)
+				.filter((piece) => piece.color !== board.toMove && piece.color !== 'duck')
 				.map((p) => p.type)
 		),
 	]
@@ -782,9 +805,7 @@ export function getVisibleSquares(game: GameState, color: Color) {
 		simulated = game
 	} else {
 		simulated = JSON.parse(JSON.stringify(game)) as GameState
-		const noopSquareAndPiece = opponentPieces.find(([_, piece]) =>
-			 piece.type === 'king'
-		)!
+		const noopSquareAndPiece = opponentPieces.find(([_, piece]) => piece.type === 'king')!
 		// in this case the game is over and we'll be revealing all squares anyway
 		if (!noopSquareAndPiece) return new Set()
 		const [noopSquare, noopPiece] = noopSquareAndPiece

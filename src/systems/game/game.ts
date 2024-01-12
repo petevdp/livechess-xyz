@@ -1,7 +1,7 @@
 import * as R from '../room.ts'
 import * as GL from './gameLogic.ts'
 import * as P from '../player.ts'
-import { Accessor, createEffect, createMemo, createSignal, from, getOwner, observable, onCleanup } from 'solid-js'
+import { Accessor, createEffect, createMemo, createSignal, from, getOwner, observable, onCleanup, Setter } from 'solid-js'
 import { combineLatest, concatMap, distinctUntilChanged, EMPTY, from as rxFrom, Observable, ReplaySubject, skip } from 'rxjs'
 import { isEqual } from 'lodash'
 import { map } from 'rxjs/operators'
@@ -9,6 +9,7 @@ import { storeToSignal } from '~/utils/solid.ts'
 import { unwrap } from 'solid-js/store'
 
 export type PlayerWithColor = P.Player & { color: GL.Color }
+
 
 export type PromotionSelection =
 	| {
@@ -33,16 +34,16 @@ export type DrawEvent = 'offered-by-opponent' | 'awaiting-response' | 'declined'
 export type MoveType = 'move' | 'capture' | 'checkmate'
 
 export class Game {
-	promotion: Accessor<PromotionSelection | null>
-	setPromotion: (p: PromotionSelection | null) => void
 	setViewedMove: (move: number | 'live') => void
 	viewedMoveIndex: Accessor<number>
 	drawEvent$: Observable<DrawEvent> = EMPTY
 	currentBoardView: BoardView
 	gameConfig: GL.GameConfig
+	setDuckPlacement: Setter<DuckSelectedMove | null>
+	stateSignal: Accessor<GL.GameState>
+
 	private getMoveHistoryAsNotation: Accessor<[string, string | null][]>
 	// object returned will be mutated as updates come in
-	private stateSignal: Accessor<GL.GameState>
 
 	get outcome() {
 		return this.getOutcome()
@@ -61,6 +62,12 @@ export class Game {
 		const [promotion, setPromotion] = createSignal(null)
 		this.setPromotion = setPromotion
 		this.promotion = promotion
+		//#endregion
+
+		//#region duckPlacement
+		const [duckPlacement, setDuckPlacement] = createSignal(null as null | GL.Move)
+		this.setDuckPlacement = setDuckPlacement
+		this.duckPlacement = duckPlacement
 		//#endregion
 
 		//#region view history
@@ -100,6 +107,7 @@ export class Game {
 				return lastMove()
 			},
 		} as BoardView
+
 		this.getMoveHistoryAsNotation = createMemo(() => getMoveHistoryAsNotation(this.stateSignal()))
 
 		//#endregion
@@ -124,6 +132,7 @@ export class Game {
 			),
 			distinctUntilChanged(isEqual)
 		)
+
 		const outcome$ = combineLatest([gameOutcome$, timeout$]).pipe(
 			map(([outcome, timeouts]): GL.GameOutcome | undefined => {
 				if (timeouts.white) return { winner: 'black', reason: 'flagged' }
@@ -218,7 +227,7 @@ export class Game {
 		return this.getClocks()
 	}
 
-	private get board() {
+	get board() {
 		return this.state.boardHistory[this.state.boardHistory.length - 1].board
 	}
 
@@ -282,14 +291,8 @@ export class Game {
 		return this.state.players[playerId]
 	}
 
-	tryMakeMove(from: string, to: string, promotionPiece?: GL.PromotionPiece) {
-		console.log('trying move', { from, to, promotionPiece })
-		if (this.outcome || !this.board.pieces[from]) return false
+	tryMakeMove(from: string, to: string, promotionPiece?: GL.PromotionPiece, duck?: string) {
 		let expectedMoveIndex = this.state.moveHistory.length
-		const state = unwrap(this.state)
-		const result = GL.validateAndPlayMove(from, to, state, this.parsedGameConfig, promotionPiece)
-		if (!result) return false
-
 		return this.room.sharedStore.setStoreWithRetries(() => {
 			console.log('trying move for real')
 			const state = unwrap(this.state)
@@ -298,14 +301,9 @@ export class Game {
 			if (this.state.moveHistory.length !== expectedMoveIndex) return
 			let board = GL.getBoard(state)
 			if (!GL.isPlayerTurn(board, this.getPlayerColor(this.playerId)) || !board.pieces[from]) return
-			let result = GL.validateAndPlayMove(from, to, state, this.parsedGameConfig, promotionPiece)
+			let result = GL.validateAndPlayMove(from, to, state, this.parsedGameConfig, promotionPiece, duck)
 			if (!result) {
 				console.error('invalid move')
-				return
-			}
-
-			if (result.promoted && !promotionPiece) {
-				this.setPromotion({ status: 'selecting', from, to })
 				return
 			}
 

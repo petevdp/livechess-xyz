@@ -10,7 +10,7 @@ export function resolvePieceImagePath(piece: GL.ColoredPiece) {
 		king: 'k',
 	}
 	const color = piece.color == 'white' ? 'l' : 'd'
-
+	if (piece.type === 'duck') return '/pieces/duck.svg'
 	return `/pieces/${abbrs[piece.type]}${color}t45.svg`
 }
 
