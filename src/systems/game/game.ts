@@ -1,7 +1,7 @@
 import * as R from '../room.ts'
 import * as GL from './gameLogic.ts'
 import * as P from '../player.ts'
-import { Accessor, createEffect, createMemo, createSignal, from, getOwner, observable, onCleanup, Setter } from 'solid-js'
+import { Accessor, createEffect, createMemo, createSignal, from, getOwner, observable, onCleanup } from 'solid-js'
 import { combineLatest, concatMap, distinctUntilChanged, EMPTY, from as rxFrom, Observable, ReplaySubject, skip } from 'rxjs'
 import { isEqual } from 'lodash'
 import { map } from 'rxjs/operators'
@@ -9,20 +9,6 @@ import { storeToSignal } from '~/utils/solid.ts'
 import { unwrap } from 'solid-js/store'
 
 export type PlayerWithColor = P.Player & { color: GL.Color }
-
-
-export type PromotionSelection =
-	| {
-			status: 'selecting'
-			from: string
-			to: string
-	  }
-	| {
-			from: string
-			to: string
-			status: 'selected'
-			piece: GL.PromotionPiece
-	  }
 
 type BoardView = {
 	board: GL.Board
@@ -39,11 +25,22 @@ export class Game {
 	drawEvent$: Observable<DrawEvent> = EMPTY
 	currentBoardView: BoardView
 	gameConfig: GL.GameConfig
-	setDuckPlacement: Setter<DuckSelectedMove | null>
 	stateSignal: Accessor<GL.GameState>
 
 	private getMoveHistoryAsNotation: Accessor<[string, string | null][]>
 	// object returned will be mutated as updates come in
+	currentMove: () => GL.SelectedMove | null
+	currentPromotion: Accessor<GL.PromotionPiece | null>
+	setCurrentPromotion: (move: GL.PromotionPiece | null) => void
+	choosingPromotion: Accessor<boolean>
+	setCurrentDuckPlacement: (move: string | null) => void
+	placingDuck: Accessor<boolean>
+	boardWithMove: Accessor<null | GL.Board>
+	private setCurrentMove: (move: GL.SelectedMove | null) => void
+	private setChoosingPromotion: (choosingPromotion: boolean) => void
+	private currentDuckPlacement: Accessor<string | null>
+	private setPlacingDuck: (placingDuck: boolean) => void
+	private setBoardWithCurrentMove: (board: null | GL.Board) => void
 
 	get outcome() {
 		return this.getOutcome()
@@ -58,16 +55,13 @@ export class Game {
 		if (!getOwner()) throw new Error('Game constructor must be called in reactive context')
 		this.gameConfig = JSON.parse(JSON.stringify(gameConfig)) as GL.GameConfig
 
-		//#region promotion
-		const [promotion, setPromotion] = createSignal(null)
-		this.setPromotion = setPromotion
-		this.promotion = promotion
-		//#endregion
-
-		//#region duckPlacement
-		const [duckPlacement, setDuckPlacement] = createSignal(null as null | GL.Move)
-		this.setDuckPlacement = setDuckPlacement
-		this.duckPlacement = duckPlacement
+		//#region currentMove input state
+		;[this.currentMove, this.setCurrentMove] = createSignal(null as null | GL.SelectedMove)
+		;[this.boardWithMove, this.setBoardWithCurrentMove] = createSignal(null as null | GL.Board)
+		;[this.currentPromotion, this.setCurrentPromotion] = createSignal(null as null | GL.PromotionPiece)
+		;[this.choosingPromotion, this.setChoosingPromotion] = createSignal(false)
+		;[this.currentDuckPlacement, this.setCurrentDuckPlacement] = createSignal(null as null | string)
+		;[this.placingDuck, this.setPlacingDuck] = createSignal(false)
 		//#endregion
 
 		//#region view history
@@ -80,7 +74,13 @@ export class Game {
 		const lastMove = () => this.state.moveHistory[this.viewedMoveIndex()] || null
 
 		// boards are only so we don't need to deeply track this
-		const viewedBoard = () => unwrap(this.state.boardHistory[this.viewedMoveIndex() + 1].board)
+		const viewedBoard = () => {
+			if (this.boardWithMove()) {
+				return this.boardWithMove()!
+			} else {
+				return unwrap(this.state.boardHistory[this.viewedMoveIndex() + 1].board)
+			}
+		}
 
 		this.stateSignal = storeToSignal(this.state)
 
@@ -180,7 +180,7 @@ export class Game {
 		)
 		//#endregion
 
-		//#region reset view when move history changes
+		//#region reset view when currentMove history changes
 		let prevMoveCount = this.state.moveHistory.length
 		createEffect(() => {
 			if (this.state.moveHistory.length !== prevMoveCount) {
@@ -291,17 +291,76 @@ export class Game {
 		return this.state.players[playerId]
 	}
 
-	tryMakeMove(from: string, to: string, promotionPiece?: GL.PromotionPiece, duck?: string) {
+	tryMakeMove(move?: GL.SelectedMove) {
+		if (!move && !this.currentMove()) return
+		if (move) {
+			this.setCurrentMove(move)
+		}
+		if (this.outcome || !this.currentMove()) return
+		const res = GL.validateAndPlayMove(
+			this.currentMove()!.from,
+			this.currentMove()!.to,
+			this.stateSignal(),
+			!!this.currentDuckPlacement() || this.gameConfig.variant === 'fog-of-war',
+			this.currentPromotion() || undefined,
+			this.currentDuckPlacement() || undefined
+		)
+		if (!res) return
+		if (move) {
+			if (res.promoted && !this.currentPromotion()) {
+				// while we're promoting, display the promotion square as containing the pawn
+				res.board.pieces[this.currentMove()!.to] = { type: 'pawn', color: this.board.toMove }
+			}
+
+			// this displays whatever move we've made while we're placing the duck as well
+			this.setBoardWithCurrentMove(res.board)
+		}
+
+		this.setBoardWithCurrentMove(res.board)
+
+		// this is a dumb way of doing this, we should return validation errors from validateAndPlayMove instead
+		if (res?.promoted && !this.currentPromotion()) {
+			this.setChoosingPromotion(true)
+			return
+		}
+
+		if (this.gameConfig.variant === 'duck' && !this.currentDuckPlacement()) {
+			this.setPlacingDuck(true)
+			return
+		}
+
+		if (this.gameConfig.variant === 'duck' && !GL.validateDuckPlacement(this.currentDuckPlacement()!, res.board)) {
+			this.setCurrentDuckPlacement(null)
+			this.setPlacingDuck(true)
+			return
+		}
+
 		let expectedMoveIndex = this.state.moveHistory.length
-		return this.room.sharedStore.setStoreWithRetries(() => {
+		const currentMove = this.currentMove()!
+		const currentPromotion = this.currentPromotion()
+		const currentDuckPlacement = this.currentDuckPlacement()
+		this.setCurrentMove(null)
+		this.setCurrentPromotion(null)
+		this.setCurrentDuckPlacement(null)
+		this.setChoosingPromotion(false)
+		this.setPlacingDuck(false)
+		this.setBoardWithCurrentMove(null)
+		this.room.sharedStore.setStoreWithRetries(() => {
 			console.log('trying move for real')
 			const state = unwrap(this.state)
 			if (this.viewedMoveIndex() !== state.moveHistory.length - 1 || this.outcome) return
 			// check that we're still on the same move
 			if (this.state.moveHistory.length !== expectedMoveIndex) return
 			let board = GL.getBoard(state)
-			if (!GL.isPlayerTurn(board, this.getPlayerColor(this.playerId)) || !board.pieces[from]) return
-			let result = GL.validateAndPlayMove(from, to, state, this.parsedGameConfig, promotionPiece, duck)
+			if (!GL.isPlayerTurn(board, this.getPlayerColor(this.playerId)) || !board.pieces[currentMove.from]) return
+			let result = GL.validateAndPlayMove(
+				currentMove.from,
+				currentMove.to,
+				state,
+				this.parsedGameConfig.variant === 'fog-of-war',
+				currentPromotion || undefined,
+				currentDuckPlacement || undefined
+			)
 			if (!result) {
 				console.error('invalid move')
 				return

@@ -16,6 +16,11 @@ export type ColoredPiece = {
 
 type Timestamp = number
 
+export type SelectedMove = {
+	from: string
+	to: string
+}
+
 export type Move = {
 	from: string
 	to: string
@@ -28,6 +33,23 @@ export type Move = {
 	ts: Timestamp
 }
 
+export type CandidateMove = {
+	from: Coords
+	to: Coords
+	piece: Piece
+	castle?: 'king' | 'queen'
+	enPassant?: string
+	promotion?: PromotionPiece
+}
+
+export type CandidateMoveOptions = {
+	from: Coords
+	to: Coords
+	piece: Piece
+	castle?: 'king' | 'queen'
+	enPassant?: string
+	promotion?: PromotionPiece
+}
 export const startPos = () =>
 	({
 		pieces: {
@@ -69,10 +91,9 @@ export const startPos = () =>
 	}) as Board
 //#endregion
 
-
 //#region QUACK
 
-export const DUCK = {type: 'duck', color: 'duck'} satisfies ColoredPiece
+export const DUCK = { type: 'duck', color: 'duck' } satisfies ColoredPiece
 //#endregion
 
 //#region organization
@@ -263,7 +284,7 @@ export function validateAndPlayMove(
 	from: string,
 	to: string,
 	game: GameState,
-	gameConfig: ParsedGameConfig,
+	allowSelfChecks: boolean,
 	promotionPiece?: PromotionPiece,
 	duck?: string
 ) {
@@ -274,7 +295,8 @@ export function validateAndPlayMove(
 	if (from === to) {
 		return
 	}
-	const candidateMoves = getLegalMoves([coordsFromNotation(from)], game, gameConfig.variant === 'fog-of-war')
+
+	const candidateMoves = getLegalMoves([coordsFromNotation(from)], game, allowSelfChecks)
 	const candidate = candidateMoves.find((m) => notationFromCoords(m.to) === to && (promotionPiece ? m.promotion === promotionPiece : true))
 	if (!candidate) {
 		return
@@ -284,11 +306,8 @@ export function validateAndPlayMove(
 	const [newBoard, promoted] = applyMoveToBoard(candidate, getBoard(game))
 
 	if (duck) {
-		if (newBoard.pieces[duck] && from !== duck && newBoard.pieces[duck].type !== 'duck') return
-		newBoard.pieces[duck] = {
-			color: 'duck',
-			type: 'duck',
-		}
+		if (!validateDuckPlacement(duck, newBoard)) return
+		newBoard.pieces[duck] = DUCK
 	}
 
 	return {
@@ -296,6 +315,22 @@ export function validateAndPlayMove(
 		move,
 		promoted,
 	}
+}
+
+// board should already have been modified by whatever move we're making this turn
+export function validateDuckPlacement(duck: string, board: Board) {
+	return !board.pieces[duck] || board.pieces[duck].type === 'duck'
+}
+
+
+export function getBoardDelta(oldBoard: Board, newBoard: Board) {
+	const delta = {} as Record<string, ColoredPiece | null>
+	for (let [square, piece] of Object.entries(oldBoard.pieces)) {
+		if (newBoard.pieces[square] !== piece) {
+			delta[square] = newBoard.pieces[square]
+		}
+	}
+	return delta
 }
 
 // Uncritically apply a move to the board. Does not mutate input.
@@ -315,6 +350,7 @@ function applyMoveToBoard(move: CandidateMove | Move, board: Board) {
 			break
 		}
 	}
+
 
 	if (_move.castle) {
 		// move rook
@@ -347,24 +383,6 @@ function applyMoveToBoard(move: CandidateMove | Move, board: Board) {
 //#endregion
 
 //#region move generation
-
-export type CandidateMove = {
-	from: Coords
-	to: Coords
-	piece: Piece
-	castle?: 'king' | 'queen'
-	enPassant?: string
-	promotion?: PromotionPiece
-}
-
-export type CandidateMoveOptions = {
-	from: Coords
-	to: Coords
-	piece: Piece
-	castle?: 'king' | 'queen'
-	enPassant?: string
-	promotion?: PromotionPiece
-}
 
 export function getLegalMoves(piecePositions: Coords[], game: GameState, allowSelfChecks = false): CandidateMove[] {
 	let candidateMoves: CandidateMove[] = []
@@ -734,7 +752,7 @@ function noMoves(game: GameState) {
 
 //#region misc
 export function hashBoard(board: Board) {
-	return hash.sha1(board)
+	return hash.sha1(board) as string
 }
 
 function oppositeColor(color: Color) {

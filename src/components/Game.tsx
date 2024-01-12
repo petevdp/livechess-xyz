@@ -46,11 +46,6 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader } from '~/compon
 
 const imageCache: Record<string, HTMLImageElement> = {}
 
-export type SelectedMove = {
-	from: string
-	to: string
-}
-
 export function Game(props: { gameId: string }) {
 	let game = new G.Game(props.gameId, R.room()!, R.room()!.player.id, R.room()!.rollbackState.gameConfig)
 	G.setGame(game)
@@ -97,49 +92,6 @@ export function Game(props: { gameId: string }) {
 	const [clickedSquare, setClickedSquare] = createSignal(null as null | string)
 	const [currentMousePos, setCurrentMousePos] = createSignal({ x: 0, y: 0 } as { x: number; y: number } | null)
 	const [grabbedSquareMousePos, setGrabbedSquareMousePos] = createSignal(null as null | { x: number; y: number })
-	//#endregion
-
-	//#region move input state
-	const [move, setMove] = createSignal(null as null | SelectedMove)
-	const [promotion, setPromotion] = createSignal(null as null | GL.PromotionPiece)
-	const [choosingPromotion, setChoosingPromotion] = createSignal(false)
-	const [duckPlacement, setDuckPlacement] = createSignal(null as null | string)
-	const [placingDuck, setPlacingDuck] = createSignal(false)
-
-	function makeMove() {
-		const game = G.game()!
-		if (game.outcome || !move()) return
-		const res = GL.validateAndPlayMove(
-			move()!.from,
-			move()!.to,
-			game.stateSignal(),
-			game.parsedGameConfig,
-			promotion() || undefined,
-			duckPlacement() || undefined
-		)
-		if (!res) return
-
-		if (res?.promoted && !promotion()) {
-			setChoosingPromotion(true)
-			return
-		}
-
-		if (game.gameConfig.variant === 'duck' && !duckPlacement()) {
-			setPlacingDuck(true)
-			return
-		}
-
-		game.tryMakeMove(move()!.from, move()!.to, promotion() || undefined, duckPlacement() || undefined).then((success) => {
-			if (success) {
-				setMove(null)
-				setPromotion(null)
-				setDuckPlacement(null)
-				setChoosingPromotion(false)
-				setPlacingDuck(false)
-			}
-		})
-	}
-
 	//#endregion
 
 	const activeSquare = () => grabbedSquare() || clickedSquare()
@@ -230,31 +182,6 @@ export function Game(props: { gameId: string }) {
 				continue
 			}
 
-			//#region modify rendered pieces for promotion
-			if (choosingPromotion() && move()!.to === square) {
-				square = move()!.to
-			}
-
-			if (choosingPromotion() && move()!.from === square) {
-				continue
-			}
-			//#endregion
-
-			//#region render duck placement
-			if (placingDuck() && move()!.to === square) {
-				continue
-			}
-			if (placingDuck() && move()!.from === square) {
-				square = move()!.to
-			}
-
-			// don't render currently placed duck
-			if (placingDuck() && piece.type === 'duck') {
-				continue
-			}
-			//#endregion
-
-
 			let x = square[0].charCodeAt(0) - 'a'.charCodeAt(0)
 			let y = 8 - parseInt(square[1])
 			if (boardFlipped()) {
@@ -311,7 +238,7 @@ export function Game(props: { gameId: string }) {
 			)
 		}
 
-		if (placingDuck() && currentMousePos()) {
+		if (game.placingDuck() && currentMousePos()) {
 			const { x, y } = currentMousePos()!
 			ctx.drawImage(imageCache[PC.resolvePieceImagePath(GL.DUCK)], x - squareSize() / 2, y - squareSize() / 2, squareSize(), squareSize())
 		}
@@ -394,17 +321,16 @@ export function Game(props: { gameId: string }) {
 			const [x, y] = [e.clientX - rect.left, e.clientY - rect.top]
 			const mouseSquare = getSquareFromDisplayCoords(x, y)
 			batch(() => {
-				if (placingDuck() && !game.board.pieces[mouseSquare]) {
-					setDuckPlacement(mouseSquare)
-					setPlacingDuck(false)
-					makeMove()
+				if (game.placingDuck()) {
+					game.setCurrentDuckPlacement(mouseSquare)
+					game.tryMakeMove()
 					return
 				}
 
 				if (clickedSquare() && hoveredSquare() && clickedSquare() !== hoveredSquare()) {
-					setMove({ from: clickedSquare()!, to: hoveredSquare()! })
-					makeMove()
+					game.tryMakeMove({ from: clickedSquare()!, to: hoveredSquare()! })
 					setClickedSquare(null)
+					return
 				}
 
 				if (
@@ -428,8 +354,7 @@ export function Game(props: { gameId: string }) {
 					setClickedSquare(square)
 					setGrabbedSquare(null)
 				} else if (_grabbedSquare && _grabbedSquare !== hoveredSquare()) {
-					setMove({ from: _grabbedSquare, to: square })
-					makeMove()
+					game.tryMakeMove({ from: _grabbedSquare, to: square })
 					setGrabbedSquare(null)
 					setClickedSquare(null)
 				}
@@ -444,8 +369,8 @@ export function Game(props: { gameId: string }) {
 	//#region promotion
 
 	const promoteModalPosition = () => {
-		if (!choosingPromotion()) return undefined
-		let [x, y] = squareNotationToDisplayCoords(move()!.to, boardFlipped(), squareSize())
+		if (!game.choosingPromotion()) return undefined
+		let [x, y] = squareNotationToDisplayCoords(game.currentMove()!.to, boardFlipped(), squareSize())
 		y += canvas.getBoundingClientRect().top + window.scrollY
 		x += canvas.getBoundingClientRect().left + window.scrollX
 		if (boardSize() / 2 < x) {
@@ -466,9 +391,8 @@ export function Game(props: { gameId: string }) {
 							variant={game.player.color === 'white' ? 'ghost' : 'default'}
 							size="icon"
 							onclick={() => {
-								setPromotion(pp)
-								setChoosingPromotion(false)
-								makeMove()
+								game.setCurrentPromotion(pp)
+								game.tryMakeMove()
 							}}
 						>
 							<img alt={pp} src={PC.resolvePieceImagePath({ color: game.player.color, type: pp })} />
@@ -478,7 +402,7 @@ export function Game(props: { gameId: string }) {
 			</div>
 		),
 		position: promoteModalPosition,
-		visible: () => choosingPromotion(),
+		visible: () => game.choosingPromotion(),
 		closeOnEscape: false,
 		closeOnOutsideClick: false,
 		setVisible: () => {},
@@ -591,7 +515,7 @@ export function Game(props: { gameId: string }) {
 				/>
 				<CapturedPieces size={boardSize() / 2} layout={layout()} pieces={game.capturedPieces(game.player.color)} capturedBy={'player'} />
 				<div class={styles.board}>{canvas}</div>
-				<ActionsPanel class={styles.bottomLeftActions} placingDuck={placingDuck()} />
+				<ActionsPanel class={styles.bottomLeftActions} placingDuck={game.placingDuck()} />
 				<Player class={styles.player} player={game.player} />
 				<Clock
 					class={styles.clockPlayer}
@@ -681,7 +605,7 @@ function ActionsPanel(props: { class: string; placingDuck: boolean }) {
 		<span class={props.class}>
 			<Switch>
 				<Match when={props.placingDuck}>
-					<div class="bg-destructive space-x-2 rounded p-2 text-white">
+					<div class="space-x-2 rounded bg-destructive p-2 text-white">
 						<span>Place Duck!</span>
 						<span class="text-sm font-light">{`${usingTouch() ? 'Tap' : 'Click'} an empty square to place your duck`}</span>
 					</div>
