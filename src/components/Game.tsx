@@ -131,6 +131,7 @@ export function Game(props: { gameId: string }) {
 
 		game.tryMakeMove(move()!.from, move()!.to, promotion() || undefined, duckPlacement() || undefined).then((success) => {
 			if (success) {
+				setMove(null)
 				setPromotion(null)
 				setDuckPlacement(null)
 				setChoosingPromotion(false)
@@ -404,7 +405,6 @@ export function Game(props: { gameId: string }) {
 					setMove({ from: clickedSquare()!, to: hoveredSquare()! })
 					makeMove()
 					setClickedSquare(null)
-					setMove(null)
 				}
 
 				if (
