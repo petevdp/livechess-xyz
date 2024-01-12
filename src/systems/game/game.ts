@@ -53,7 +53,8 @@ export class Game {
 		this.gameConfig = JSON.parse(JSON.stringify(gameConfig)) as GL.GameConfig
 
 		//#region currentMove input state
-		;[this.boardWithCurrentMove, this.setBoardWithCurrentMove] = createSignal(null as null | GL.Board)[this.choosingPromotion, this.setChoosingPromotion] = createSignal(false)
+		;[this.boardWithCurrentMove, this.setBoardWithCurrentMove] = createSignal(null as null | GL.Board)
+		;[this.choosingPromotion, this.setChoosingPromotion] = createSignal(false)
 		;[this.placingDuck, this.setPlacingDuck] = createSignal(false)
 		//#endregion
 
@@ -316,6 +317,7 @@ export class Game {
 			this.setChoosingPromotion(true)
 			return
 		}
+		this.setChoosingPromotion(false)
 
 		if (this.gameConfig.variant === 'duck' && !this.currentDuckPlacement) {
 			this.setPlacingDuck(true)
