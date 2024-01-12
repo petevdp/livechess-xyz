@@ -1,8 +1,46 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500">
 	<defs>
-		<style>.cls-1{fill:#fbefc4;}.cls-2{fill:#f7c045;}.cls-3{fill:#666564;font-family:Montserrat-Medium,
-			Montserrat;font-size:36px;}.cls-4{fill:#f1ab22;}.cls-5{fill:#e58f2a;}.cls-6{fill:none;stroke:#e58f2a;stroke-linecap:round;stroke-linejoin:round;stroke-width:5px;}.cls-7{opacity:.15;}.cls-8{fill:#fcd157;}
+		<style>
+			.cls-1 {
+			fill: #fbefc4;
+			}
+
+			.cls-2 {
+			fill: #f7c045;
+			}
+
+			.cls-3 {
+			fill: #666564;
+			font-family: Montserrat-Medium,
+			Montserrat;
+			font-size: 36px;
+			}
+
+			.cls-4 {
+			fill: #f1ab22;
+			}
+
+			.cls-5 {
+			fill: black;
+			}
+
+			.cls-6 {
+			fill: none;
+			stroke: black;
+			stroke-linecap: round;
+			stroke-linejoin: round;
+			stroke-width: 5px;
+			}
+
+			.cls-7 {
+			opacity: .15;
+			}
+
+			.cls-8 {
+			fill: #f3c64e;
+			}
+
 		</style>
 	</defs>
 	<g id="Names">
