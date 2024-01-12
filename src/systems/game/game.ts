@@ -29,18 +29,15 @@ export class Game {
 
 	private getMoveHistoryAsNotation: Accessor<[string, string | null][]>
 	// object returned will be mutated as updates come in
-	currentMove: () => GL.SelectedMove | null
-	currentPromotion: Accessor<GL.PromotionPiece | null>
-	setCurrentPromotion: (move: GL.PromotionPiece | null) => void
-	choosingPromotion: Accessor<boolean>
-	setCurrentDuckPlacement: (move: string | null) => void
-	placingDuck: Accessor<boolean>
-	boardWithMove: Accessor<null | GL.Board>
-	private setCurrentMove: (move: GL.SelectedMove | null) => void
-	private setChoosingPromotion: (choosingPromotion: boolean) => void
-	private currentDuckPlacement: Accessor<string | null>
-	private setPlacingDuck: (placingDuck: boolean) => void
-	private setBoardWithCurrentMove: (board: null | GL.Board) => void
+	currentMove: GL.SelectedMove | null = null
+	currentPromotion: GL.PromotionPiece | null = null
+	setChoosingPromotion: (choosing: boolean) => void
+	choosingPromotion: Accessor<false>
+	placingDuck: Accessor<false>
+	setPlacingDuck: (placing: boolean) => void
+	currentDuckPlacement: string | null = null
+	boardWithCurrentMove: Accessor<null | GL.Board>
+	setBoardWithCurrentMove: (board: null | GL.Board) => void
 
 	get outcome() {
 		return this.getOutcome()
@@ -56,11 +53,7 @@ export class Game {
 		this.gameConfig = JSON.parse(JSON.stringify(gameConfig)) as GL.GameConfig
 
 		//#region currentMove input state
-		;[this.currentMove, this.setCurrentMove] = createSignal(null as null | GL.SelectedMove)
-		;[this.boardWithMove, this.setBoardWithCurrentMove] = createSignal(null as null | GL.Board)
-		;[this.currentPromotion, this.setCurrentPromotion] = createSignal(null as null | GL.PromotionPiece)
-		;[this.choosingPromotion, this.setChoosingPromotion] = createSignal(false)
-		;[this.currentDuckPlacement, this.setCurrentDuckPlacement] = createSignal(null as null | string)
+		;[this.boardWithCurrentMove, this.setBoardWithCurrentMove] = createSignal(null as null | GL.Board)[this.choosingPromotion, this.setChoosingPromotion] = createSignal(false)
 		;[this.placingDuck, this.setPlacingDuck] = createSignal(false)
 		//#endregion
 
@@ -75,8 +68,8 @@ export class Game {
 
 		// boards are only so we don't need to deeply track this
 		const viewedBoard = () => {
-			if (this.boardWithMove()) {
-				return this.boardWithMove()!
+			if (this.boardWithCurrentMove()) {
+				return this.boardWithCurrentMove()!
 			} else {
 				return unwrap(this.state.boardHistory[this.viewedMoveIndex() + 1].board)
 			}
@@ -292,24 +285,24 @@ export class Game {
 	}
 
 	tryMakeMove(move?: GL.SelectedMove) {
-		if (!move && !this.currentMove()) return
+		if (!move && !this.currentMove) return
 		if (move) {
-			this.setCurrentMove(move)
+			this.currentMove = move
 		}
-		if (this.outcome || !this.currentMove()) return
+		if (this.outcome || !this.currentMove) return
 		const res = GL.validateAndPlayMove(
-			this.currentMove()!.from,
-			this.currentMove()!.to,
+			this.currentMove.from,
+			this.currentMove.to,
 			this.stateSignal(),
-			!!this.currentDuckPlacement() || this.gameConfig.variant === 'fog-of-war',
-			this.currentPromotion() || undefined,
-			this.currentDuckPlacement() || undefined
+			!!this.currentDuckPlacement || this.gameConfig.variant === 'fog-of-war',
+			this.currentPromotion || undefined,
+			this.currentDuckPlacement || undefined
 		)
 		if (!res) return
 		if (move) {
-			if (res.promoted && !this.currentPromotion()) {
+			if (res.promoted && !this.currentPromotion) {
 				// while we're promoting, display the promotion square as containing the pawn
-				res.board.pieces[this.currentMove()!.to] = { type: 'pawn', color: this.board.toMove }
+				res.board.pieces[this.currentMove.to] = { type: 'pawn', color: this.board.toMove }
 			}
 
 			// this displays whatever move we've made while we're placing the duck as well
@@ -319,29 +312,29 @@ export class Game {
 		this.setBoardWithCurrentMove(res.board)
 
 		// this is a dumb way of doing this, we should return validation errors from validateAndPlayMove instead
-		if (res?.promoted && !this.currentPromotion()) {
+		if (res?.promoted && !this.currentPromotion) {
 			this.setChoosingPromotion(true)
 			return
 		}
 
-		if (this.gameConfig.variant === 'duck' && !this.currentDuckPlacement()) {
+		if (this.gameConfig.variant === 'duck' && !this.currentDuckPlacement) {
 			this.setPlacingDuck(true)
 			return
 		}
 
-		if (this.gameConfig.variant === 'duck' && !GL.validateDuckPlacement(this.currentDuckPlacement()!, res.board)) {
-			this.setCurrentDuckPlacement(null)
+		if (this.gameConfig.variant === 'duck' && !GL.validateDuckPlacement(this.currentDuckPlacement!, res.board)) {
+			this.currentDuckPlacement = null
 			this.setPlacingDuck(true)
 			return
 		}
 
 		let expectedMoveIndex = this.state.moveHistory.length
-		const currentMove = this.currentMove()!
-		const currentPromotion = this.currentPromotion()
-		const currentDuckPlacement = this.currentDuckPlacement()
-		this.setCurrentMove(null)
-		this.setCurrentPromotion(null)
-		this.setCurrentDuckPlacement(null)
+		const currentMove = this.currentMove!
+		const currentPromotion = this.currentPromotion
+		const currentDuckPlacement = this.currentDuckPlacement
+		this.currentMove = null
+		this.currentPromotion = null
+		this.currentDuckPlacement = null
 		this.setChoosingPromotion(false)
 		this.setPlacingDuck(false)
 		this.setBoardWithCurrentMove(null)

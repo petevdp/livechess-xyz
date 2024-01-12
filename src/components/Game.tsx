@@ -322,7 +322,7 @@ export function Game(props: { gameId: string }) {
 			const mouseSquare = getSquareFromDisplayCoords(x, y)
 			batch(() => {
 				if (game.placingDuck()) {
-					game.setCurrentDuckPlacement(mouseSquare)
+					game.currentDuckPlacement = mouseSquare
 					game.tryMakeMove()
 					return
 				}
@@ -369,8 +369,8 @@ export function Game(props: { gameId: string }) {
 	//#region promotion
 
 	const promoteModalPosition = () => {
-		if (!game.choosingPromotion()) return undefined
-		let [x, y] = squareNotationToDisplayCoords(game.currentMove()!.to, boardFlipped(), squareSize())
+		if (!game.choosingPromotion) return undefined
+		let [x, y] = squareNotationToDisplayCoords(game.currentMove!.to, boardFlipped(), squareSize())
 		y += canvas.getBoundingClientRect().top + window.scrollY
 		x += canvas.getBoundingClientRect().left + window.scrollX
 		if (boardSize() / 2 < x) {
@@ -391,7 +391,7 @@ export function Game(props: { gameId: string }) {
 							variant={game.player.color === 'white' ? 'ghost' : 'default'}
 							size="icon"
 							onclick={() => {
-								game.setCurrentPromotion(pp)
+								game.currentPromotion = pp
 								game.tryMakeMove()
 							}}
 						>
@@ -605,9 +605,20 @@ function ActionsPanel(props: { class: string; placingDuck: boolean }) {
 		<span class={props.class}>
 			<Switch>
 				<Match when={props.placingDuck}>
-					<div class="space-x-2 rounded bg-destructive p-2 text-white">
-						<span>Place Duck!</span>
-						<span class="text-sm font-light">{`${usingTouch() ? 'Tap' : 'Click'} an empty square to place your duck`}</span>
+					<div class="flex space-x-2 rounded bg-destructive p-0.5 text-white">
+						<span class="break-words text-xs">{`${usingTouch() ? 'Tap' : 'Click'} square to place duck`}</span>
+						<Button
+							variant="link"
+							size="sm"
+							onclick={() => {
+								game.setPlacingDuck(false)
+								game.currentDuckPlacement = null
+								game.setBoardWithCurrentMove(null)
+								game.currentMove = null
+							}}
+						>
+							Cancel
+						</Button>
 					</div>
 				</Match>
 				<Match when={!game.outcome}>
