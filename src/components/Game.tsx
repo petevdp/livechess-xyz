@@ -47,7 +47,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader } from '~/compon
 const imageCache: Record<string, HTMLImageElement> = {}
 
 export function Game(props: { gameId: string }) {
-	let game = new G.Game(props.gameId, R.room()!, R.room()!.player.id, R.room()!.rollbackState.gameConfig)
+	let game = new G.Game(props.gameId, R.room()!, R.room()!.rollbackState.gameConfig)
 	G.setGame(game)
 
 	//#region calc board sizes
@@ -88,16 +88,14 @@ export function Game(props: { gameId: string }) {
 	//#region board and interaction state
 	const [boardFlipped, setBoardFlipped] = createSignal(false)
 	const [hoveredSquare, setHoveredSquare] = createSignal(null as null | string)
-	const [grabbedSquare, setGrabbedSquare] = createSignal(null as null | string)
-	const [clickedSquare, setClickedSquare] = createSignal(null as null | string)
+	const [activePieceSquare, setActivePieceSquare] = createSignal(null as null | string)
+	const [grabbingPieceSquare, setGrabbingPieceSquare] = createSignal(false)
 	const [currentMousePos, setCurrentMousePos] = createSignal({ x: 0, y: 0 } as { x: number; y: number } | null)
-	const [grabbedSquareMousePos, setGrabbedSquareMousePos] = createSignal(null as null | { x: number; y: number })
+	const [grabbedMousePos, setGrabbedMousePos] = createSignal(null as null | { x: number; y: number })
 	//#endregion
 
-	const activeSquare = () => grabbedSquare() || clickedSquare()
-
 	const legalMovesForActivePiece = createMemo(() => {
-		const _square = activeSquare()
+		const _square = activePieceSquare()
 		if (!_square) return []
 		return game.getLegalMovesForSquare(_square)
 	})
@@ -178,7 +176,10 @@ export function Game(props: { gameId: string }) {
 
 		//#region draw pieces
 		for (let [square, piece] of Object.entries(game.currentBoardView.board.pieces)) {
-			if (square === grabbedSquare() || (shouldHideNonVisible ? !game.currentBoardView.visibleSquares.has(square) : false)) {
+			if (
+				(grabbedMousePos() && activePieceSquare() === square) ||
+				(shouldHideNonVisible ? !game.currentBoardView.visibleSquares.has(square) : false)
+			) {
 				continue
 			}
 
@@ -196,7 +197,7 @@ export function Game(props: { gameId: string }) {
 		const moveHighlightColor = '#ffffff'
 		if (
 			hoveredSquare() &&
-			activeSquare() &&
+			activePieceSquare() &&
 			legalMovesForActivePiece().some((m) => isEqual(m.to, GL.coordsFromNotation(hoveredSquare()!)))
 		) {
 			// draw empty square in hovered square
@@ -213,8 +214,8 @@ export function Game(props: { gameId: string }) {
 		//#region draw clicked move highlight
 		const clickedHighlightColor = '#809dfd'
 
-		if (clickedSquare()) {
-			const [x, y] = squareNotationToDisplayCoords(clickedSquare()!, boardFlipped(), squareSize())
+		if (activePieceSquare()) {
+			const [x, y] = squareNotationToDisplayCoords(activePieceSquare()!, boardFlipped(), squareSize())
 			ctx.beginPath()
 			ctx.strokeStyle = clickedHighlightColor
 			ctx.lineWidth = 6
@@ -226,11 +227,11 @@ export function Game(props: { gameId: string }) {
 		//#endregion
 
 		//#region draw grabbed piece
-		if (grabbedSquare() && grabbedSquareMousePos()) {
-			let x = grabbedSquareMousePos()!.x
-			let y = grabbedSquareMousePos()!.y
+		if (grabbedMousePos()) {
+			let x = grabbedMousePos()!.x
+			let y = grabbedMousePos()!.y
 			ctx.drawImage(
-				imageCache[PC.resolvePieceImagePath(game.currentBoardView.board.pieces[grabbedSquare()!]!)],
+				imageCache[PC.resolvePieceImagePath(game.currentBoardView.board.pieces[activePieceSquare()!]!)],
 				x - squareSize() / 2,
 				y - squareSize() / 2,
 				squareSize(),
@@ -264,22 +265,25 @@ export function Game(props: { gameId: string }) {
 	})
 
 	createEffect(() => {
-		if (game.player && game.player.color === 'black') {
+		if (game.bottomPlayer.color === 'black') {
 			setBoardFlipped(true)
+		} else {
+			setBoardFlipped(false)
 		}
 	})
 
 	// contextually set cursor style
 	createEffect(() => {
-		if (grabbedSquare()) {
+		if (!game.isClientPlayerParticipating || !game.viewingLiveBoard) {
+			if (canvas.style.cursor !== 'default') canvas.style.cursor = 'default'
+			return
+		}
+		if (grabbingPieceSquare()) {
 			canvas.style.cursor = 'grabbing'
 		} else if (
 			hoveredSquare() &&
 			game.currentBoardView.board.pieces[hoveredSquare()!] &&
-			game.currentBoardView.board.pieces[hoveredSquare()!]!.color === game.player.color &&
-			game.gameConfig.variant === 'fog-of-war'
-				? game.currentBoardView.visibleSquares.has(hoveredSquare()!)
-				: true
+			game.currentBoardView.board.pieces[hoveredSquare()!]!.color === game.bottomPlayer.color
 		) {
 			canvas.style.cursor = 'grab'
 		} else {
@@ -290,6 +294,14 @@ export function Game(props: { gameId: string }) {
 	//#endregion
 
 	//#region mouse events
+	function isLegalForActive(square: string) {
+		return legalMovesForActivePiece().some((m) => GL.notationFromCoords(m.to) === square)
+	}
+
+	function squareContainsPlayerPiece(square: string) {
+		return game.currentBoardView.board.pieces[square]?.color === game.bottomPlayer.color
+	}
+
 	onMount(() => {
 		function getSquareFromDisplayCoords(x: number, y: number) {
 			let col = Math.floor(x / squareSize())
@@ -303,62 +315,77 @@ export function Game(props: { gameId: string }) {
 		}
 
 		canvas.addEventListener('mousemove', (e) => {
+			if (!game.isClientPlayerParticipating) return
 			batch(() => {
 				const rect = canvas.getBoundingClientRect()
 				const x = e.clientX - rect.left
 				const y = e.clientY - rect.top
 				// check if mouse is over a square with a piece
 				setHoveredSquare(getSquareFromDisplayCoords(x, y))
-				if (grabbedSquare()) {
-					setGrabbedSquareMousePos({ x, y })
+				if (grabbingPieceSquare() || grabbingPieceSquare()) {
+					setGrabbedMousePos({ x, y })
 				}
 				setCurrentMousePos({ x, y })
 			})
 		})
 
 		canvas.addEventListener('mousedown', (e) => {
+			if (!game.isClientPlayerParticipating || !game.viewingLiveBoard) return
 			const rect = canvas.getBoundingClientRect()
 			const [x, y] = [e.clientX - rect.left, e.clientY - rect.top]
 			const mouseSquare = getSquareFromDisplayCoords(x, y)
-			batch(() => {
-				if (game.placingDuck()) {
-					game.currentDuckPlacement = mouseSquare
-					game.tryMakeMove()
+			if (game.placingDuck()) {
+				game.currentDuckPlacement = mouseSquare
+				game.tryMakeMove()
+				return
+			}
+
+			if (activePieceSquare()) {
+				if (isLegalForActive(mouseSquare)) {
+					batch(() => {
+						game.tryMakeMove({ from: activePieceSquare()!, to: mouseSquare })
+						setActivePieceSquare(null)
+						setGrabbingPieceSquare(true)
+					})
 					return
 				}
 
-				if (clickedSquare() && hoveredSquare() && clickedSquare() !== hoveredSquare()) {
-					game.tryMakeMove({ from: clickedSquare()!, to: hoveredSquare()! })
-					setClickedSquare(null)
+				if (squareContainsPlayerPiece(mouseSquare)) {
+					setActivePieceSquare(mouseSquare)
+					setGrabbingPieceSquare(true)
 					return
 				}
 
-				if (
-					hoveredSquare() &&
-					game.currentBoardView.board.pieces[hoveredSquare()!] &&
-					game.currentBoardView.board.pieces[hoveredSquare()!]!.color === game.player.color
-				) {
-					setGrabbedSquare(hoveredSquare())
-					setGrabbedSquareMousePos({ x, y })
-					setClickedSquare(null)
-				}
-			})
+				setActivePieceSquare(null)
+				return
+			}
+
+			if (squareContainsPlayerPiece(mouseSquare)) {
+				batch(() => {
+					// we're not setting grabbedSquareMousePos here becase we don't want to visually move the piece until the mouse moves
+					setActivePieceSquare(mouseSquare)
+					setGrabbingPieceSquare(true)
+				})
+				return
+			} else {
+				setActivePieceSquare(null)
+			}
 		})
 
 		canvas.addEventListener('mouseup', (e) => {
-			batch(() => {
-				const rect = canvas.getBoundingClientRect()
-				const square = getSquareFromDisplayCoords(e.clientX - rect.left, e.clientY - rect.top)
-				const _grabbedSquare = grabbedSquare()
-				if (_grabbedSquare && _grabbedSquare === hoveredSquare()) {
-					setClickedSquare(square)
-					setGrabbedSquare(null)
-				} else if (_grabbedSquare && _grabbedSquare !== hoveredSquare()) {
-					game.tryMakeMove({ from: _grabbedSquare, to: square })
-					setGrabbedSquare(null)
-					setClickedSquare(null)
+			if (!game.isClientPlayerParticipating || !game.viewingLiveBoard) return
+			const rect = canvas.getBoundingClientRect()
+			const square = getSquareFromDisplayCoords(e.clientX - rect.left, e.clientY - rect.top)
+			const _activePiece = activePieceSquare()
+
+			if (_activePiece && _activePiece !== square) {
+				if (grabbingPieceSquare() && isLegalForActive(square)) {
+					game.tryMakeMove({ from: _activePiece!, to: square })
+					setActivePieceSquare(null)
 				}
-			})
+			}
+			setGrabbingPieceSquare(false)
+			setGrabbedMousePos(null)
 		})
 	})
 
@@ -387,15 +414,15 @@ export function Game(props: { gameId: string }) {
 				<For each={GL.PROMOTION_PIECES}>
 					{(pp) => (
 						<Button
-							classList={{ 'bg-neutral-200': game.player.color !== 'white' }}
-							variant={game.player.color === 'white' ? 'ghost' : 'default'}
+							classList={{ 'bg-neutral-200': game.topPlayer.color !== 'white' }}
+							variant={game.topPlayer.color === 'white' ? 'ghost' : 'default'}
 							size="icon"
 							onclick={() => {
 								game.currentPromotion = pp
 								game.tryMakeMove()
 							}}
 						>
-							<img alt={pp} src={PC.resolvePieceImagePath({ color: game.player.color, type: pp })} />
+							<img alt={pp} src={PC.resolvePieceImagePath({ color: game.topPlayer.color, type: pp })} />
 						</Button>
 					)}
 				</For>
@@ -414,16 +441,16 @@ export function Game(props: { gameId: string }) {
 		const sub = game.drawEvent$.subscribe((eventType) => {
 			switch (eventType) {
 				case 'awaiting-response':
-					toast.success(`Offered Draw. Awaiting response from ${game.opponent.name}`)
+					toast.success(`Offered Draw. Awaiting response from ${game.bottomPlayer.name}`)
 					break
 				case 'declined':
 					toast.error('Draw was declined')
 					break
 				case 'offered-by-opponent':
-					toast.success(`${game.opponent.name} has offered a draw`)
+					toast.success(`${game.bottomPlayer.name} has offered a draw`)
 					break
 				case 'opponent-cancelled':
-					toast.error(`${game.opponent.name} has cancelled their draw offer`)
+					toast.error(`${game.bottomPlayer.name} has cancelled their draw offer`)
 					break
 				case 'player-cancelled':
 					toast.error('Draw offer cancelled')
@@ -463,7 +490,7 @@ export function Game(props: { gameId: string }) {
 				audio.capture.play()
 				return
 			}
-			if (game.currentBoardView.board.toMove === game.player.color) {
+			if (game.currentBoardView.board.toMove === game.bottomPlayer.color) {
 				audio.movePlayer.play()
 				return
 			}
@@ -481,7 +508,7 @@ export function Game(props: { gameId: string }) {
 			initWarn = true
 			return
 		}
-		if (checkPastWarnThreshold(game.gameConfig.timeControl, game.clock[game.player.color])) {
+		if (game.isClientPlayerParticipating && checkPastWarnThreshold(game.gameConfig.timeControl, game.clock[game.bottomPlayer.color])) {
 			setPastWarnThreshold(true)
 		}
 	})
@@ -494,13 +521,13 @@ export function Game(props: { gameId: string }) {
 				<div class={styles.moveHistoryContainer}>
 					<MoveHistory />
 				</div>
-				<Player class={styles.opponent} player={game.opponent} />
+				<Player class={styles.opponent} player={game.bottomPlayer} />
 				<Clock
 					class={styles.clockOpponent}
-					clock={game.clock[game.opponent.color]}
-					ticking={!game.isPlayerTurn && game.clock[game.opponent.color] > 0}
+					clock={game.clock[game.bottomPlayer.color]}
+					ticking={game.isPlayerTurn(game.topPlayer.color) && game.clock[game.bottomPlayer.color] > 0}
 					timeControl={game.gameConfig.timeControl}
-					color={game.opponent.color}
+					color={game.bottomPlayer.color}
 				/>
 				<div class={`${styles.topLeftActions} flex flex-col items-start space-x-1`}>
 					<Button variant="ghost" size="icon" onclick={() => setBoardFlipped((f) => !f)} class="mb-1">
@@ -510,19 +537,26 @@ export function Game(props: { gameId: string }) {
 				<CapturedPieces
 					size={boardSize() / 2}
 					layout={layout()}
-					pieces={game.capturedPieces(game.opponent.color)}
-					capturedBy={'opponent'}
+					pieces={game.capturedPieces(game.bottomPlayer.color)}
+					capturedBy={'top-player'}
 				/>
-				<CapturedPieces size={boardSize() / 2} layout={layout()} pieces={game.capturedPieces(game.player.color)} capturedBy={'player'} />
+				<CapturedPieces
+					size={boardSize() / 2}
+					layout={layout()}
+					pieces={game.capturedPieces(game.topPlayer.color)}
+					capturedBy={'bottom-player'}
+				/>
 				<div class={styles.board}>{canvas}</div>
-				<ActionsPanel class={styles.bottomLeftActions} placingDuck={game.placingDuck()} />
-				<Player class={styles.player} player={game.player} />
+				<Show when={game.isClientPlayerParticipating} fallback={<div class={styles.bottomLeftActions} />}>
+					<ActionsPanel class={styles.bottomLeftActions} placingDuck={game.placingDuck()} />
+				</Show>
+				<Player class={styles.player} player={game.bottomPlayer} />
 				<Clock
 					class={styles.clockPlayer}
-					clock={game.clock[game.player.color]}
-					ticking={game.isPlayerTurn && game.clock[game.player.color] > 0}
+					clock={game.clock[game.bottomPlayer.color]}
+					ticking={game.isPlayerTurn(game.bottomPlayer.color) && game.clock[game.bottomPlayer.color] > 0}
 					timeControl={game.gameConfig.timeControl}
-					color={game.player.color}
+					color={game.bottomPlayer.color}
 				/>
 				<div class={styles.moveNav}>
 					<MoveNav />
@@ -631,10 +665,10 @@ function ActionsPanel(props: { class: string; placingDuck: boolean }) {
 						</Button>
 					</Show>
 					<Switch>
-						<Match when={game.drawIsOfferedBy === game.player.color}>
+						<Match when={game.drawIsOfferedBy === game.topPlayer.color}>
 							<Button onClick={() => game.cancelDraw()}>Cancel Draw</Button>
 						</Match>
-						<Match when={game.drawIsOfferedBy === game.opponent.color}>
+						<Match when={game.drawIsOfferedBy === game.bottomPlayer.color}>
 							<Button onClick={() => game.offerDraw()}>Accept Draw</Button>
 						</Match>
 					</Switch>
@@ -713,7 +747,12 @@ function MoveHistory() {
 	)
 }
 
-function CapturedPieces(props: { pieces: GL.ColoredPiece[]; capturedBy: 'player' | 'opponent'; size: number; layout: 'column' | 'row' }) {
+function CapturedPieces(props: {
+	pieces: GL.ColoredPiece[]
+	capturedBy: 'bottom-player' | 'top-player'
+	size: number
+	layout: 'column' | 'row'
+}) {
 	return (
 		<div class={`${styles.capturedPieces} ${styles[props.capturedBy]}`}>
 			<For each={props.pieces}>

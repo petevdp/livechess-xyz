@@ -146,12 +146,12 @@
 	background-color: hsl(var(--secondary));
 }
 
-.capturedPieces.player {
+.capturedPieces.bottom-player {
 	grid-area: captured-player;
 	flex-direction: column;
 }
 
-.capturedPieces.opponent {
+.capturedPieces.top-player {
 	grid-area: captured-opponent;
 	flex-direction: column-reverse;
 }

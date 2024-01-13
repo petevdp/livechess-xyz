@@ -11,18 +11,18 @@ import { concatMap } from 'rxjs'
 
 // TODO normalize language from "color swap" to "pieces swap"
 
-export type RoomParticipant = P.Player & {
+export type RoomMember = P.Player & {
 	disconnectedAt?: number
 }
 
 type GameParticipantDetails = {
-	playerId: string
+	// just playerid
+	id: string
 	isReadyForGame: boolean
 	agreeColorSwap: boolean
 }
 
-export type GameParticipant = RoomParticipant & GameParticipantDetails
-
+export type GameParticipant = RoomMember & GameParticipantDetails & { color: GL.Color }
 
 // not exhaustive of all state mutations, just the ones we want to name for convenience
 export type RoomEvent = {
@@ -37,7 +37,7 @@ export type RoomEvent = {
 }
 
 export type RoomState = {
-	players: RoomParticipant[]
+	members: RoomMember[]
 	status: 'pregame' | 'playing' | 'postgame'
 	gameConfig: GL.GameConfig
 	gameParticipants: Record<GL.Color, GameParticipantDetails>
@@ -80,7 +80,7 @@ export async function connectToRoom(
 		lastSnaphotTs = Date.now()
 	} else {
 		state = {
-			players: [],
+			members: [],
 			status: 'pregame',
 			gameParticipants: {} as RoomState['gameParticipants'],
 			gameConfig: GL.defaultGameConfig,
@@ -127,22 +127,26 @@ export async function connectToRoom(
 
 	await until(() => store.initialized())
 	console.log('store initialized')
-	if (!state.players.some((p) => p.id === playerId)) {
+	if (!state.members.some((p) => p.id === playerId)) {
 		const { player, isSpectating } = await initPlayer(Object.values(store.rollbackStore.gameParticipants).length)
 		console.log('new player', player.id, 'isSpectating', isSpectating)
 		//#region connect player
 		await store.setStoreWithRetries((state) => {
 			// leader will report player reconnection
-			if (state.players.some((p) => p.id === playerId)) return []
+			if (state.members.some((p) => p.id === playerId)) return []
 			const mutations: StoreMutation[] = [
 				{
-					path: ['players', '__push__'],
-					value: player satisfies RoomParticipant,
+					path: ['members', '__push__'],
+					value: player satisfies RoomMember,
 				},
 			]
 
 			if (!isSpectating) {
-				let gameParticipant = { playerId, isReadyForGame: false, agreeColorSwap: false } satisfies GameParticipantDetails
+				let gameParticipant = {
+					id: playerId,
+					isReadyForGame: false,
+					agreeColorSwap: false,
+				} satisfies GameParticipantDetails
 				if (state.gameParticipants.white) {
 					mutations.push({ path: ['gameParticipants', 'black'], value: gameParticipant })
 				} else if (state.gameParticipants.black) {
@@ -157,7 +161,7 @@ export async function connectToRoom(
 	}
 	//#endregion
 
-	const room = runWithOwner(instanceOwner, () => new Room(store, provider, store.rollbackStore.players.find((p) => playerId === p.id)!))!
+	const room = runWithOwner(instanceOwner, () => new Room(store, provider, store.rollbackStore.members.find((p) => playerId === p.id)!))!
 	setRoom(room)
 	return room
 }
@@ -171,14 +175,14 @@ export class Room {
 	constructor(
 		public sharedStore: SharedStore<RoomState, ClientOwnedState, RoomEvent>,
 		public provider: SharedStoreProvider<RoomEvent>,
-		public player: RoomParticipant
+		public player: RoomMember
 	) {
 		//#region track player events
 		const connectedPlayers = createMemo(() => {
 			trackDeep(this.sharedStore.clientControlledStates)
 			let playerIds: string[] = Object.values(this.sharedStore.clientControlledStates).map((s) => s.playerId)
 			console.log('changing connected players', playerIds)
-			return this.players.filter((p) => playerIds.includes(p.id) && p.name)
+			return this.members.filter((p) => playerIds.includes(p.id) && p.name)
 		})
 
 		const previouslyConnected = new Set<string>()
@@ -186,17 +190,17 @@ export class Room {
 			const _connectedPlayers = unwrap(connectedPlayers())
 			untrack(() => {
 				console.log('connected players changed', _connectedPlayers)
-				for (let player of this.players) {
+				for (let player of this.members) {
 					const isConnected = _connectedPlayers.some((p) => p.id === player.id)
 					if (!previouslyConnected.has(player.id) && isConnected) {
 						previouslyConnected.add(player.id)
 						if (!this.sharedStore.isLeader()) return
 						this.sharedStore.setStoreWithRetries((state) => {
-							const playerIndex = state.players.findIndex((p) => p.id === player.id)
+							const playerIndex = state.members.findIndex((p) => p.id === player.id)
 							if (playerIndex === -1 || !player.disconnectedAt) return []
 							return {
 								events: [{ type: 'player-reconnected', playerId: player.id }],
-								mutations: [{ path: ['players', playerIndex, 'disconnectedAt'], value: undefined }],
+								mutations: [{ path: ['members', playerIndex, 'disconnectedAt'], value: undefined }],
 							}
 						})
 					} else if (previouslyConnected.has(player.id) && !isConnected) {
@@ -204,12 +208,12 @@ export class Room {
 						previouslyConnected.delete(player.id)
 						if (!this.sharedStore.isLeader()) return
 						this.sharedStore.setStoreWithRetries((state) => {
-							const playerIndex = state.players.findIndex((p) => p.id === player.id)
+							const playerIndex = state.members.findIndex((p) => p.id === player.id)
 							if (playerIndex === -1) return []
 							console.log('player disconnected', player.id, 'at', disconnectedAt, 'state', state)
 							return {
 								events: [{ type: 'player-disconnected', playerId: player.id }],
-								mutations: [{ path: ['players', playerIndex, 'disconnectedAt'], value: disconnectedAt }],
+								mutations: [{ path: ['members', playerIndex, 'disconnectedAt'], value: disconnectedAt }],
 							}
 						})
 					}
@@ -237,28 +241,26 @@ export class Room {
 	}
 
 	get participants(): GameParticipant[] {
-		return this.players
-			.map((roomParticipant) => {
-				const gameParticipant = Object.values(this.rollbackState.gameParticipants).find((gp) => gp.playerId === roomParticipant.id)
-				if (!gameParticipant) return [] as GameParticipant[]
-				return { ...roomParticipant, ...gameParticipant }
+		return this.members
+			.map((player): GameParticipant[] => {
+				const gameParticipant = Object.values(this.rollbackState.gameParticipants).find((gp) => gp.id === player.id)
+				if (!gameParticipant) return []
+				return [{ ...player, ...gameParticipant, color: this.playerColor(gameParticipant.id)! }]
 			})
 			.flat()
 	}
 
 	get spectators() {
-		return this.players.filter((p) => Object.values(this.rollbackState.gameParticipants).some((gp) => gp.playerId === p.id))
+		return this.members.filter((p) => Object.values(this.rollbackState.gameParticipants).some((gp) => gp.id === p.id))
 	}
 
 	get rightPlayer() {
 		return this.participants.find((p) => p.id !== this.player.id) || null
 	}
 
-	playerColor(playerId: string) {
-		if (!playerId) throw new Error('playerId is missing')
-		if (this.rollbackState.gameParticipants.white?.playerId === playerId) return 'white'
-		if (this.rollbackState.gameParticipants.black?.playerId === playerId) return 'black'
-		return null
+	// the implementation here could potentially lead to bugs in multiple client per user scenarios where player details change on one client but not another. need to do something more clever for that
+	get members() {
+		return this.sharedStore.rollbackStore.members
 	}
 
 	get leftPlayer() {
@@ -267,20 +269,15 @@ export class Room {
 		return this.participants.find((p) => p.id !== this.player.id && p.id !== this.rightPlayer?.id) || null
 	}
 
-	// the implementation here could potentially lead to bugs in multiple client per user scenarios where player details change on one client but not another. need to do something more clever for that
-	get players() {
-		return this.sharedStore.rollbackStore.players
-	}
-
 	// players that are connected, or have been disconnected for less than the timeout window
 	get activePlayers() {
-		return this.players.filter((p) => !p.disconnectedAt || Date.now() - p.disconnectedAt < PLAYER_TIMEOUT)
+		return this.members.filter((p) => !p.disconnectedAt || Date.now() - p.disconnectedAt < PLAYER_TIMEOUT)
 	}
 
 	get action$() {
 		return this.sharedStore.action$.pipe(
 			concatMap((a) => {
-				let player = this.players.find((p) => p.id === a.playerId)!
+				let player = this.members.find((p) => p.id === a.playerId)!
 				if (!player) {
 					console.warn('unknown player id in action', a)
 					return []
@@ -295,6 +292,13 @@ export class Room {
 		)
 	}
 
+	playerColor(playerId: string) {
+		if (!playerId) throw new Error('playerId is missing')
+		if (this.rollbackState.gameParticipants.white?.id === playerId) return 'white'
+		if (this.rollbackState.gameParticipants.black?.id === playerId) return 'black'
+		return null
+	}
+
 	//#endregion
 
 	//#region actions
@@ -306,15 +310,15 @@ export class Room {
 		this.sharedStore.setStoreWithRetries((state) => {
 			let _name = name
 			// name already set
-			if (state.players.some((p) => p.id === this.player.id && p.name === name)) return []
+			if (state.members.some((p) => p.id === this.player.id && p.name === name)) return []
 
 			// check if name taken
-			let duplicates = state.players.filter((p) => p.name === name)
+			let duplicates = state.members.filter((p) => p.name === name)
 			if (duplicates.length > 0) {
 				_name = `${name} (${duplicates.length})`
 			}
 
-			return [{ path: ['players', state.players.findIndex((p) => p.id === this.player.id), 'name'], value: _name }]
+			return [{ path: ['members', state.members.findIndex((p) => p.id === this.player.id), 'name'], value: _name }]
 		})
 	}
 
@@ -322,9 +326,9 @@ export class Room {
 		this.sharedStore.setStoreWithRetries(() => {
 			if (!this.rightPlayer || !this.rollbackState.activeGameId) return
 			return [
-				{ path: ['players', this.players.findIndex((p) => p.id === this.player.id), 'isReadyForGame'], value: false },
+				{ path: ['members', this.members.findIndex((p) => p.id === this.player.id), 'isReadyForGame'], value: false },
 				{
-					path: ['players', this.players.findIndex((p) => p.id === this.rightPlayer!.id), 'isReadyForGame'],
+					path: ['members', this.members.findIndex((p) => p.id === this.rightPlayer!.id), 'isReadyForGame'],
 					value: false,
 				},
 				{
@@ -365,7 +369,7 @@ export class Room {
 				events: [{ type: 'initiate-piece-swap', playerId: this.player.id }],
 				mutations: [
 					{
-						path: ['players', this.players.findIndex((p) => p.id === this.player.id), 'agreeColorSwap'],
+						path: ['members', this.members.findIndex((p) => p.id === this.player.id), 'agreeColorSwap'],
 						value: true,
 					},
 				],
@@ -381,9 +385,9 @@ export class Room {
 			return {
 				events: [{ type: 'agree-piece-swap', playerId: this.player.id }],
 				mutations: [
-					{ path: ['players', this.players.findIndex((p) => p.id === this.player.id), 'agreeColorSwap'], value: false },
+					{ path: ['members', this.members.findIndex((p) => p.id === this.player.id), 'agreeColorSwap'], value: false },
 					{
-						path: ['players', this.players.findIndex((p) => p.id === this.rightPlayer!.id), 'agreeColorSwap'],
+						path: ['members', this.members.findIndex((p) => p.id === this.rightPlayer!.id), 'agreeColorSwap'],
 						value: false,
 					},
 					{
@@ -406,9 +410,9 @@ export class Room {
 			return {
 				events: [{ type: 'decline-or-cancel-piece-swap', playerId: this.player.id }],
 				mutations: [
-					{ path: ['players', this.players.findIndex((p) => p.id === this.player.id), 'agreeColorSwap'], value: false },
+					{ path: ['members', this.members.findIndex((p) => p.id === this.player.id), 'agreeColorSwap'], value: false },
 					{
-						path: ['players', this.players.findIndex((p) => p.id === this.rightPlayer!.id), 'agreeColorSwap'],
+						path: ['members', this.members.findIndex((p) => p.id === this.rightPlayer!.id), 'agreeColorSwap'],
 						value: false,
 					},
 				],
@@ -418,32 +422,30 @@ export class Room {
 
 	toggleReady() {
 		if (!this.isPlayerParticipating) return
-		if (this.leftPlayer!.isReadyForGame) {
+		if (!this.leftPlayer!.isReadyForGame) {
 			this.sharedStore.setStoreWithRetries(() => {
-				if (!this.isPlayerParticipating || !this.leftPlayer!.isReadyForGame) return []
-				if (!this.rightPlayer) return []
-				const playerIndex = this.players.findIndex((p) => p.id === this.player.id)
+				if (!this.isPlayerParticipating || this.leftPlayer!.isReadyForGame) return []
 				if (this.rightPlayer?.isReadyForGame) {
 					const gameState = GL.newGameState(this.rollbackState.gameConfig, {
-						[this.leftPlayer!.id]: this.leftPlayer!.id === this.rollbackState.gameParticipants.white.playerId ? 'white' : 'black',
-						[this.rightPlayer.id]: this.rightPlayer.id === this.rollbackState.gameParticipants.white.playerId ? 'white' : 'black',
+						[this.leftPlayer!.id]: this.leftPlayer!.id === this.rollbackState.gameParticipants.white.id ? 'white' : 'black',
+						[this.rightPlayer.id]: this.rightPlayer.id === this.rollbackState.gameParticipants.white.id ? 'white' : 'black',
 					})
 					const gameId = createIdSync(6)
 					return [
-						{ path: ['roomParticipants', this.playerColor(this.leftPlayer!.id)!, 'isReadyForGame'], value: false },
-						{ path: ['roomParticipants', this.playerColor(this.rightPlayer!.id)!, 'isReadyForGame'], value: false },
+						{ path: ['gameParticipants', this.leftPlayer!.color, 'isReadyForGame'], value: false },
+						{ path: ['gameParticipants', this.rightPlayer!.color, 'isReadyForGame'], value: false },
 						{ path: ['status'], value: 'playing' },
 						{ path: ['activeGameId'], value: gameId },
 						{ path: ['gameStates', gameId], value: gameState },
 					] satisfies StoreMutation[]
 				} else {
-					return [{ path: ['players', playerIndex, 'isReadyForGame'], value: true }]
+					return [{ path: ['gameParticipants', this.leftPlayer!.color, 'isReadyForGame'], value: true }]
 				}
 			})
 		} else {
 			this.sharedStore.setStoreWithRetries(() => {
-				if (!this.isPlayerParticipating || this.leftPlayer!.isReadyForGame) return []
-				return [{ path: ['gameParticipants', this.playerColor(this.player.id)!, 'isReadyForGame'], value: true }]
+				if (!this.isPlayerParticipating || !this.leftPlayer!.isReadyForGame) return []
+				return [{ path: ['gameParticipants', this.leftPlayer!.color, 'isReadyForGame'], value: false }]
 			})
 		}
 	}

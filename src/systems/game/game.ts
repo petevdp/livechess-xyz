@@ -2,7 +2,7 @@ import * as R from '../room.ts'
 import * as GL from './gameLogic.ts'
 import * as P from '../player.ts'
 import { Accessor, createEffect, createMemo, createSignal, from, getOwner, observable, onCleanup } from 'solid-js'
-import { combineLatest, concatMap, distinctUntilChanged, EMPTY, from as rxFrom, Observable, ReplaySubject, skip } from 'rxjs'
+import { combineLatest, concatMap, distinctUntilChanged, from as rxFrom, Observable, ReplaySubject, skip } from 'rxjs'
 import { isEqual } from 'lodash'
 import { map } from 'rxjs/operators'
 import { storeToSignal } from '~/utils/solid.ts'
@@ -17,12 +17,11 @@ type BoardView = {
 	visibleSquares: Set<string>
 }
 export type DrawEvent = 'offered-by-opponent' | 'awaiting-response' | 'declined' | 'player-cancelled' | 'opponent-cancelled'
-export type MoveType = 'move' | 'capture' | 'checkmate'
 
 export class Game {
 	setViewedMove: (move: number | 'live') => void
 	viewedMoveIndex: Accessor<number>
-	drawEvent$: Observable<DrawEvent> = EMPTY
+	drawEvent$: Observable<DrawEvent>
 	currentBoardView: BoardView
 	gameConfig: GL.GameConfig
 	stateSignal: Accessor<GL.GameState>
@@ -46,7 +45,6 @@ export class Game {
 	constructor(
 		public gameId: string,
 		public room: R.Room,
-		public playerId: string,
 		gameConfig: GL.GameConfig
 	) {
 		if (!getOwner()) throw new Error('Game constructor must be called in reactive context')
@@ -69,7 +67,7 @@ export class Game {
 
 		// boards are only so we don't need to deeply track this
 		const viewedBoard = () => {
-			if (this.boardWithCurrentMove()) {
+			if (this.boardWithCurrentMove() && this.viewingLiveBoard) {
 				return this.boardWithCurrentMove()!
 			} else {
 				return unwrap(this.state.boardHistory[this.viewedMoveIndex() + 1].board)
@@ -81,7 +79,7 @@ export class Game {
 		const inCheck = createMemo(() => GL.inCheck(viewedBoard()))
 		const visibleSquares = createMemo(() => {
 			if (this.gameConfig.variant === 'fog-of-war') {
-				return GL.getVisibleSquares(this.stateSignal(), this.player.color)
+				return GL.getVisibleSquares(this.stateSignal(), this.topPlayer.color)
 			}
 			// just avoid computing this when not needed
 			return new Set()
@@ -155,18 +153,18 @@ export class Game {
 		).pipe(
 			skip(1),
 			concatMap(([offers, declinedBy]) => {
-				let opponentOffering = offers[this.opponent.color] !== null
-				let opponentOfferingPrev = prevOffers[this.opponent.color] !== null
-				let playerOffering = offers[this.player.color] !== null
-				let playerOfferingPrev = prevOffers[this.player.color] !== null
+				let topOffering = offers[this.topPlayer.color] !== null
+				let topOfferingPrev = prevOffers[this.topPlayer.color] !== null
+				let bottomOffering = offers[this.bottomPlayer.color] !== null
+				let bottomOfferingPrev = prevOffers[this.bottomPlayer.color] !== null
 
 				let events: DrawEvent[] = []
 				if (this.outcome) {
 				} else if (declinedBy && !prevDeclinedBy) events.push('declined')
-				else if (opponentOffering && !opponentOfferingPrev) events.push('offered-by-opponent')
-				else if (playerOffering && !playerOfferingPrev) events.push('awaiting-response')
-				else if (!opponentOffering && opponentOfferingPrev) events.push('opponent-cancelled')
-				else if (!playerOffering && playerOfferingPrev) events.push('player-cancelled')
+				else if (topOffering && !topOfferingPrev) events.push('offered-by-opponent')
+				else if (bottomOffering && !bottomOfferingPrev) events.push('awaiting-response')
+				else if (!topOffering && topOfferingPrev) events.push('opponent-cancelled')
+				else if (!bottomOffering && bottomOfferingPrev) events.push('player-cancelled')
 				prevOffers = JSON.parse(JSON.stringify(offers))
 				prevDeclinedBy = JSON.parse(JSON.stringify(offers))
 				return events
@@ -183,6 +181,10 @@ export class Game {
 			prevMoveCount = this.state.moveHistory.length
 		})
 		//#endregion
+	}
+
+	get viewingLiveBoard() {
+		return this.viewedMoveIndex() === this.state.moveHistory.length - 1
 	}
 
 	getColorPlayer(color: GL.Color) {
@@ -206,15 +208,22 @@ export class Game {
 	}
 
 	get players() {
-		return this.room.players.map((p) => ({ ...p, color: this.getPlayerColor(p.id) }))
+		return this.room.members.map((p) => ({ ...p, color: this.getPlayerColor(p.id) }))
 	}
 
-	get player() {
-		return this.players.find((p) => p.id === this.playerId)!
+	get isClientPlayerParticipating() {
+		return Object.keys(this.state.players).includes(this.room.player.id)
 	}
 
-	get opponent() {
-		return this.players.find((p) => p.id !== this.playerId)!
+	// either the client player or white if the client player is spectating
+	get bottomPlayer() {
+		if (this.isClientPlayerParticipating) return this.players.find((p) => p.id === this.room.player.id)!
+		return this.players.find((p) => p.color === 'white')!
+	}
+
+	get topPlayer() {
+		if (this.isClientPlayerParticipating) return this.players.find((p) => p.id !== this.room.player.id)!
+		return this.players.find((p) => p.color === 'black')!
 	}
 
 	get clock() {
@@ -229,8 +238,8 @@ export class Game {
 		return this.room.state.gameStates[this.gameId]
 	}
 
-	get isPlayerTurn() {
-		return GL.isPlayerTurn(this.board, this.player.color)
+	isPlayerTurn(color: GL.Color) {
+		return GL.isPlayerTurn(this.board, color)
 	}
 
 	private get gameStatePath(): string[] {
@@ -286,6 +295,7 @@ export class Game {
 	}
 
 	tryMakeMove(move?: GL.SelectedMove) {
+		if (!this.isClientPlayerParticipating) return
 		if (!move && !this.currentMove) return
 		if (move) {
 			this.currentMove = move
@@ -347,7 +357,7 @@ export class Game {
 			// check that we're still on the same move
 			if (this.state.moveHistory.length !== expectedMoveIndex) return
 			let board = GL.getBoard(state)
-			if (!GL.isPlayerTurn(board, this.getPlayerColor(this.playerId)) || !board.pieces[currentMove.from]) return
+			if (!GL.isPlayerTurn(board, this.bottomPlayer.color) || !board.pieces[currentMove.from]) return
 			let result = GL.validateAndPlayMove(
 				currentMove.from,
 				currentMove.to,
@@ -384,33 +394,36 @@ export class Game {
 
 	//#region draw actions
 	offerDraw() {
+		if (!this.isClientPlayerParticipating) return
 		const moveOffered = this.state.moveHistory.length
 		const offerTime = Date.now()
 		this.room.sharedStore.setStoreWithRetries(() => {
 			if (!this.state || this.state.moveHistory.length !== moveOffered || GL.getGameOutcome(this.state, this.parsedGameConfig)) return
 			const drawIsOfferedBy = GL.getDrawIsOfferedBy(this.state)
-			if (drawIsOfferedBy === this.getPlayerColor(this.playerId)) return
-			return [{ path: [...this.gameStatePath, 'drawOffers', this.getPlayerColor(this.playerId)], value: offerTime }]
+			if (drawIsOfferedBy === this.bottomPlayer.color) return
+			return [{ path: [...this.gameStatePath, 'drawOffers', this.bottomPlayer.color], value: offerTime }]
 		})
 	}
 
 	cancelDraw() {
+		if (!this.isClientPlayerParticipating) return
 		const moveOffered = this.lockstepState.moveHistory.length
 		this.room.sharedStore.setStoreWithRetries(() => {
 			if (!this.state || this.lockstepState.moveHistory.length !== moveOffered || GL.getGameOutcome(this.state, this.parsedGameConfig))
 				return
 			const drawIsOfferedBy = GL.getDrawIsOfferedBy(this.state)
-			if (drawIsOfferedBy !== this.getPlayerColor(this.playerId)) return
-			return [{ path: [...this.gameStatePath, 'drawOffers', this.getPlayerColor(this.playerId)], value: null }]
+			if (drawIsOfferedBy !== this.bottomPlayer.color) return
+			return [{ path: [...this.gameStatePath, 'drawOffers', this.bottomPlayer.color], value: null }]
 		})
 	}
 
 	declineDraw() {
+		if (!this.isClientPlayerParticipating) return
 		const moveOffered = this.lockstepState.moveHistory.length
 		this.room.sharedStore.setStoreWithRetries(() => {
 			if (!this.state || this.state.moveHistory.length !== moveOffered || GL.getGameOutcome(this.state, this.parsedGameConfig)) return
 			const drawIsOfferedBy = GL.getDrawIsOfferedBy(this.state)
-			if (drawIsOfferedBy === this.getPlayerColor(this.playerId) || !this.drawIsOfferedBy) return
+			if (drawIsOfferedBy === this.bottomPlayer.color || !this.drawIsOfferedBy) return
 			return [
 				{
 					path: [...this.gameStatePath, 'drawOffers', this.drawIsOfferedBy],
@@ -419,7 +432,7 @@ export class Game {
 				{
 					path: [...this.gameStatePath, 'drawDeclinedBy'],
 					value: {
-						color: this.getPlayerColor(this.getPlayerColor(this.playerId)),
+						color: this.bottomPlayer.color,
 						ts: Date.now(),
 					} satisfies GL.GameState['drawDeclinedBy'],
 				},
@@ -430,12 +443,13 @@ export class Game {
 	//#endregion
 
 	resign() {
+		if (!this.isClientPlayerParticipating) return
 		this.room.sharedStore.setStoreWithRetries(() => {
 			if (!this.state || GL.getGameOutcome(this.state, this.parsedGameConfig)) return
 			return [
 				{
 					path: [...this.gameStatePath, 'resigned'],
-					value: this.getPlayerColor(this.playerId),
+					value: this.bottomPlayer.id,
 				},
 			]
 		})
