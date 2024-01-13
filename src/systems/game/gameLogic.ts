@@ -755,7 +755,7 @@ export function hashBoard(board: Board) {
 	return hash.sha1(board) as string
 }
 
-function oppositeColor(color: Color) {
+export function oppositeColor(color: Color) {
 	return color === 'white' ? 'black' : 'white'
 }
 

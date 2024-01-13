@@ -1,21 +1,19 @@
-import {createResource, createSignal, Match, onCleanup, onMount, ParentProps, Show, Switch} from 'solid-js'
+import { createResource, Match, onCleanup, ParentProps, Show, Switch } from 'solid-js'
 import toast from 'solid-toast'
 import * as PC from '~/systems/piece.ts'
 import * as P from '~/systems/player.ts'
 import QRCode from 'qrcode'
-import {Game} from './Game.tsx'
+import { Game } from './Game.tsx'
 import * as GL from '~/systems/game/gameLogic.ts'
 import * as R from '~/systems/room.ts'
-import {until} from '@solid-primitives/promise'
 import SwapSvg from '~/assets/icons/swap.svg'
-import {ScreenFittingContent} from '~/components/AppContainer.tsx'
-import {Card, CardContent, CardFooter, CardHeader, CardTitle} from '~/components/ui/card.tsx'
-import {Button} from '~/components/ui/button.tsx'
-import {Choice, MultiChoiceButton} from '~/components/utils/MultiChoiceButton.tsx'
-import {Tooltip, TooltipContent, TooltipTrigger} from '~/components/ui/tooltip.tsx'
-import {Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger} from '~/components/ui/dialog'
-import {Input} from '~/components/ui/input.tsx'
-import {HoverCard, HoverCardContent, HoverCardTrigger} from '~/components/ui/hover-card.tsx'
+import { ScreenFittingContent } from '~/components/AppContainer.tsx'
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '~/components/ui/card.tsx'
+import { Button } from '~/components/ui/button.tsx'
+import { Choice, MultiChoiceButton } from '~/components/utils/MultiChoiceButton.tsx'
+import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip.tsx'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog'
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '~/components/ui/hover-card.tsx'
 
 export function Room() {
 	const room = R.room()!
@@ -75,7 +73,7 @@ function Lobby() {
 
 	const copyInviteLink = () => {
 		toast('Copied invite link to clipboard')
-		navigator.clipboard.writeText(window.location.href)
+		navigator.clipboard.writeText(window.location.href).then(() => {})
 	}
 
 	return (
@@ -145,27 +143,31 @@ function GameConfigForm() {
 	)
 }
 
+// when this client's player is participating
 function PlayerAwareness() {
 	const room = R.room()!
-	const playerColor: () => GL.Color = () => (room.rollbackState.whitePlayerId === P.playerId() ? 'white' : 'black')
-	const opponentColor: () => GL.Color = () => (playerColor() === 'white' ? 'black' : 'white')
+	const leftPlayerColor: () => GL.Color | null = () => (room.leftPlayer?.id ? room.playerColor(room.leftPlayer.id) : null)
+	const rightPlayer: () => GL.Color = () => (leftPlayerColor() === 'white' ? 'black' : 'white')
 
 	const sub = room.action$.subscribe((action) => {
 		switch (action.type) {
 			case 'agree-piece-swap':
-				toast(`Swapped Pieces! You are now ${playerColor()}`)
+				if (action.player.id === room.leftPlayer?.id) {
+					toast(`Swapped Pieces! You are now ${leftPlayerColor()}`)
+				}
 				break
 			case 'decline-or-cancel-piece-swap':
-				if (action.player.id === room.opponent?.id) {
-					toast(`${room.opponent.name} declined piece swap`)
+				if (action.player.id === room.rightPlayer?.id) {
+					toast(`${room.rightPlayer.name} declined piece swap`)
 				} else {
 					toast('Piece swap cancelled')
 				}
 				break
 			case 'initiate-piece-swap':
-				if (action.player.id === room.opponent?.id) {
+				if (action.player.id === room.rightPlayer?.id) {
 				} else {
-					toast('Waiting for opponent to accept piece swap')
+					const waitingPlayer = action.player.id === room.leftPlayer?.id ? room.rightPlayer : room.leftPlayer
+					toast(`Waiting for ${waitingPlayer!.name} to accept piece swap`)
 				}
 		}
 	})
@@ -177,25 +179,40 @@ function PlayerAwareness() {
 	// large margin needed for headroom for piece switch popup
 	return (
 		<div class="col-span-2 m-auto mt-8 grid grid-cols-[1fr_min-content_1fr] items-center">
-			<PlayerConfigDisplay
-				canStartGame={room.canStartGame}
-				toggleReady={() => room.toggleReady()}
-				player={room.player}
-				color={playerColor()}
-				cancelPieceSwap={() => room.declineOrCancelPieceSwap()}
-			/>
+			<Switch>
+				<Match when={room.leftPlayer?.id === room.player.id}>
+					<PlayerConfigDisplay
+						canStartGame={room.canStartGame}
+						toggleReady={() => room.toggleReady()}
+						player={room.leftPlayer!}
+						color={room.playerColor(room.player.id)!}
+						cancelPieceSwap={() => room.declineOrCancelPieceSwap()}
+					/>
+				</Match>
+				<Match when={room.leftPlayer}>
+					<OpponentConfigDisplay
+						opponent={room.leftPlayer!}
+						color={leftPlayerColor()!}
+						agreePieceSwap={() => room.agreePieceSwap()}
+						declinePieceSwap={() => room.declineOrCancelPieceSwap()}
+					/>
+				</Match>
+				<Match when={true}>
+					<OpponentPlaceholder color={leftPlayerColor()!} />
+				</Match>
+			</Switch>
 			<span></span>
-			<Show when={room.opponent} fallback={<OpponentPlaceholder color={opponentColor()} />}>
+			<Show when={room.rightPlayer} fallback={<OpponentPlaceholder color={rightPlayer()} />}>
 				<OpponentConfigDisplay
-					opponent={room.opponent!}
-					color={opponentColor()}
+					opponent={room.rightPlayer!}
+					color={rightPlayer()}
 					agreePieceSwap={() => room.agreePieceSwap()}
 					declinePieceSwap={() => room.declineOrCancelPieceSwap()}
 				/>
 			</Show>
-			<PlayerColorDisplay color={playerColor()} />
-			<SwapButton alreadySwapping={room.player.agreeColorSwap} initiatePieceSwap={() => room.initiatePieceSwap()} />
-			<PlayerColorDisplay color={opponentColor()} />
+			<PlayerColorDisplay color={leftPlayerColor() || 'white'} />
+			<SwapButton disabled={room.leftPlayer?.id !== room.player.id} alreadySwapping={room.leftPlayer?.agreeColorSwap || false} initiatePieceSwap={() => room.initiatePieceSwap()} />
+			<PlayerColorDisplay color={rightPlayer() || 'black'} />
 		</div>
 	)
 }
@@ -208,9 +225,9 @@ function PlayerColorDisplay(props: { color: GL.Color }) {
 	)
 }
 
-function SwapButton(props: { initiatePieceSwap: () => void; alreadySwapping: boolean }) {
+function SwapButton(props: { initiatePieceSwap: () => void; alreadySwapping: boolean; disabled: boolean }) {
 	const requestSwap = () => {
-		if (props.alreadySwapping) return
+		if (props.alreadySwapping || props.disabled) return
 		props.initiatePieceSwap()
 	}
 
@@ -219,7 +236,7 @@ function SwapButton(props: { initiatePieceSwap: () => void; alreadySwapping: boo
 			<div class="flex flex-col justify-center">
 				<Tooltip>
 					<TooltipTrigger>
-						<Button onclick={requestSwap} size="icon" variant="ghost">
+						<Button disabled={props.disabled} onclick={requestSwap} size="icon" variant="ghost">
 							<SwapSvg />
 						</Button>
 					</TooltipTrigger>
@@ -231,7 +248,7 @@ function SwapButton(props: { initiatePieceSwap: () => void; alreadySwapping: boo
 }
 
 function PlayerConfigDisplay(props: {
-	player: R.RoomParticipant
+	player: R.GameParticipant
 	color: GL.Color
 	toggleReady: () => void
 	cancelPieceSwap: () => void
@@ -239,9 +256,7 @@ function PlayerConfigDisplay(props: {
 }) {
 	return (
 		<PlayerDisplayContainer color={props.color}>
-			<span class="whitespace-nowrap text-xs">
-				{props.player.name} (You)
-			</span>
+			<span class="whitespace-nowrap text-xs">{props.player.name} (You)</span>
 			<Show when={!props.player.isReadyForGame}>
 				<Button size="sm" class="whitespace-nowrap" onclick={() => props.toggleReady()}>
 					{props.canStartGame ? 'Start Game' : 'Ready Up!'}
@@ -260,7 +275,7 @@ function PlayerConfigDisplay(props: {
 }
 
 function OpponentConfigDisplay(props: {
-	opponent: R.RoomParticipant
+	opponent: R.GameParticipant
 	color: GL.Color
 	agreePieceSwap: () => void
 	declinePieceSwap: () => void
@@ -313,44 +328,5 @@ function PlayerDisplayContainer(props: ParentProps<{ color: GL.Color }>) {
 }
 
 function OpponentPlaceholder(props: { color: GL.Color }) {
-	return <PlayerDisplayContainer color={props.color}>Waiting for Opponent...</PlayerDisplayContainer>
-}
-
-export function NickForm() {
-	const [displayName, setDisplayName] = createSignal<string>('')
-	const [initialized, setInitialized] = createSignal(false)
-	onMount(async () => {
-		await until(() => P.playerId())
-		setDisplayName(P.playerName() || '')
-		setInitialized(true)
-	})
-	const onSubmit = (e: SubmitEvent) => {
-		e.preventDefault()
-		P.setPlayerName(displayName())
-	}
-
-	return (
-		<ScreenFittingContent class="grid place-items-center p-2">
-			<Card>
-				<CardHeader>
-					<CardTitle class="text-center">Set your Display Name</CardTitle>
-				</CardHeader>
-				<CardContent>
-					<form onSubmit={onSubmit} class="flex space-x-1">
-						<Input
-							type="text"
-							value={displayName()}
-							disabled={!initialized()}
-							required={true}
-							pattern={'[a-zA-Z0-9 ]+'}
-							onchange={(e) => setDisplayName(e.target.value.trim())}
-						/>
-						<Button type="submit" value="Submit">
-							Submit
-						</Button>
-					</form>
-				</CardContent>
-			</Card>
-		</ScreenFittingContent>
-	)
+	return <PlayerDisplayContainer color={props.color}>Waiting for Player...</PlayerDisplayContainer>
 }
