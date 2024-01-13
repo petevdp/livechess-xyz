@@ -438,22 +438,30 @@ export function Game(props: { gameId: string }) {
 
 	//#region draw offer events
 	{
-		const sub = game.drawEvent$.subscribe((eventType) => {
-			switch (eventType) {
-				case 'awaiting-response':
-					toast.success(`Offered Draw. Awaiting response from ${game.bottomPlayer.name}`)
+		const sub = game.drawEvent$.subscribe((event) => {
+			if (event.participant.id === game.room.player.id) {
+				switch (event.type) {
+					case 'draw-offered':
+						toast('Draw offered')
+						break
+					case 'draw-canceled':
+						toast('Draw cancelled')
+						break
+					case 'draw-declined':
+						toast('Draw declined')
+						break
+				}
+				return
+			}
+			switch (event.type) {
+				case 'draw-offered':
+					toast(`${event.participant.name} offered a draw`)
 					break
-				case 'declined':
-					toast.error('Draw was declined')
+				case 'draw-canceled':
+					toast(`${event.participant.name} cancelled their draw offer`)
 					break
-				case 'offered-by-opponent':
-					toast.success(`${game.bottomPlayer.name} has offered a draw`)
-					break
-				case 'opponent-cancelled':
-					toast.error(`${game.bottomPlayer.name} has cancelled their draw offer`)
-					break
-				case 'player-cancelled':
-					toast.error('Draw offer cancelled')
+				case 'draw-declined':
+					toast(`${event.participant.name} declined draw offer`)
 					break
 			}
 		})
@@ -657,7 +665,7 @@ function ActionsPanel(props: { class: string; placingDuck: boolean }) {
 				</Match>
 				<Match when={!game.outcome}>
 					<Show when={game.drawIsOfferedBy === null}>
-						<Button title="Offer Draw" size="icon" variant="ghost" onclick={() => game.offerDraw()}>
+						<Button title="Offer Draw" size="icon" variant="ghost" onclick={() => game.offerOrAcceptDraw()}>
 							<OfferDrawSvg />
 						</Button>
 						<Button title="Resign" size="icon" variant="ghost" onclick={() => game.resign()}>
@@ -665,11 +673,21 @@ function ActionsPanel(props: { class: string; placingDuck: boolean }) {
 						</Button>
 					</Show>
 					<Switch>
-						<Match when={game.drawIsOfferedBy === game.topPlayer.color}>
-							<Button onClick={() => game.cancelDraw()}>Cancel Draw</Button>
-						</Match>
 						<Match when={game.drawIsOfferedBy === game.bottomPlayer.color}>
-							<Button onClick={() => game.offerDraw()}>Accept Draw</Button>
+							<Button size="sm" onClick={() => game.cancelDraw()}>
+								Cancel Draw
+							</Button>
+						</Match>
+						<Match when={game.drawIsOfferedBy === game.topPlayer.color}>
+							<div class="flex space-x-1">
+								{/* TODO when we're at a small viewport, we should probably render this somewhere else */}
+								<Button size="sm" onClick={() => game.offerOrAcceptDraw()}>
+									Accept Draw
+								</Button>
+								<Button size="sm" onClick={() => game.declineDraw()}>
+									Decline Draw
+								</Button>
+							</div>
 						</Match>
 					</Switch>
 				</Match>

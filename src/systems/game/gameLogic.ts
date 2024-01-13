@@ -10,8 +10,8 @@ export const COLORS = ['white', 'black'] as const
 export type PieceColors = (typeof COLORS)[number] | 'duck'
 export type Color = (typeof COLORS)[number]
 export type ColoredPiece = {
-	color: PieceColors
-	type: (typeof PIECES)[number]
+	readonly color: PieceColors
+	readonly type: (typeof PIECES)[number]
 }
 
 type Timestamp = number
@@ -112,6 +112,8 @@ export type GameOutcome = {
 
 export const VARIANTS = ['regular', 'fog-of-war', 'duck', 'fischer-random'] as const
 export type Variant = (typeof VARIANTS)[number]
+
+export const VARIANTS_ALLOWING_SELF_CHECKS = ['fog-of-war', 'duck'] as Variant[]
 export const TIME_CONTROLS = ['15m', '10m', '5m', '3m', '1m'] as const
 export type TimeControl = (typeof TIME_CONTROLS)[number]
 export const INCREMENTS = ['0', '1', '2', '5'] as const
@@ -253,7 +255,7 @@ export function getGameOutcome(state: GameState, config: ParsedGameConfig) {
 	} else if (!Object.values(state.drawOffers).includes(null)) {
 		winner = null
 		reason = 'draw-accepted'
-	} else if (config.variant !== 'fog-of-war' && checkmated(state)) {
+	} else if (VARIANTS_ALLOWING_SELF_CHECKS.includes(config.variant) && checkmated(state)) {
 		winner = oppositeColor(getBoard(state).toMove)
 		reason = 'checkmate'
 	} else if (config.variant === 'fog-of-war' && kingCaptured(state)) {
@@ -303,10 +305,13 @@ export function validateAndPlayMove(
 	}
 	const isCapture = !!getBoard(game).pieces[to]
 	const move = candidateMoveToMove(candidate, undefined, isCapture)
-	const [newBoard, promoted] = applyMoveToBoard(candidate, getBoard(game))
-
+	//@ts-ignore
+	let [newBoard, promoted] = applyMoveToBoard(candidate, getBoard(game))
 	if (duck) {
-		if (!validateDuckPlacement(duck, newBoard)) return
+		if (!validateDuckPlacement(duck, newBoard)) {
+			return
+		}
+		// we're doing this here because placing the duck is a distinct step and would be hard to jam into applyMoveToBoard0 while validating the placement
 		newBoard.pieces[duck] = DUCK
 	}
 
@@ -319,19 +324,9 @@ export function validateAndPlayMove(
 
 // board should already have been modified by whatever move we're making this turn
 export function validateDuckPlacement(duck: string, board: Board) {
-	return !board.pieces[duck] || board.pieces[duck].type === 'duck'
+	return !board.pieces[duck]
 }
 
-
-export function getBoardDelta(oldBoard: Board, newBoard: Board) {
-	const delta = {} as Record<string, ColoredPiece | null>
-	for (let [square, piece] of Object.entries(oldBoard.pieces)) {
-		if (newBoard.pieces[square] !== piece) {
-			delta[square] = newBoard.pieces[square]
-		}
-	}
-	return delta
-}
 
 // Uncritically apply a move to the board. Does not mutate input.
 function applyMoveToBoard(move: CandidateMove | Move, board: Board) {
@@ -824,7 +819,7 @@ export function getVisibleSquares(game: GameState, color: Color) {
 	} else {
 		simulated = JSON.parse(JSON.stringify(game)) as GameState
 		const noopSquareAndPiece = opponentPieces.find(([_, piece]) => piece.type === 'king')!
-		// in this case the game is over and we'll be revealing all squares anyway
+		// in this case the game is over, and we'll be revealing all squares anyway
 		if (!noopSquareAndPiece) return new Set()
 		const [noopSquare, noopPiece] = noopSquareAndPiece
 		const noopCoords = coordsFromNotation(noopSquare)

@@ -1,5 +1,6 @@
 import * as P from './player.ts'
 import * as GL from './game/gameLogic.ts'
+import * as G from './game/game.ts'
 import { PLAYER_TIMEOUT, SERVER_HOST } from '../config.ts'
 import { initSharedStore, newNetwork, SharedStore, SharedStoreProvider, StoreMutation } from '~/utils/sharedStore.ts'
 import { createEffect, createMemo, createRoot, createSignal, getOwner, onCleanup, Owner, runWithOwner, untrack } from 'solid-js'
@@ -8,6 +9,7 @@ import { trackDeep, trackStore } from '@solid-primitives/deep'
 import { createIdSync } from '~/utils/ids.ts'
 import { unwrap } from 'solid-js/store'
 import { concatMap } from 'rxjs'
+import { isEqual } from 'lodash'
 
 // TODO normalize language from "color swap" to "pieces swap"
 
@@ -33,6 +35,7 @@ export type RoomEvent = {
 		| 'player-connected'
 		| 'player-disconnected'
 		| 'player-reconnected'
+		| G.DrawEventType
 	playerId: string
 }
 
@@ -178,11 +181,15 @@ export class Room {
 		public player: RoomMember
 	) {
 		//#region track player events
+		let prevConnected: RoomMember[] = []
 		const connectedPlayers = createMemo(() => {
 			trackDeep(this.sharedStore.clientControlledStates)
 			let playerIds: string[] = Object.values(this.sharedStore.clientControlledStates).map((s) => s.playerId)
 			console.log('changing connected players', playerIds)
-			return this.members.filter((p) => playerIds.includes(p.id) && p.name)
+			const currConnected = this.members.filter((p) => playerIds.includes(p.id) && p.name)
+			// return same object so equality check passes
+			if (isEqual(playerIds, prevConnected)) return prevConnected
+			return currConnected
 		})
 
 		const previouslyConnected = new Set<string>()
@@ -325,23 +332,7 @@ export class Room {
 	configureNewGame() {
 		this.sharedStore.setStoreWithRetries(() => {
 			if (!this.rightPlayer || !this.rollbackState.activeGameId) return
-			return [
-				{ path: ['members', this.members.findIndex((p) => p.id === this.player.id), 'isReadyForGame'], value: false },
-				{
-					path: ['members', this.members.findIndex((p) => p.id === this.rightPlayer!.id), 'isReadyForGame'],
-					value: false,
-				},
-				{
-					path: ['gameParticipants', 'white'],
-					value: this.rollbackState.gameParticipants.black,
-				},
-				{
-					path: ['gameParticipants', 'black'],
-					value: this.rollbackState.gameParticipants.white,
-				},
-				{ path: ['status'], value: 'pregame' },
-				{ path: ['activeGameId'], value: undefined },
-			]
+			return [...this.getPieceSwapMutation(), { path: ['status'], value: 'pregame' }, { path: ['activeGameId'], value: undefined }]
 		})
 	}
 
@@ -367,16 +358,7 @@ export class Room {
 			if (this.rightPlayer.agreePieceSwap) {
 				return {
 					events: [{ type: 'agree-piece-swap', playerId: this.player.id }],
-					mutations: [
-						{
-							path: ['gameParticipants', this.leftPlayer!.color],
-							value: { ...this.rollbackState.gameParticipants[this.rightPlayer!.color], agreePieceSwap: false },
-						},
-						{
-							path: ['gameParticipants', this.rightPlayer!.color],
-							value: { ...this.rollbackState.gameParticipants[this.leftPlayer!.color], agreePieceSwap: false },
-						},
-					],
+					mutations: this.getPieceSwapMutation(),
 				}
 			}
 
@@ -390,6 +372,20 @@ export class Room {
 				],
 			}
 		})
+	}
+
+	getPieceSwapMutation(): StoreMutation[] {
+		return [
+			{
+				path: ['gameParticipants', this.leftPlayer!.color],
+				value: { ...this.rollbackState.gameParticipants[this.rightPlayer!.color], agreePieceSwap: false },
+			},
+			{
+				path: ['gameParticipants', this.rightPlayer!.color],
+				// always clone because this object will have been mutated by the previous mutation
+				value: { ...this.rollbackState.gameParticipants[this.leftPlayer!.color], agreePieceSwap: false },
+			},
+		]
 	}
 
 	declineOrCancelPieceSwap() {

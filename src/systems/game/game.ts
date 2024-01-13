@@ -2,7 +2,7 @@ import * as R from '../room.ts'
 import * as GL from './gameLogic.ts'
 import * as P from '../player.ts'
 import { Accessor, createEffect, createMemo, createSignal, from, getOwner, observable, onCleanup } from 'solid-js'
-import { combineLatest, concatMap, distinctUntilChanged, from as rxFrom, Observable, ReplaySubject, skip } from 'rxjs'
+import { combineLatest, concatMap, distinctUntilChanged, from as rxFrom, Observable, ReplaySubject } from 'rxjs'
 import { isEqual } from 'lodash'
 import { map } from 'rxjs/operators'
 import { storeToSignal } from '~/utils/solid.ts'
@@ -16,7 +16,9 @@ type BoardView = {
 	lastMove: GL.Move | null
 	visibleSquares: Set<string>
 }
-export type DrawEvent = 'offered-by-opponent' | 'awaiting-response' | 'declined' | 'player-cancelled' | 'opponent-cancelled'
+const DRAW_EVENTS = ['draw-offered', 'draw-accepted', 'draw-declined', 'draw-canceled'] as const
+export type DrawEventType = (typeof DRAW_EVENTS)[number]
+export type DrawEvent = { type: DrawEventType; participant: R.GameParticipant }
 
 export class Game {
 	setViewedMove: (move: number | 'live') => void
@@ -135,41 +137,20 @@ export class Game {
 		this.getOutcome = from(outcome$)
 		//#endregion
 
-		//#region draw offer events
-		let prevOffers: GL.GameState['drawOffers'] = JSON.parse(JSON.stringify(this.state.drawOffers))
-		let prevDeclinedBy: GL.GameState['drawDeclinedBy'] | null = JSON.parse(JSON.stringify(this.state.drawDeclinedBy))
-
-		this.drawEvent$ = rxFrom(
-			observable(
-				() =>
-					[
-						{
-							white: this.state.drawOffers.white,
-							black: this.state.drawOffers.black,
-						} satisfies GL.GameState['drawOffers'],
-						this.state.drawDeclinedBy,
-					] as const
-			)
-		).pipe(
-			skip(1),
-			concatMap(([offers, declinedBy]) => {
-				let topOffering = offers[this.topPlayer.color] !== null
-				let topOfferingPrev = prevOffers[this.topPlayer.color] !== null
-				let bottomOffering = offers[this.bottomPlayer.color] !== null
-				let bottomOfferingPrev = prevOffers[this.bottomPlayer.color] !== null
-
-				let events: DrawEvent[] = []
-				if (this.outcome) {
-				} else if (declinedBy && !prevDeclinedBy) events.push('declined')
-				else if (topOffering && !topOfferingPrev) events.push('offered-by-opponent')
-				else if (bottomOffering && !bottomOfferingPrev) events.push('awaiting-response')
-				else if (!topOffering && topOfferingPrev) events.push('opponent-cancelled')
-				else if (!bottomOffering && bottomOfferingPrev) events.push('player-cancelled')
-				prevOffers = JSON.parse(JSON.stringify(offers))
-				prevDeclinedBy = JSON.parse(JSON.stringify(offers))
-				return events
+		//#region handle draw offer events
+		this.drawEvent$ = this.room.action$.pipe(
+			concatMap((action): DrawEvent[] => {
+				const participant = this.room.participants.find((p) => p.id === action.player.id)
+				if (!DRAW_EVENTS.includes(action.type as DrawEventType) || !participant) return []
+				return [
+					{
+						type: action.type as DrawEventType,
+						participant: participant,
+					},
+				]
 			})
 		)
+
 		//#endregion
 
 		//#region reset view when currentMove history changes
@@ -305,11 +286,14 @@ export class Game {
 			this.currentMove.from,
 			this.currentMove.to,
 			this.stateSignal(),
-			!!this.currentDuckPlacement || this.gameConfig.variant === 'fog-of-war',
+			!!this.currentDuckPlacement || GL.VARIANTS_ALLOWING_SELF_CHECKS.includes(this.gameConfig.variant),
 			this.currentPromotion || undefined,
 			this.currentDuckPlacement || undefined
 		)
-		if (!res) return
+		if (!res) {
+			this.currentDuckPlacement = null
+			return
+		}
 		if (move) {
 			if (res.promoted && !this.currentPromotion) {
 				// while we're promoting, display the promotion square as containing the pawn
@@ -320,23 +304,22 @@ export class Game {
 			this.setBoardWithCurrentMove(res.board)
 		}
 
-		this.setBoardWithCurrentMove(res.board)
-
 		// this is a dumb way of doing this, we should return validation errors from validateAndPlayMove instead
 		if (res?.promoted && !this.currentPromotion) {
 			this.setChoosingPromotion(true)
+			this.setBoardWithCurrentMove(res.board)
 			return
 		}
 		this.setChoosingPromotion(false)
 
 		if (this.gameConfig.variant === 'duck' && !this.currentDuckPlacement) {
 			this.setPlacingDuck(true)
-			return
-		}
-
-		if (this.gameConfig.variant === 'duck' && !GL.validateDuckPlacement(this.currentDuckPlacement!, res.board)) {
-			this.currentDuckPlacement = null
-			this.setPlacingDuck(true)
+			this.setBoardWithCurrentMove(res.board)
+			let prevDuckPlacement = Object.keys(res.board).find((square) => res.board.pieces[square]!.type === 'duck')
+			if (prevDuckPlacement) {
+				// render previous duck while we're placing the new one, so it's clear that the duck can't be placed in the same spot twice
+				res.board.pieces[prevDuckPlacement] = GL.DUCK
+			}
 			return
 		}
 
@@ -362,7 +345,7 @@ export class Game {
 				currentMove.from,
 				currentMove.to,
 				state,
-				this.parsedGameConfig.variant === 'fog-of-war',
+				GL.VARIANTS_ALLOWING_SELF_CHECKS.includes(this.gameConfig.variant),
 				currentPromotion || undefined,
 				currentDuckPlacement || undefined
 			)
@@ -393,7 +376,7 @@ export class Game {
 	}
 
 	//#region draw actions
-	offerDraw() {
+	offerOrAcceptDraw() {
 		if (!this.isClientPlayerParticipating) return
 		const moveOffered = this.state.moveHistory.length
 		const offerTime = Date.now()
@@ -401,7 +384,11 @@ export class Game {
 			if (!this.state || this.state.moveHistory.length !== moveOffered || GL.getGameOutcome(this.state, this.parsedGameConfig)) return
 			const drawIsOfferedBy = GL.getDrawIsOfferedBy(this.state)
 			if (drawIsOfferedBy === this.bottomPlayer.color) return
-			return [{ path: [...this.gameStatePath, 'drawOffers', this.bottomPlayer.color], value: offerTime }]
+			const eventType = drawIsOfferedBy ? 'draw-accepted' : 'draw-offered'
+			return {
+				events: [{ type: eventType, playerId: this.bottomPlayer.id }],
+				mutations: [{ path: [...this.gameStatePath, 'drawOffers', this.bottomPlayer.color], value: offerTime }],
+			}
 		})
 	}
 
@@ -413,7 +400,10 @@ export class Game {
 				return
 			const drawIsOfferedBy = GL.getDrawIsOfferedBy(this.state)
 			if (drawIsOfferedBy !== this.bottomPlayer.color) return
-			return [{ path: [...this.gameStatePath, 'drawOffers', this.bottomPlayer.color], value: null }]
+			return {
+				events: [{ type: 'draw-canceled', playerId: this.bottomPlayer.id }],
+				mutations: [{ path: [...this.gameStatePath, 'drawOffers', this.bottomPlayer.color], value: null }],
+			}
 		})
 	}
 
@@ -424,19 +414,22 @@ export class Game {
 			if (!this.state || this.state.moveHistory.length !== moveOffered || GL.getGameOutcome(this.state, this.parsedGameConfig)) return
 			const drawIsOfferedBy = GL.getDrawIsOfferedBy(this.state)
 			if (drawIsOfferedBy === this.bottomPlayer.color || !this.drawIsOfferedBy) return
-			return [
-				{
-					path: [...this.gameStatePath, 'drawOffers', this.drawIsOfferedBy],
-					value: null,
-				},
-				{
-					path: [...this.gameStatePath, 'drawDeclinedBy'],
-					value: {
-						color: this.bottomPlayer.color,
-						ts: Date.now(),
-					} satisfies GL.GameState['drawDeclinedBy'],
-				},
-			]
+			return {
+				events: [{ type: 'draw-declined', playerId: this.bottomPlayer.id }],
+				mutations: [
+					{
+						path: [...this.gameStatePath, 'drawOffers', this.drawIsOfferedBy],
+						value: null,
+					},
+					{
+						path: [...this.gameStatePath, 'drawDeclinedBy'],
+						value: {
+							color: this.bottomPlayer.color,
+							ts: Date.now(),
+						} satisfies GL.GameState['drawDeclinedBy'],
+					},
+				],
+			}
 		})
 	}
 
