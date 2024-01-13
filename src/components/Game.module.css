@@ -82,19 +82,19 @@
 
 }
 
-.player {
+.bottomPlayer {
 	grid-area: player;
 }
 
-.clockPlayer {
+.clockBottomPlayer {
 	grid-area: clock-player;
 }
 
-.opponent {
+.topPlayer {
 	grid-area: opponent;
 }
 
-.clockOpponent {
+.clockTopPlayer {
 	grid-area: clock-opponent;
 }
 
@@ -169,11 +169,11 @@
 		min-width: unset;
 	}
 
-	.capturedPieces.player {
+	.capturedPieces.bottom-player {
 		@apply flex-row;
 	}
 
-	.capturedPieces.opponent {
+	.capturedPieces.top-player {
 		@apply flex-row-reverse;
 	}
 

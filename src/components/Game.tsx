@@ -521,9 +521,9 @@ export function Game(props: { gameId: string }) {
 				<div class={styles.moveHistoryContainer}>
 					<MoveHistory />
 				</div>
-				<Player class={styles.opponent} player={game.bottomPlayer} />
+				<Player class={styles.topPlayer} player={game.bottomPlayer} />
 				<Clock
-					class={styles.clockOpponent}
+					class={styles.clockTopPlayer}
 					clock={game.clock[game.bottomPlayer.color]}
 					ticking={game.isPlayerTurn(game.topPlayer.color) && game.clock[game.bottomPlayer.color] > 0}
 					timeControl={game.gameConfig.timeControl}
@@ -550,9 +550,9 @@ export function Game(props: { gameId: string }) {
 				<Show when={game.isClientPlayerParticipating} fallback={<div class={styles.bottomLeftActions} />}>
 					<ActionsPanel class={styles.bottomLeftActions} placingDuck={game.placingDuck()} />
 				</Show>
-				<Player class={styles.player} player={game.bottomPlayer} />
+				<Player class={styles.bottomPlayer} player={game.bottomPlayer} />
 				<Clock
-					class={styles.clockPlayer}
+					class={styles.clockBottomPlayer}
 					clock={game.clock[game.bottomPlayer.color]}
 					ticking={game.isPlayerTurn(game.bottomPlayer.color) && game.clock[game.bottomPlayer.color] > 0}
 					timeControl={game.gameConfig.timeControl}
