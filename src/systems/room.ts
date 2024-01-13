@@ -19,7 +19,7 @@ type GameParticipantDetails = {
 	// just playerid
 	id: string
 	isReadyForGame: boolean
-	agreeColorSwap: boolean
+	agreePieceSwap: boolean
 }
 
 export type GameParticipant = RoomMember & GameParticipantDetails & { color: GL.Color }
@@ -145,7 +145,7 @@ export async function connectToRoom(
 				let gameParticipant = {
 					id: playerId,
 					isReadyForGame: false,
-					agreeColorSwap: false,
+					agreePieceSwap: false,
 				} satisfies GameParticipantDetails
 				if (state.gameParticipants.white) {
 					mutations.push({ path: ['gameParticipants', 'black'], value: gameParticipant })
@@ -345,7 +345,7 @@ export class Room {
 		})
 	}
 
-	initiatePieceSwap() {
+	initiateOrAgreePieceSwap() {
 		this.sharedStore.setStoreWithRetries(() => {
 			if (this.state.status !== 'pregame' || !this.isPlayerParticipating) return
 			if (!this.rightPlayer) {
@@ -353,50 +353,39 @@ export class Room {
 					events: [{ type: 'agree-piece-swap', playerId: this.player.id }],
 					mutations: [
 						{
-							path: ['gameParticipants', this.playerColor(this.player.id)!],
-							value: undefined,
+							path: ['gameParticipants', GL.oppositeColor(this.leftPlayer!.color)],
+							value: this.rollbackState.gameParticipants[this.leftPlayer!.color],
 						},
 						{
-							path: ['gameParticipants', GL.oppositeColor(this.playerColor(this.player.id)!)],
-							value: this.player.id,
+							path: ['gameParticipants', this.leftPlayer!.color],
+							value: undefined,
 						},
 					] satisfies StoreMutation[],
 				}
 			}
-			if (this.rightPlayer.agreeColorSwap) return
+
+			if (this.rightPlayer.agreePieceSwap) {
+				return {
+					events: [{ type: 'agree-piece-swap', playerId: this.player.id }],
+					mutations: [
+						{
+							path: ['gameParticipants', this.leftPlayer!.color],
+							value: { ...this.rollbackState.gameParticipants[this.rightPlayer!.color], agreePieceSwap: false },
+						},
+						{
+							path: ['gameParticipants', this.rightPlayer!.color],
+							value: { ...this.rollbackState.gameParticipants[this.leftPlayer!.color], agreePieceSwap: false },
+						},
+					],
+				}
+			}
 
 			return {
 				events: [{ type: 'initiate-piece-swap', playerId: this.player.id }],
 				mutations: [
 					{
-						path: ['members', this.members.findIndex((p) => p.id === this.player.id), 'agreeColorSwap'],
+						path: ['gameParticipants', this.leftPlayer!.color, 'agreePieceSwap'],
 						value: true,
-					},
-				],
-			}
-		})
-	}
-
-	agreePieceSwap() {
-		this.sharedStore.setStoreWithRetries(() => {
-			if (this.state.status !== 'pregame') return []
-			if (!this.rightPlayer || !this.rightPlayer.agreeColorSwap) return []
-
-			return {
-				events: [{ type: 'agree-piece-swap', playerId: this.player.id }],
-				mutations: [
-					{ path: ['members', this.members.findIndex((p) => p.id === this.player.id), 'agreeColorSwap'], value: false },
-					{
-						path: ['members', this.members.findIndex((p) => p.id === this.rightPlayer!.id), 'agreeColorSwap'],
-						value: false,
-					},
-					{
-						path: ['gameParticipants', 'white'],
-						value: this.rollbackState.gameParticipants.black,
-					},
-					{
-						path: ['gameParticipants', 'black'],
-						value: this.rollbackState.gameParticipants.white,
 					},
 				],
 			}
@@ -410,9 +399,9 @@ export class Room {
 			return {
 				events: [{ type: 'decline-or-cancel-piece-swap', playerId: this.player.id }],
 				mutations: [
-					{ path: ['members', this.members.findIndex((p) => p.id === this.player.id), 'agreeColorSwap'], value: false },
+					{ path: ['members', this.members.findIndex((p) => p.id === this.player.id), 'agreePieceSwap'], value: false },
 					{
-						path: ['members', this.members.findIndex((p) => p.id === this.rightPlayer!.id), 'agreeColorSwap'],
+						path: ['members', this.members.findIndex((p) => p.id === this.rightPlayer!.id), 'agreePieceSwap'],
 						value: false,
 					},
 				],

@@ -193,7 +193,7 @@ function PlayerAwareness() {
 					<OpponentConfigDisplay
 						opponent={room.leftPlayer!}
 						color={leftPlayerColor()!}
-						agreePieceSwap={() => room.agreePieceSwap()}
+						agreePieceSwap={() => room.initiateOrAgreePieceSwap()}
 						declinePieceSwap={() => room.declineOrCancelPieceSwap()}
 					/>
 				</Match>
@@ -206,12 +206,16 @@ function PlayerAwareness() {
 				<OpponentConfigDisplay
 					opponent={room.rightPlayer!}
 					color={rightPlayer()}
-					agreePieceSwap={() => room.agreePieceSwap()}
+					agreePieceSwap={() => room.initiateOrAgreePieceSwap()}
 					declinePieceSwap={() => room.declineOrCancelPieceSwap()}
 				/>
 			</Show>
 			<PlayerColorDisplay color={leftPlayerColor() || 'white'} />
-			<SwapButton disabled={room.leftPlayer?.id !== room.player.id} alreadySwapping={room.leftPlayer?.agreeColorSwap || false} initiatePieceSwap={() => room.initiatePieceSwap()} />
+			<SwapButton
+				disabled={room.leftPlayer?.id !== room.player.id}
+				alreadySwapping={room.leftPlayer?.agreePieceSwap || false}
+				initiatePieceSwap={() => room.initiateOrAgreePieceSwap()}
+			/>
 			<PlayerColorDisplay color={rightPlayer() || 'black'} />
 		</div>
 	)
@@ -283,7 +287,7 @@ function OpponentConfigDisplay(props: {
 	return (
 		<PlayerDisplayContainer color={props.color}>
 			{/*<span ref={ref}>{props.opponent.name}</span>*/}
-			<HoverCard open={props.opponent.agreeColorSwap}>
+			<HoverCard open={props.opponent.agreePieceSwap}>
 				<HoverCardTrigger>
 					<span>{props.opponent.name}</span>
 				</HoverCardTrigger>
