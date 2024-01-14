@@ -6,14 +6,17 @@ import { Toaster } from 'solid-toast';
 
 
 import { Home } from './components/Home.tsx';
-import { RoomGuard } from './components/RoomGuard.tsx'
-import * as P from './systems/player.ts'
+import { RoomGuard } from './components/RoomGuard.tsx';
+import * as Pieces from './systems/piece.tsx';
+import * as P from './systems/player.ts';
 
 
 function App() {
 	onMount(async () => {
 		await P.setupPlayer()
 	})
+
+	Pieces.initPieceSystem()
 
 	return (
 		<>

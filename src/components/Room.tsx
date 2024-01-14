@@ -9,15 +9,18 @@ import { ScreenFittingContent } from '~/components/AppContainer.tsx';
 import { Button } from '~/components/ui/button.tsx';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '~/components/ui/card.tsx';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog';
-import { HoverCard, HoverCardContent, HoverCardTrigger } from '~/components/ui/hover-card.tsx'
-import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip.tsx'
-import { Choice, MultiChoiceButton } from '~/components/utils/MultiChoiceButton.tsx'
-import * as GL from '~/systems/game/gameLogic.ts'
-import * as PC from '~/systems/piece.ts'
-import * as P from '~/systems/player.ts'
-import * as R from '~/systems/room.ts'
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '~/components/ui/hover-card.tsx';
+import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip.tsx';
+import { Choice, MultiChoiceButton } from '~/components/utils/MultiChoiceButton.tsx';
+import * as GL from '~/systems/game/gameLogic.ts';
+import * as Pieces from '~/systems/piece.tsx'
+import * as PC from '~/systems/piece.tsx'
+import * as P from '~/systems/player.ts';
+import * as R from '~/systems/room.ts';
 
-import { Game } from './Game.tsx'
+
+
+import { Game } from './Game.tsx';
 
 
 export function Room() {
@@ -232,7 +235,7 @@ function PlayerAwareness() {
 function PlayerColorDisplay(props: { color: GL.Color }) {
 	return (
 		<div class="ml-auto mr-auto flex w-[5rem] items-center justify-center">
-			<img alt={`${props.color} king`} src={PC.resolvePieceImagePath({ type: 'king', color: props.color })} />
+			<img alt={`${props.color} king`} src={PC.getPieceSrc({type: 'king', color: props.color})}/>
 		</div>
 	)
 }

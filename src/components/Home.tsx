@@ -3,10 +3,12 @@ import { useNavigate } from '@solidjs/router';
 
 
 import { Button } from '~/components/ui/button.tsx';
-import { Card, CardContent, CardHeader } from '~/components/ui/card.tsx'
-import * as R from '~/systems/room.ts'
+import { Card, CardContent, CardHeader } from '~/components/ui/card.tsx';
+import * as R from '~/systems/room.ts';
 
-import { AppContainer, ScreenFittingContent } from './AppContainer.tsx'
+
+
+import { AppContainer, ScreenFittingContent } from './AppContainer.tsx';
 
 
 export function Home() {
@@ -14,6 +16,7 @@ export function Home() {
 
 	async function createRoom() {
 		const res = await R.createRoom()
+		console.log({ res })
 		navigate(`/rooms/${res.networkId}`)
 	}
 

@@ -1,33 +1,36 @@
-import { isEqual } from 'lodash'
-import { For, Match, Show, Switch, batch, createEffect, createMemo, createReaction, createSignal, onCleanup, onMount } from 'solid-js'
-import toast from 'solid-toast'
+import { until } from '@solid-primitives/promise';
+import { isEqual } from 'lodash';
+import { For, Match, Show, Switch, batch, createEffect, createMemo, createReaction, createSignal, onCleanup, onMount } from 'solid-js';
+import toast from 'solid-toast';
 
-import FirstSvg from '~/assets/icons/first.svg'
-import FlipBoardSvg from '~/assets/icons/flip-board.svg'
-import LastSvg from '~/assets/icons/last.svg'
-import NextSvg from '~/assets/icons/next.svg'
-import OfferDrawSvg from '~/assets/icons/offer-draw.svg'
-import PrevSvg from '~/assets/icons/prev.svg'
-import ResignSvg from '~/assets/icons/resign.svg'
-import { Dialog, DialogContent, DialogDescription, DialogHeader } from '~/components/ui/dialog.tsx'
-import { BOARD_COLORS } from '~/config.ts'
-import { cn } from '~/lib/utils.ts'
-import * as Audio from '~/systems/audio.ts'
-import * as G from '~/systems/game/game.ts'
-import * as GL from '~/systems/game/gameLogic.ts'
-import * as PC from '~/systems/piece.ts'
-import * as R from '~/systems/room.ts'
 
-import styles from './Game.module.css'
-import { Button } from './ui/button.tsx'
-import * as Modal from './utils/Modal.tsx'
+
+import FirstSvg from '~/assets/icons/first.svg';
+import FlipBoardSvg from '~/assets/icons/flip-board.svg';
+import LastSvg from '~/assets/icons/last.svg';
+import NextSvg from '~/assets/icons/next.svg';
+import OfferDrawSvg from '~/assets/icons/offer-draw.svg';
+import PrevSvg from '~/assets/icons/prev.svg';
+import ResignSvg from '~/assets/icons/resign.svg';
+import { Dialog, DialogContent, DialogDescription, DialogHeader } from '~/components/ui/dialog.tsx';
+import { BOARD_COLORS } from '~/config.ts';
+import { cn } from '~/lib/utils.ts';
+import * as Audio from '~/systems/audio.ts';
+import * as G from '~/systems/game/game.ts';
+import * as GL from '~/systems/game/gameLogic.ts';
+import * as Pieces from '~/systems/piece.tsx';
+import * as R from '~/systems/room.ts';
+
+
+
+import styles from './Game.module.css';
+import { Button } from './ui/button.tsx';
+import * as Modal from './utils/Modal.tsx';
 
 
 //TODO provide some method to view the current game's config
 //TODO component duplicates on reload sometimes for some reason
 // TODO fix horizontal scrolling on large viewport
-
-const imageCache: Record<string, HTMLImageElement> = {}
 
 export function Game(props: { gameId: string }) {
 	let game = new G.Game(props.gameId, R.room()!, R.room()!.rollbackState.gameConfig)
@@ -65,6 +68,9 @@ export function Game(props: { gameId: string }) {
 	}
 
 	const squareSize = () => boardSize() / 8
+	createEffect(() => {
+		Pieces.setSquareSize(squareSize())
+	})
 
 	//#endregion
 
@@ -180,9 +186,10 @@ export function Game(props: { gameId: string }) {
 				x = 7 - x
 				y = 7 - y
 			}
-			ctx.drawImage(imageCache[PC.resolvePieceImagePath(piece)], x * squareSize(), y * squareSize(), squareSize(), squareSize())
+			ctx.drawImage(Pieces.getCachedPiece(piece), x * squareSize(), y * squareSize(), squareSize(), squareSize())
 		}
 		//#endregion
+
 
 		//#region draw hovered move highlight
 		const moveHighlightColor = '#ffffff'
@@ -195,8 +202,9 @@ export function Game(props: { gameId: string }) {
 			const [x, y] = squareNotationToDisplayCoords(hoveredSquare()!, boardFlipped(), squareSize())
 			ctx.beginPath()
 			ctx.strokeStyle = moveHighlightColor
-			ctx.lineWidth = 6
-			ctx.rect(x + 3, y + 3, squareSize() - 6, squareSize() - 6)
+			const lineWidth = squareSize() / 16
+			ctx.lineWidth = lineWidth
+			ctx.rect(x + lineWidth / 2, y + lineWidth / 2, squareSize() - lineWidth, squareSize() - lineWidth)
 			ctx.stroke()
 			ctx.closePath()
 		}
@@ -209,8 +217,9 @@ export function Game(props: { gameId: string }) {
 			const [x, y] = squareNotationToDisplayCoords(activePieceSquare()!, boardFlipped(), squareSize())
 			ctx.beginPath()
 			ctx.strokeStyle = clickedHighlightColor
-			ctx.lineWidth = 6
-			ctx.rect(x + 3, y + 3, squareSize() - 6, squareSize() - 6)
+			const lineWidth = squareSize() / 16
+			ctx.lineWidth = lineWidth
+			ctx.rect(x + lineWidth / 2, y + lineWidth / 2, squareSize() - lineWidth, squareSize() - lineWidth)
 			ctx.stroke()
 			ctx.closePath()
 		}
@@ -222,7 +231,7 @@ export function Game(props: { gameId: string }) {
 			let x = grabbedMousePos()!.x
 			let y = grabbedMousePos()!.y
 			ctx.drawImage(
-				imageCache[PC.resolvePieceImagePath(game.currentBoardView.board.pieces[activePieceSquare()!]!)],
+				Pieces.getCachedPiece(game.currentBoardView.board.pieces[activePieceSquare()!]!),
 				x - squareSize() / 2,
 				y - squareSize() / 2,
 				squareSize(),
@@ -232,7 +241,7 @@ export function Game(props: { gameId: string }) {
 
 		if (game.placingDuck() && currentMousePos()) {
 			const { x, y } = currentMousePos()!
-			ctx.drawImage(imageCache[PC.resolvePieceImagePath(GL.DUCK)], x - squareSize() / 2, y - squareSize() / 2, squareSize(), squareSize())
+			ctx.drawImage(Pieces.getCachedPiece(GL.DUCK), x - squareSize() / 2, y - squareSize() / 2, squareSize(), squareSize())
 		}
 
 		//#endregion
@@ -243,15 +252,7 @@ export function Game(props: { gameId: string }) {
 
 	// preload piece images
 	onMount(async () => {
-		await Promise.all(
-			Object.values(game.currentBoardView.board.pieces).map(async (piece) => {
-				const src = PC.resolvePieceImagePath(piece)
-				if (imageCache[src]) return
-				imageCache[src] = await PC.loadImage(src)
-			})
-		)
-		let duckPath = PC.resolvePieceImagePath(GL.DUCK)
-		imageCache[duckPath] = await PC.loadImage(duckPath)
+		await until(() => Pieces.initialized())
 		requestAnimationFrame(render)
 	})
 
@@ -415,21 +416,15 @@ export function Game(props: { gameId: string }) {
 				<For each={GL.PROMOTION_PIECES}>
 					{(pp) => (
 						<Button
-							classList={{ 'bg-neutral-200': game.topPlayer.color !== 'white' }}
-							variant={game.topPlayer.color === 'white' ? 'ghost' : 'default'}
+							classList={{'bg-neutral-200': game.bottomPlayer.color !== 'white'}}
+							variant={game.bottomPlayer.color === 'white' ? 'ghost' : 'default'}
 							size="icon"
 							onclick={() => {
 								game.currentPromotion = pp
 								makeMove()
 							}}
 						>
-							<img
-								alt={pp}
-								src={PC.resolvePieceImagePath({
-									color: game.topPlayer.color,
-									type: pp,
-								})}
-							/>
+							<img alt={pp} src={Pieces.getPieceSrc({type: pp, color: game.bottomPlayer.color})}/>
 						</Button>
 					)}
 				</For>
@@ -798,9 +793,8 @@ function CapturedPieces(props: {
 	return (
 		<div class={`${styles.capturedPieces} ${styles[props.capturedBy]}`}>
 			<For each={props.pieces}>
-				{(piece) => (
-					<img class={styles.capturedPiece} src={PC.resolvePieceImagePath(piece)} alt={piece.type} title={`${piece.color} ${piece.type}`} />
-				)}
+				{(piece) => <img class={styles.capturedPiece} src={Pieces.getPieceSrc(piece)} alt={piece.type}
+												 title={`${piece.color} ${piece.type}`}/>}
 			</For>
 		</div>
 	)
@@ -904,6 +898,7 @@ function checkPastWarnThreshold(timeControl: GL.TimeControl, clock: number) {
 			return clock < 1000 * 60 * 2
 	}
 }
+
 
 //#region check if user is using touch screen
 // we're doing it this way so we can differentiate users that are using their touch screen

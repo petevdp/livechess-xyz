@@ -170,20 +170,6 @@ export class Game {
 				]
 			})
 		)
-		this.moveEvent$ = this.room.action$.pipe(
-			concatMap((action): MoveEvent[] => {
-				const participant = this.room.participants.find((p) => p.id === action.player.id)
-				if (action.type !== 'make-move' || !participant) return []
-				return [
-					{
-						type: action.type as DrawEventType,
-						participant: participant,
-						move: this.lockstepState.moveHistory[this.viewedMoveIndex()],
-					},
-				]
-			})
-		)
-
 		//#endregion
 
 		//#region reset view when currentMove history changes
