@@ -1,18 +1,15 @@
-import { isEqual } from 'lodash';
-import { Observable, ReplaySubject, combineLatest, concatMap, distinctUntilChanged, from as rxFrom } from 'rxjs';
-import { map } from 'rxjs/operators';
-import { Accessor, createEffect, createMemo, createSignal, from, getOwner, observable, onCleanup } from 'solid-js';
-import { unwrap } from 'solid-js/store';
+import { until } from '@solid-primitives/promise'
+import { isEqual } from 'lodash'
+import { Observable, ReplaySubject, combineLatest, concatMap, distinctUntilChanged, from as rxFrom } from 'rxjs'
+import { map } from 'rxjs/operators'
+import { Accessor, createEffect, createMemo, createSignal, from, getOwner, observable, onCleanup } from 'solid-js'
+import { unwrap } from 'solid-js/store'
 
+import { storeToSignal, trackAndUnwrap } from '~/utils/solid.ts'
 
-
-import { storeToSignal } from '~/utils/solid.ts';
-
-
-
-import * as P from '../player.ts';
-import * as R from '../room.ts';
-import * as GL from './gameLogic.ts';
+import * as P from '../player.ts'
+import * as R from '../room.ts'
+import * as GL from './gameLogic.ts'
 
 
 export type PlayerWithColor = P.Player & { color: GL.Color }
@@ -27,10 +24,26 @@ const DRAW_EVENTS = ['draw-offered', 'draw-accepted', 'draw-declined', 'draw-can
 export type DrawEventType = (typeof DRAW_EVENTS)[number]
 export type DrawEvent = { type: DrawEventType; participant: R.GameParticipant }
 
+export type MoveEvent = {
+	type: 'make-move'
+	participant: R.GameParticipant
+	move: GL.Move
+}
+
+export type MakeMoveResult =
+	| { type: 'invalid' }
+	| { type: 'accepted'; move: GL.Move }
+	| {
+			type: 'promoting' | 'placing-duck'
+			// in progress move
+			move: GL.Move
+	  }
+
 export class Game {
 	setViewedMove: (move: number | 'live') => void
 	viewedMoveIndex: Accessor<number>
 	drawEvent$: Observable<DrawEvent>
+	moveEvent$: Observable<MoveEvent>
 	currentBoardView: BoardView
 	gameConfig: GL.GameConfig
 	stateSignal: Accessor<GL.GameState>
@@ -79,7 +92,7 @@ export class Game {
 			if (this.boardWithCurrentMove() && this.viewingLiveBoard) {
 				return this.boardWithCurrentMove()!
 			} else {
-				return unwrap(this.state.boardHistory[this.viewedMoveIndex() + 1].board)
+				return trackAndUnwrap(this.state.boardHistory[this.viewedMoveIndex() + 1].board)
 			}
 		}
 
@@ -153,6 +166,19 @@ export class Game {
 					{
 						type: action.type as DrawEventType,
 						participant: participant,
+					},
+				]
+			})
+		)
+		this.moveEvent$ = this.room.action$.pipe(
+			concatMap((action): MoveEvent[] => {
+				const participant = this.room.participants.find((p) => p.id === action.player.id)
+				if (action.type !== 'make-move' || !participant) return []
+				return [
+					{
+						type: action.type as DrawEventType,
+						participant: participant,
+						move: this.lockstepState.moveHistory[this.viewedMoveIndex()],
 					},
 				]
 			})
@@ -285,13 +311,13 @@ export class Game {
 		return this.state.players[playerId]
 	}
 
-	tryMakeMove(move?: GL.SelectedMove) {
-		if (!this.isClientPlayerParticipating) return
-		if (!move && !this.currentMove) return
+	async tryMakeMove(move?: GL.SelectedMove): Promise<MakeMoveResult> {
+		if (!this.isClientPlayerParticipating) return { type: 'invalid' }
+		if (!move && !this.currentMove) return { type: 'invalid' }
 		if (move) {
 			this.currentMove = move
 		}
-		if (this.outcome || !this.currentMove) return
+		if (this.outcome || !this.currentMove) return { type: 'invalid' }
 		const res = GL.validateAndPlayMove(
 			this.currentMove.from,
 			this.currentMove.to,
@@ -302,7 +328,7 @@ export class Game {
 		)
 		if (!res) {
 			this.currentDuckPlacement = null
-			return
+			return { type: 'invalid' }
 		}
 		if (move) {
 			if (res.promoted && !this.currentPromotion) {
@@ -321,19 +347,19 @@ export class Game {
 		if (res?.promoted && !this.currentPromotion) {
 			this.setChoosingPromotion(true)
 			this.setBoardWithCurrentMove(res.board)
-			return
+			return { type: 'promoting', move: res.move }
 		}
 		this.setChoosingPromotion(false)
 
 		if (this.gameConfig.variant === 'duck' && !this.currentDuckPlacement) {
 			this.setPlacingDuck(true)
 			this.setBoardWithCurrentMove(res.board)
-			let prevDuckPlacement = Object.keys(res.board).find((square) => res.board.pieces[square]!.type === 'duck')
+			let prevDuckPlacement = Object.keys(res.board.pieces).find((square) => res.board.pieces[square]!.type === 'duck')
 			if (prevDuckPlacement) {
 				// render previous duck while we're placing the new one, so it's clear that the duck can't be placed in the same spot twice
 				res.board.pieces[prevDuckPlacement] = GL.DUCK
 			}
-			return
+			return { type: 'placing-duck', move: res.move }
 		}
 
 		let expectedMoveIndex = this.state.moveHistory.length
@@ -346,6 +372,7 @@ export class Game {
 		this.setChoosingPromotion(false)
 		this.setPlacingDuck(false)
 		this.setBoardWithCurrentMove(null)
+		let [acceptedMove, setAcceptedMove] = createSignal(null as null | GL.Move)
 		this.room.sharedStore.setStoreWithRetries(() => {
 			console.log('trying move for real')
 			const state = unwrap(this.state)
@@ -354,7 +381,7 @@ export class Game {
 			if (this.state.moveHistory.length !== expectedMoveIndex) return
 			let board = GL.getBoard(state)
 			if (!GL.isPlayerTurn(board, this.bottomPlayer.color) || !board.pieces[currentMove.from]) return
-			let result = GL.validateAndPlayMove(
+			const result = GL.validateAndPlayMove(
 				currentMove.from,
 				currentMove.to,
 				state,
@@ -363,9 +390,11 @@ export class Game {
 				currentDuckPlacement || undefined
 			)
 			if (!result) {
-				console.error('invalid move')
+				console.error('invalid move', this.currentMove, this.currentPromotion, this.currentDuckPlacement)
 				return
 			}
+			console.log('setting accepted move', result.move)
+			setAcceptedMove(result.move)
 
 			const newBoardIndex = state.boardHistory.length
 
@@ -375,23 +404,27 @@ export class Game {
 				hash: GL.hashBoard(result!.board),
 			}
 
-			console.log('setting move')
-			return [
-				{
-					path: [...this.gameStatePath, 'boardHistory', newBoardIndex],
-					value: newBoardHistoryEntry,
-				},
-				{
-					path: [...this.gameStatePath, 'moveHistory', '__push__'],
-					value: result.move,
-				},
-				{ path: [...this.gameStatePath, 'drawDeclinedBy'], value: null },
-				{
-					path: [...this.gameStatePath, 'drawOffers'],
-					value: {white: null, black: null},
-				},
-			]
+			return {
+				events: [{ type: 'make-move', playerId: this.bottomPlayer.id, moveIndex: this.state.moveHistory.length }],
+				mutations: [
+					{
+						path: [...this.gameStatePath, 'boardHistory', newBoardIndex],
+						value: newBoardHistoryEntry,
+					},
+					{
+						path: [...this.gameStatePath, 'moveHistory', '__push__'],
+						value: result.move,
+					},
+					{ path: [...this.gameStatePath, 'drawDeclinedBy'], value: null },
+					{
+						path: [...this.gameStatePath, 'drawOffers'],
+						value: { white: null, black: null },
+					},
+				],
+			}
 		})
+		console.log('waiting for move to be accepted')
+		return { type: 'accepted', move: await until(() => acceptedMove()) }
 	}
 
 	//#region draw actions

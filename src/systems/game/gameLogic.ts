@@ -1,5 +1,5 @@
-import { partition } from 'lodash';
-import hash from 'object-hash';
+import { partition } from 'lodash'
+import hash from 'object-hash'
 
 
 //#region primitives
@@ -30,6 +30,7 @@ export type Move = {
 	castle?: 'king' | 'queen'
 	promotion?: PromotionPiece
 	enPassant?: string
+	check?: boolean
 	capture: boolean
 	duck?: string
 	ts: Timestamp
@@ -191,7 +192,13 @@ export function notationFromCoords(coords: Coords) {
 	return String.fromCharCode('a'.charCodeAt(0) + coords.x) + (coords.y + 1)
 }
 
-function candidateMoveToMove(candidateMove: CandidateMove, promotion?: PromotionPiece, capture?: boolean): Move {
+function candidateMoveToMove(
+	candidateMove: CandidateMove,
+	promotion?: PromotionPiece,
+	capture?: boolean,
+	check?: boolean,
+	duck?: string
+): Move {
 	return {
 		from: notationFromCoords(candidateMove.from),
 		to: notationFromCoords(candidateMove.to),
@@ -201,6 +208,8 @@ function candidateMoveToMove(candidateMove: CandidateMove, promotion?: Promotion
 		enPassant: candidateMove.enPassant,
 		ts: Date.now(),
 		capture: capture || false,
+		check: check || false,
+		duck,
 	} satisfies Move
 }
 
@@ -309,9 +318,9 @@ export function validateAndPlayMove(
 		return
 	}
 	const isCapture = !!getBoard(game).pieces[to]
-	const move = candidateMoveToMove(candidate, undefined, isCapture)
 	//@ts-ignore
 	let [newBoard, promoted] = applyMoveToBoard(candidate, getBoard(game))
+	const move = candidateMoveToMove(candidate, undefined, isCapture, inCheck(newBoard), duck)
 	if (duck) {
 		if (!validateDuckPlacement(duck, newBoard)) {
 			return

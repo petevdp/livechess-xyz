@@ -1,36 +1,26 @@
-import { isEqual } from 'lodash';
-import { For, Match, Show, Switch, batch, createEffect, createMemo, createReaction, createSignal, onCleanup, onMount, untrack } from 'solid-js';
-import toast from 'solid-toast';
+import { isEqual } from 'lodash'
+import { For, Match, Show, Switch, batch, createEffect, createMemo, createReaction, createSignal, onCleanup, onMount } from 'solid-js'
+import toast from 'solid-toast'
 
+import FirstSvg from '~/assets/icons/first.svg'
+import FlipBoardSvg from '~/assets/icons/flip-board.svg'
+import LastSvg from '~/assets/icons/last.svg'
+import NextSvg from '~/assets/icons/next.svg'
+import OfferDrawSvg from '~/assets/icons/offer-draw.svg'
+import PrevSvg from '~/assets/icons/prev.svg'
+import ResignSvg from '~/assets/icons/resign.svg'
+import { Dialog, DialogContent, DialogDescription, DialogHeader } from '~/components/ui/dialog.tsx'
+import { BOARD_COLORS } from '~/config.ts'
+import { cn } from '~/lib/utils.ts'
+import * as Audio from '~/systems/audio.ts'
+import * as G from '~/systems/game/game.ts'
+import * as GL from '~/systems/game/gameLogic.ts'
+import * as PC from '~/systems/piece.ts'
+import * as R from '~/systems/room.ts'
 
-
-import captureSound from '~/assets/audio/capture.mp3';
-import castleSound from '~/assets/audio/castle.mp3';
-import lowTimeSound from '~/assets/audio/low-time.mp3';
-import checkSound from '~/assets/audio/move-check.mp3';
-import moveOpponentSound from '~/assets/audio/move-opponent.mp3';
-import moveSelfSound from '~/assets/audio/move-self.mp3';
-import promoteSound from '~/assets/audio/promote.mp3';
-import FirstSvg from '~/assets/icons/first.svg';
-import FlipBoardSvg from '~/assets/icons/flip-board.svg';
-import LastSvg from '~/assets/icons/last.svg';
-import NextSvg from '~/assets/icons/next.svg';
-import OfferDrawSvg from '~/assets/icons/offer-draw.svg';
-import PrevSvg from '~/assets/icons/prev.svg';
-import ResignSvg from '~/assets/icons/resign.svg';
-import { Dialog, DialogContent, DialogDescription, DialogHeader } from '~/components/ui/dialog.tsx';
-import { BOARD_COLORS } from '~/config.ts';
-import { cn } from '~/lib/utils.ts';
-import * as G from '~/systems/game/game.ts';
-import * as GL from '~/systems/game/gameLogic.ts';
-import * as PC from '~/systems/piece.ts';
-import * as R from '~/systems/room.ts';
-
-
-
-import styles from './Game.module.css';
-import { Button } from './ui/button.tsx';
-import * as Modal from './utils/Modal.tsx';
+import styles from './Game.module.css'
+import { Button } from './ui/button.tsx'
+import * as Modal from './utils/Modal.tsx'
 
 
 //TODO provide some method to view the current game's config
@@ -303,6 +293,20 @@ export function Game(props: { gameId: string }) {
 		return game.currentBoardView.board.pieces[square]?.color === game.bottomPlayer.color
 	}
 
+	function makeMove(move?: GL.SelectedMove) {
+		batch(async () => {
+			const resPromise = game.tryMakeMove(move)
+			setActivePieceSquare(null)
+			setGrabbingPieceSquare(false)
+			setGrabbedMousePos(null)
+			const res = await resPromise
+			if (res.type !== 'invalid') {
+				console.log('playing sound effect for local move', res.move)
+				Audio.playSoundEffectForMove(res.move, true)
+			}
+		})
+	}
+
 	onMount(() => {
 		function getSquareFromDisplayCoords(x: number, y: number) {
 			let col = Math.floor(x / squareSize())
@@ -337,17 +341,13 @@ export function Game(props: { gameId: string }) {
 			const mouseSquare = getSquareFromDisplayCoords(x, y)
 			if (game.placingDuck()) {
 				game.currentDuckPlacement = mouseSquare
-				game.tryMakeMove()
+				makeMove()
 				return
 			}
 
 			if (activePieceSquare()) {
 				if (isLegalForActive(mouseSquare)) {
-					batch(() => {
-						game.tryMakeMove({ from: activePieceSquare()!, to: mouseSquare })
-						setActivePieceSquare(null)
-						setGrabbingPieceSquare(true)
-					})
+					makeMove({from: activePieceSquare()!, to: mouseSquare})
 					return
 				}
 
@@ -381,7 +381,7 @@ export function Game(props: { gameId: string }) {
 
 			if (_activePiece && _activePiece !== square) {
 				if (grabbingPieceSquare() && isLegalForActive(square)) {
-					game.tryMakeMove({ from: _activePiece!, to: square })
+					makeMove({ from: _activePiece!, to: square })
 					setActivePieceSquare(null)
 				}
 			}
@@ -420,7 +420,7 @@ export function Game(props: { gameId: string }) {
 							size="icon"
 							onclick={() => {
 								game.currentPromotion = pp
-								game.tryMakeMove()
+								makeMove()
 							}}
 						>
 							<img
@@ -479,7 +479,7 @@ export function Game(props: { gameId: string }) {
 
 	//#endregion
 
-	//#region sound effects
+	//#region sound effects for incoming moves
 	let initAudio = false
 	createEffect(() => {
 		if (!initAudio) {
@@ -488,32 +488,9 @@ export function Game(props: { gameId: string }) {
 		}
 		const move = game.currentBoardView.lastMove
 		if (!move) return
-		untrack(() => {
-			if (game.currentBoardView.inCheck) {
-				audio.check.play()
-				return
-			}
-			if (move.promotion) {
-				audio.promote.play()
-				return
-			}
-			if (move.castle) {
-				audio.castle.play()
-				return
-			}
-			if (move.capture) {
-				audio.capture.play()
-				return
-			}
-			if (game.currentBoardView.board.toMove === game.bottomPlayer.color) {
-				audio.movePlayer.play()
-				return
-			}
-			audio.moveOpponent.play()
-		})
 	})
 	const warnReaction = createReaction(() => {
-		audio.lowTime.play()
+		Audio.playLowTimeSound()
 	})
 
 	const [pastWarnThreshold, setPastWarnThreshold] = createSignal(false)
@@ -528,6 +505,14 @@ export function Game(props: { gameId: string }) {
 		}
 	})
 	warnReaction(pastWarnThreshold)
+
+	createEffect(() => {
+		if (game.viewingLiveBoard && game.isClientPlayerParticipating && game.board.toMove !== game.bottomPlayer.color) return
+		console.log('playing sound effect for incoming move', game.currentBoardView.lastMove)
+		if (game.currentBoardView.lastMove) {
+			Audio.playSoundEffectForMove(game.currentBoardView.lastMove, false)
+		}
+	})
 	//#endregion
 
 	return (
@@ -887,16 +872,6 @@ function checkPastWarnThreshold(timeControl: GL.TimeControl, clock: number) {
 		case '15m':
 			return clock < 1000 * 60 * 2
 	}
-}
-
-const audio = {
-	movePlayer: new Audio(moveSelfSound),
-	moveOpponent: new Audio(moveOpponentSound),
-	capture: new Audio(captureSound),
-	check: new Audio(checkSound),
-	promote: new Audio(promoteSound),
-	castle: new Audio(castleSound),
-	lowTime: new Audio(lowTimeSound),
 }
 
 //#region check if user is using touch screen

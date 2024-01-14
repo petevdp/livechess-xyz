@@ -1,21 +1,17 @@
-import { trackDeep, trackStore } from '@solid-primitives/deep';
-import { until } from '@solid-primitives/promise';
-import { isEqual } from 'lodash';
-import { concatMap } from 'rxjs';
-import { Owner, createEffect, createMemo, createRoot, createSignal, getOwner, onCleanup, runWithOwner, untrack } from 'solid-js';
-import { unwrap } from 'solid-js/store';
+import { trackDeep, trackStore } from '@solid-primitives/deep'
+import { until } from '@solid-primitives/promise'
+import { isEqual } from 'lodash'
+import { concatMap } from 'rxjs'
+import { Owner, createEffect, createMemo, createRoot, createSignal, getOwner, onCleanup, runWithOwner, untrack } from 'solid-js'
+import { unwrap } from 'solid-js/store'
 
+import { createIdSync } from '~/utils/ids.ts'
+import { SharedStore, SharedStoreProvider, StoreMutation, initSharedStore, newNetwork } from '~/utils/sharedStore.ts'
 
-
-import { createIdSync } from '~/utils/ids.ts';
-import { SharedStore, SharedStoreProvider, StoreMutation, initSharedStore, newNetwork } from '~/utils/sharedStore.ts';
-
-
-
-import { PLAYER_TIMEOUT, SERVER_HOST } from '../config.ts';
-import * as G from './game/game.ts';
-import * as GL from './game/gameLogic.ts';
-import * as P from './player.ts';
+import { PLAYER_TIMEOUT, SERVER_HOST } from '../config.ts'
+import * as G from './game/game.ts'
+import * as GL from './game/gameLogic.ts'
+import * as P from './player.ts'
 
 
 // TODO normalize language from "color swap" to "pieces swap"
@@ -34,17 +30,23 @@ type GameParticipantDetails = {
 export type GameParticipant = RoomMember & GameParticipantDetails & { color: GL.Color }
 
 // not exhaustive of all state mutations, just the ones we want to name for convenience
-export type RoomEvent = {
-	type:
-		| 'initiate-piece-swap'
-		| 'agree-piece-swap'
-		| 'decline-or-cancel-piece-swap'
-		| 'player-connected'
-		| 'player-disconnected'
-		| 'player-reconnected'
-		| G.DrawEventType
-	playerId: string
-}
+export type RoomEvent =
+	| {
+			type:
+				| 'initiate-piece-swap'
+				| 'agree-piece-swap'
+				| 'decline-or-cancel-piece-swap'
+				| 'player-connected'
+				| 'player-disconnected'
+				| 'player-reconnected'
+				| G.DrawEventType
+			playerId: string
+	  }
+	| {
+			type: 'make-move'
+			playerId: string
+			moveIndex: number
+	  }
 
 export type RoomState = {
 	members: RoomMember[]
