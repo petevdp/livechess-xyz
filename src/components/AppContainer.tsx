@@ -1,9 +1,11 @@
-import { ComponentProps, ParentProps, splitProps } from 'solid-js'
+import { ComponentProps, ParentProps, Show, splitProps } from 'solid-js'
 import { ModalContainer } from './utils/Modal.tsx'
 import { A } from '@solidjs/router'
 import Logo from '~/assets/logo.svg'
+import * as R from '~/systems/room.ts'
 import styles from './AppContainer.module.css'
 import { cn } from '~/lib/utils.ts'
+import { SettingsDialog } from '~/components/Settings.tsx'
 
 // so we can account for the width of the scrollbar for the app container's width
 const scrollBarWidth = (() => {
@@ -15,21 +17,27 @@ const scrollBarWidth = (() => {
 	return scrollbarWidth
 })()
 
+//TODO add settings button, and spectating display/controls
 export function AppContainer(props: ParentProps) {
 	// @ts-ignore
 	const logo = <Logo class={styles.logo} />
 	return (
 		<div class={`w-[calc(100%_-_${scrollBarWidth}px]`}>
-			<div class="w-min p-2">
-				<A href="/" class="flex">
+			<div class="flex w-full justify-between p-[0.25rem]">
+				<A href="/" class="inline-flex h-10 w-10 items-center justify-center">
 					{logo}
 				</A>
+				<div class="flex items-center justify-end space-x-1 font-light">
+					<Show when={R.room() && !R.room()!.isPlayerParticipating}>Spectating</Show>
+					<SettingsDialog />
+				</div>
 			</div>
 			<ModalContainer />
 			{props.children}
 		</div>
 	)
 }
+
 export function ScreenFittingContent(props: ComponentProps<'div'>) {
 	const [, rest] = splitProps(props, ['class'])
 	return (

@@ -123,13 +123,15 @@ function GameConfigForm() {
 				choices={GL.VARIANTS.map((c) => ({ label: c, id: c }) satisfies Choice<GL.Variant>)}
 				selected={gameConfig().variant}
 				onChange={(v) => room!.setGameConfig({ variant: v })}
+				disabled={!room.isPlayerParticipating}
 			/>
 			<MultiChoiceButton
-				listClass="grid grid-rows-1 grid-cols-3 md:grid-cols-5 w-full tex-sm space-x-0 gap-1"
 				label="Time Control"
+				listClass="grid grid-rows-1 grid-cols-3 md:grid-cols-5 w-full tex-sm space-x-0 gap-1"
 				choices={GL.TIME_CONTROLS.map((tc) => ({ label: tc, id: tc }) satisfies Choice<GL.TimeControl>)}
 				selected={gameConfig().timeControl}
 				onChange={(v) => room!.setGameConfig({ timeControl: v })}
+				disabled={!room.isPlayerParticipating}
 			/>
 			<MultiChoiceButton
 				label="Increment"
@@ -137,6 +139,7 @@ function GameConfigForm() {
 				choices={GL.INCREMENTS.map((i) => ({ label: `${i}s`, id: i }) satisfies Choice<GL.Increment>)}
 				selected={gameConfig().increment}
 				onChange={(v) => room!.setGameConfig({ increment: v })}
+				disabled={!room.isPlayerParticipating}
 			/>
 			<PlayerAwareness />
 		</div>
@@ -146,8 +149,8 @@ function GameConfigForm() {
 // when this client's player is participating
 function PlayerAwareness() {
 	const room = R.room()!
-	const leftPlayerColor: () => GL.Color | null = () => (room.leftPlayer?.id ? room.playerColor(room.leftPlayer.id) : null)
-	const rightPlayer: () => GL.Color = () => (leftPlayerColor() === 'white' ? 'black' : 'white')
+	const leftPlayerColor: () => GL.Color = () => room.leftPlayer?.color || 'white'
+	const rightPlayerColor: () => GL.Color = () => GL.oppositeColor(leftPlayerColor())
 
 	const sub = room.action$.subscribe((action) => {
 		switch (action.type) {
@@ -202,21 +205,21 @@ function PlayerAwareness() {
 				</Match>
 			</Switch>
 			<span></span>
-			<Show when={room.rightPlayer} fallback={<OpponentPlaceholder color={rightPlayer()} />}>
+			<Show when={room.rightPlayer} fallback={<OpponentPlaceholder color={rightPlayerColor()} />}>
 				<OpponentConfigDisplay
 					opponent={room.rightPlayer!}
-					color={rightPlayer()}
+					color={rightPlayerColor()}
 					agreePieceSwap={() => room.initiateOrAgreePieceSwap()}
 					declinePieceSwap={() => room.declineOrCancelPieceSwap()}
 				/>
 			</Show>
-			<PlayerColorDisplay color={leftPlayerColor() || 'white'} />
+			<PlayerColorDisplay color={leftPlayerColor()} />
 			<SwapButton
-				disabled={room.leftPlayer?.id !== room.player.id}
+				disabled={!room.isPlayerParticipating || room.leftPlayer?.agreePieceSwap || room.rightPlayer?.agreePieceSwap}
 				alreadySwapping={room.leftPlayer?.agreePieceSwap || false}
 				initiatePieceSwap={() => room.initiateOrAgreePieceSwap()}
 			/>
-			<PlayerColorDisplay color={rightPlayer() || 'black'} />
+			<PlayerColorDisplay color={rightPlayerColor()} />
 		</div>
 	)
 }
@@ -229,7 +232,7 @@ function PlayerColorDisplay(props: { color: GL.Color }) {
 	)
 }
 
-function SwapButton(props: { initiatePieceSwap: () => void; alreadySwapping: boolean; disabled: boolean }) {
+function SwapButton(props: { initiatePieceSwap: () => void; alreadySwapping: boolean; disabled?: boolean }) {
 	const requestSwap = () => {
 		if (props.alreadySwapping || props.disabled) return
 		props.initiatePieceSwap()
@@ -244,7 +247,7 @@ function SwapButton(props: { initiatePieceSwap: () => void; alreadySwapping: boo
 							<SwapSvg />
 						</Button>
 					</TooltipTrigger>
-					<TooltipContent>Swap Pieces</TooltipContent>
+					<TooltipContent>Ask to Swap Pieces</TooltipContent>
 				</Tooltip>
 			</div>
 		</div>

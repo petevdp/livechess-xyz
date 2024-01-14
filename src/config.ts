@@ -7,5 +7,4 @@ export const BOARD_COLORS = {
 	dark: '#a05a2c',
 	lightFog: '#b0814f',
 	darkFog: '#623211',
-
 }

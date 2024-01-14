@@ -13,6 +13,7 @@ export function MultiChoiceButton<T extends string>(props: {
 	classList?: Record<string, boolean>
 	classListButton?: Record<string, boolean>
 	variant?: ButtonProps['variant']
+	disabled?: boolean
 }) {
 	props.classList ||= {}
 	return (
@@ -22,6 +23,7 @@ export function MultiChoiceButton<T extends string>(props: {
 				<For each={props.choices}>
 					{(choice) => (
 						<Button
+							disabled={props.disabled}
 							variant={props.variant || 'outline'}
 							class={choice.id === props.selected ? 'bg-accent' : ''}
 							onClick={() => props.onChange(choice.id)}

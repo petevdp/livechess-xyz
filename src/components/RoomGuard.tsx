@@ -1,5 +1,5 @@
 import { useNavigate, useParams } from '@solidjs/router'
-import { createEffect, createSignal, getOwner, Match, onMount, Show, Switch } from 'solid-js'
+import { createEffect, createSignal, getOwner, Match, Show, Switch } from 'solid-js'
 import * as R from '~/systems/room.ts'
 import * as P from '~/systems/player.ts'
 import { AppContainer, ScreenFittingContent } from './AppContainer.tsx'
@@ -27,7 +27,7 @@ export function RoomGuard() {
 	const owner = getOwner()!
 	const [playerFormState, setPlayerFormState] = createSignal<PlayerFormState>({ state: 'hidden' })
 
-	async function initPlayer(numPlayers: number): Promise<{player: P.Player; isSpectating: boolean}> {
+	async function initPlayer(numPlayers: number): Promise<{ player: P.Player; isSpectating: boolean }> {
 		setPlayerFormState({
 			state: 'visible',
 			props: {
@@ -40,8 +40,8 @@ export function RoomGuard() {
 		await until(() => playerFormState().state === 'submitted' && !!P.playerId())
 		const state = playerFormState()!
 		if (state.state === 'submitted') {
-			const player =  { id: P.playerId()!, name: state.payload.name }
-			return {player, isSpectating: state.payload.isSpectating}
+			const player = { id: P.playerId()!, name: state.payload.name }
+			return { player, isSpectating: state.payload.isSpectating }
 		}
 		// impossible
 		throw new Error('player form state is not submitted')
@@ -97,9 +97,13 @@ export function PlayerForm(props: PlayerFormProps) {
 		e.preventDefault()
 		if (submitted()) return
 		setSubmitted(true)
-		P.setPlayerName(displayName())
+		P.setPlayerName(displayName().trim())
 		props.submitPlayer(displayName(), props.numPlayers >= 2 || isSpectating())
 	}
+
+	createEffect(() => {
+		if (P.playerName()) setDisplayName(P.playerName()!)
+	})
 
 	return (
 		<ScreenFittingContent class="grid place-items-center p-2">
@@ -108,7 +112,7 @@ export function PlayerForm(props: PlayerFormProps) {
 					<CardTitle class="text-center">Set your Display Name</CardTitle>
 				</CardHeader>
 				<CardContent>
-					<form onSubmit={onSubmit} class="flex flex-col space-y-1">
+					<form onSubmit={onSubmit} class="flex flex-col space-y-3">
 						<Input
 							type="text"
 							value={displayName()}
@@ -117,16 +121,22 @@ export function PlayerForm(props: PlayerFormProps) {
 							pattern={'[a-zA-Z0-9 ]+'}
 							onchange={(e) => setDisplayName(e.target.value.trim())}
 						/>
-						<Show when={props.numPlayers < 2}>
-							<div class="flex space-x-1">
-								<Checkbox id="spectating-checkbox" checked={isSpectating()} onChange={() => setIsSpectating((is) => !is)} />
-								<Label for="spectating-checkbox">Spectate</Label>
-							</div>
-						</Show>
-
-						<Button type="submit" value="Submit">
-							Submit
-						</Button>
+						<div class="flex justify-between space-x-3">
+							<Show when={props.numPlayers < 2}>
+								<div class="flex items-center space-x-1">
+									<Checkbox
+										class="space-x-0"
+										id="spectating-checkbox"
+										checked={isSpectating()}
+										onChange={() => setIsSpectating((is) => !is)}
+									/>
+									<Label for="spectating-checkbox-input">Spectate</Label>
+								</div>
+							</Show>
+							<Button class="flex-1" type="submit" value="Submit">
+								Join
+							</Button>
+						</div>
 					</form>
 				</CardContent>
 			</Card>
