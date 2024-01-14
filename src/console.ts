@@ -1,10 +1,14 @@
-import * as R from './systems/room.ts'
-import * as G from './systems/game/game.ts'
-import * as GL from './systems/game/gameLogic.ts'
+import { until } from '@solid-primitives/promise';
+import { createEffect, createRoot, getOwner } from 'solid-js';
+
+
+
+import * as M from './components/utils/Modal.tsx';
+import * as G from './systems/game/game.ts';
+import * as GL from './systems/game/gameLogic.ts';
 import * as P from './systems/player.ts'
-import * as M from './components/utils/Modal.tsx'
-import { createEffect, createRoot, getOwner } from 'solid-js'
-import { until } from '@solid-primitives/promise'
+import * as R from './systems/room.ts'
+
 
 const appConsole = {
 	R,

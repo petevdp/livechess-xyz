@@ -1,18 +1,14 @@
-import * as P from '~/systems/player.ts'
-import {
-	Dialog,
-	DialogContent,
-	DialogDescription,
-	DialogFooter,
-	DialogHeader,
-	DialogTitle,
-	DialogTrigger,
-} from '~/components/ui/dialog.tsx'
-import { Button } from '~/components/ui/button.tsx'
-import SettingsSvg from '~/assets/icons/settings.svg'
+import { createEffect, createSignal } from 'solid-js';
+
+
+
+import SettingsSvg from '~/assets/icons/settings.svg';
+import { Button } from '~/components/ui/button.tsx';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog.tsx';
+import { Input } from '~/components/ui/input.tsx';
 import { Label } from '~/components/ui/label.tsx'
-import { Input } from '~/components/ui/input.tsx'
-import { createEffect, createSignal } from 'solid-js'
+import * as P from '~/systems/player.ts'
+
 
 export function SettingsDialog() {
 	const [nickname, setNickname] = createSignal('')

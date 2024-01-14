@@ -1,6 +1,10 @@
 import { For } from 'solid-js'
-import { Button, ButtonProps } from '~/components/ui/button.tsx'
-import { cn } from '~/lib/utils.ts'
+
+
+
+import { Button, ButtonProps } from '~/components/ui/button.tsx';
+import { cn } from '~/lib/utils.ts';
+
 
 export type Choice<T> = { id: T; label: string }
 

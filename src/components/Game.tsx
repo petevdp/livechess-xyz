@@ -1,44 +1,37 @@
-import {
-	batch,
-	createEffect,
-	createMemo,
-	createReaction,
-	createSignal,
-	For,
-	Match,
-	onCleanup,
-	onMount,
-	Show,
-	Switch,
-	untrack,
-} from 'solid-js'
-import * as R from '~/systems/room.ts'
-import * as G from '~/systems/game/game.ts'
-import * as GL from '~/systems/game/gameLogic.ts'
-import * as PC from '~/systems/piece.ts'
-import * as Modal from './utils/Modal.tsx'
-import styles from './Game.module.css'
-import toast from 'solid-toast'
-import { Button } from './ui/button.tsx'
-import FirstSvg from '~/assets/icons/first.svg'
-import FlipBoardSvg from '~/assets/icons/flip-board.svg'
-import LastSvg from '~/assets/icons/last.svg'
-import NextSvg from '~/assets/icons/next.svg'
-import OfferDrawSvg from '~/assets/icons/offer-draw.svg'
-import PrevSvg from '~/assets/icons/prev.svg'
-import ResignSvg from '~/assets/icons/resign.svg'
+import { isEqual } from 'lodash';
+import { For, Match, Show, Switch, batch, createEffect, createMemo, createReaction, createSignal, onCleanup, onMount, untrack } from 'solid-js';
+import toast from 'solid-toast';
 
-import { BOARD_COLORS } from '~/config.ts'
-import { isEqual } from 'lodash'
-import { cn } from '~/lib/utils.ts'
-import moveSelfSound from '~/assets/audio/move-self.mp3'
-import moveOpponentSound from '~/assets/audio/move-opponent.mp3'
-import captureSound from '~/assets/audio/capture.mp3'
-import checkSound from '~/assets/audio/move-check.mp3'
-import promoteSound from '~/assets/audio/promote.mp3'
-import castleSound from '~/assets/audio/castle.mp3'
-import lowTimeSound from '~/assets/audio/low-time.mp3'
-import { Dialog, DialogContent, DialogDescription, DialogHeader } from '~/components/ui/dialog.tsx'
+
+
+import captureSound from '~/assets/audio/capture.mp3';
+import castleSound from '~/assets/audio/castle.mp3';
+import lowTimeSound from '~/assets/audio/low-time.mp3';
+import checkSound from '~/assets/audio/move-check.mp3';
+import moveOpponentSound from '~/assets/audio/move-opponent.mp3';
+import moveSelfSound from '~/assets/audio/move-self.mp3';
+import promoteSound from '~/assets/audio/promote.mp3';
+import FirstSvg from '~/assets/icons/first.svg';
+import FlipBoardSvg from '~/assets/icons/flip-board.svg';
+import LastSvg from '~/assets/icons/last.svg';
+import NextSvg from '~/assets/icons/next.svg';
+import OfferDrawSvg from '~/assets/icons/offer-draw.svg';
+import PrevSvg from '~/assets/icons/prev.svg';
+import ResignSvg from '~/assets/icons/resign.svg';
+import { Dialog, DialogContent, DialogDescription, DialogHeader } from '~/components/ui/dialog.tsx';
+import { BOARD_COLORS } from '~/config.ts';
+import { cn } from '~/lib/utils.ts';
+import * as G from '~/systems/game/game.ts';
+import * as GL from '~/systems/game/gameLogic.ts';
+import * as PC from '~/systems/piece.ts';
+import * as R from '~/systems/room.ts';
+
+
+
+import styles from './Game.module.css';
+import { Button } from './ui/button.tsx';
+import * as Modal from './utils/Modal.tsx';
+
 
 //TODO provide some method to view the current game's config
 //TODO component duplicates on reload sometimes for some reason
@@ -53,7 +46,10 @@ export function Game(props: { gameId: string }) {
 	//#region calc board sizes
 	// let BOARD_SIZE = 600
 	// let SQUARE_SIZE = BOARD_SIZE / 8
-	const [windowSize, setWindowSize] = createSignal({ width: window.innerWidth, height: window.innerHeight })
+	const [windowSize, setWindowSize] = createSignal({
+		width: window.innerWidth,
+		height: window.innerHeight,
+	})
 	onMount(() => {
 		window.addEventListener('resize', () => {
 			setWindowSize({ width: window.innerWidth, height: window.innerHeight })
@@ -90,7 +86,10 @@ export function Game(props: { gameId: string }) {
 	const [hoveredSquare, setHoveredSquare] = createSignal(null as null | string)
 	const [activePieceSquare, setActivePieceSquare] = createSignal(null as null | string)
 	const [grabbingPieceSquare, setGrabbingPieceSquare] = createSignal(false)
-	const [currentMousePos, setCurrentMousePos] = createSignal({ x: 0, y: 0 } as { x: number; y: number } | null)
+	const [currentMousePos, setCurrentMousePos] = createSignal({ x: 0, y: 0 } as {
+		x: number
+		y: number
+	} | null)
 	const [grabbedMousePos, setGrabbedMousePos] = createSignal(null as null | { x: number; y: number })
 	//#endregion
 
@@ -424,7 +423,13 @@ export function Game(props: { gameId: string }) {
 								game.tryMakeMove()
 							}}
 						>
-							<img alt={pp} src={PC.resolvePieceImagePath({ color: game.topPlayer.color, type: pp })} />
+							<img
+								alt={pp}
+								src={PC.resolvePieceImagePath({
+									color: game.topPlayer.color,
+									type: pp,
+								})}
+							/>
 						</Button>
 					)}
 				</For>
@@ -649,8 +654,9 @@ function ActionsPanel(props: { class: string; placingDuck: boolean }) {
 		<span class={props.class}>
 			<Switch>
 				<Match when={props.placingDuck}>
-					<div class="flex space-x-2 rounded bg-destructive p-0.5 text-white">
-						<span class="break-words text-xs">{`${usingTouch() ? 'Tap' : 'Click'} square to place duck`}</span>
+					<div class="flex items-center justify-between space-x-2 rounded bg-destructive p-0.5 text-white">
+						<span
+							class=" break-words pl-[.75rem] text-xs">{`${usingTouch() ? 'Tap' : 'Click'} square to place duck`}</span>
 						<Button
 							variant="link"
 							size="sm"

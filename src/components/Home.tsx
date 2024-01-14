@@ -1,8 +1,13 @@
-import { AppContainer, ScreenFittingContent } from './AppContainer.tsx'
-import * as R from '~/systems/room.ts'
-import { useNavigate } from '@solidjs/router'
-import { Button } from '~/components/ui/button.tsx'
+import { useNavigate } from '@solidjs/router';
+
+
+
+import { Button } from '~/components/ui/button.tsx';
 import { Card, CardContent, CardHeader } from '~/components/ui/card.tsx'
+import * as R from '~/systems/room.ts'
+
+import { AppContainer, ScreenFittingContent } from './AppContainer.tsx'
+
 
 export function Home() {
 	const navigate = useNavigate()

@@ -1,6 +1,9 @@
-import { Accessor, createEffect, createRoot, createSignal, getOwner, JSXElement, onCleanup, onMount, runWithOwner, Show } from 'solid-js'
+import { Accessor, JSXElement, Show, createEffect, createRoot, createSignal, getOwner, onCleanup, onMount, runWithOwner } from 'solid-js';
+
+
+
+import { Button } from '~/components/ui/button.tsx';
 import { myUntil } from '~/utils/solid.ts'
-import { Button } from '~/components/ui/button.tsx'
 
 let modalContainer: HTMLDivElement | null = null
 // for some reason checking for reference equality on the JSXElement itself isn't working, so we're wrap it in an object as a workaround

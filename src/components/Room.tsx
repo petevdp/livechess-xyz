@@ -1,19 +1,24 @@
-import { createResource, Match, onCleanup, ParentProps, Show, Switch } from 'solid-js'
-import toast from 'solid-toast'
+import QRCode from 'qrcode';
+import { Match, ParentProps, Show, Switch, createResource, onCleanup } from 'solid-js';
+import toast from 'solid-toast';
+
+
+
+import SwapSvg from '~/assets/icons/swap.svg';
+import { ScreenFittingContent } from '~/components/AppContainer.tsx';
+import { Button } from '~/components/ui/button.tsx';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '~/components/ui/card.tsx';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '~/components/ui/hover-card.tsx'
+import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip.tsx'
+import { Choice, MultiChoiceButton } from '~/components/utils/MultiChoiceButton.tsx'
+import * as GL from '~/systems/game/gameLogic.ts'
 import * as PC from '~/systems/piece.ts'
 import * as P from '~/systems/player.ts'
-import QRCode from 'qrcode'
-import { Game } from './Game.tsx'
-import * as GL from '~/systems/game/gameLogic.ts'
 import * as R from '~/systems/room.ts'
-import SwapSvg from '~/assets/icons/swap.svg'
-import { ScreenFittingContent } from '~/components/AppContainer.tsx'
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '~/components/ui/card.tsx'
-import { Button } from '~/components/ui/button.tsx'
-import { Choice, MultiChoiceButton } from '~/components/utils/MultiChoiceButton.tsx'
-import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip.tsx'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog'
-import { HoverCard, HoverCardContent, HoverCardTrigger } from '~/components/ui/hover-card.tsx'
+
+import { Game } from './Game.tsx'
+
 
 export function Room() {
 	const room = R.room()!

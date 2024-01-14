@@ -1,6 +1,13 @@
-import { createId } from '~/utils/ids.ts'
-import { createEffect, createSignal } from 'solid-js'
-import * as R from './room.ts'
+import { createEffect, createSignal } from 'solid-js';
+
+
+
+import { createId } from '~/utils/ids.ts';
+
+
+
+import * as R from './room.ts';
+
 
 export type Player = {
 	id: string
@@ -13,7 +20,7 @@ export const [playerName, setPlayerName] = createSignal<string | null>(null)
 export const playerId = _playerId
 
 export async function setupPlayer() {
-	(async () => {
+	;(async () => {
 		let playerId = localStorage.getItem('playerId')
 		let playerName = localStorage.getItem('playerName')
 		if (!playerId) {

@@ -1,15 +1,18 @@
-import Fastify from 'fastify'
-import fastifyWebsocket from '@fastify/websocket'
-import path from 'node:path'
-import { fileURLToPath } from 'url'
-import fastifyStatic from '@fastify/static'
+import fastifyCors from '@fastify/cors';
+import fastifyStatic from '@fastify/static';
+import fastifyWebsocket from '@fastify/websocket';
+import Fastify from 'fastify';
+import * as fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'url';
 import * as ws from 'ws'
-import fastifyCors from '@fastify/cors'
-import * as SSS from './sharedStoreSystem.ts'
-import * as fs from 'node:fs'
+
+
+
+import * as SSS from './sharedStoreSystem.ts';
+
 
 //TODO improve organization of this file
-
 
 if (!fs.existsSync('./logs')) {
 	fs.mkdirSync('./logs')

@@ -1,11 +1,18 @@
-import { ComponentProps, ParentProps, Show, splitProps } from 'solid-js'
-import { ModalContainer } from './utils/Modal.tsx'
-import { A } from '@solidjs/router'
-import Logo from '~/assets/logo.svg'
-import * as R from '~/systems/room.ts'
+import { A } from '@solidjs/router';
+import { ComponentProps, ParentProps, Show, splitProps } from 'solid-js';
+
+
+
+import Logo from '~/assets/logo.svg';
+import { SettingsDialog } from '~/components/Settings.tsx';
+import { cn } from '~/lib/utils.ts';
+import * as R from '~/systems/room.ts';
+
+
+
 import styles from './AppContainer.module.css'
-import { cn } from '~/lib/utils.ts'
-import { SettingsDialog } from '~/components/Settings.tsx'
+import { ModalContainer } from './utils/Modal.tsx'
+
 
 // so we can account for the width of the scrollbar for the app container's width
 const scrollBarWidth = (() => {
@@ -23,7 +30,7 @@ export function AppContainer(props: ParentProps) {
 	const logo = <Logo class={styles.logo} />
 	return (
 		<div class={`w-[calc(100%_-_${scrollBarWidth}px]`}>
-			<div class="flex w-full justify-between p-[0.25rem]">
+			<div class="flex w-full justify-between p-[0.25rem] pb-[.5rem]">
 				<A href="/" class="inline-flex h-10 w-10 items-center justify-center">
 					{logo}
 				</A>
@@ -41,7 +48,7 @@ export function AppContainer(props: ParentProps) {
 export function ScreenFittingContent(props: ComponentProps<'div'>) {
 	const [, rest] = splitProps(props, ['class'])
 	return (
-		<div class={cn('h-[calc(100vh_-_48px_-1rem)]', props.class)} {...rest}>
+		<div class={cn('h-[calc(100vh_-_48px_-.5rem)]', props.class)} {...rest}>
 			{props.children}
 		</div>
 	)

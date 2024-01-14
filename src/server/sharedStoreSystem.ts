@@ -1,20 +1,11 @@
-import {
-	BehaviorSubject,
-	concatMap,
-	EMPTY,
-	endWith,
-	first,
-	firstValueFrom,
-	interval,
-	mergeMap,
-	Observable,
-	share,
-	Subscription,
-	switchMap,
-} from 'rxjs'
-import { Base64String, ClientConfig, encodeContent, NewNetworkResponse, SharedStoreMessage } from '~/utils/sharedStore.ts'
-import * as ws from 'ws'
-import { FastifyBaseLogger } from 'fastify'
+import { FastifyBaseLogger } from 'fastify';
+import { BehaviorSubject, EMPTY, Observable, Subscription, concatMap, endWith, first, firstValueFrom, interval, mergeMap, share, switchMap } from 'rxjs';
+import * as ws from 'ws';
+
+
+
+import { Base64String, ClientConfig, NewNetworkResponse, SharedStoreMessage, encodeContent } from '~/utils/sharedStore.ts';
+
 
 const networks = new Map<string, Network>()
 type Network = {
@@ -344,7 +335,10 @@ export function handleNewConnection(socket: ws.WebSocket, networkId: string, log
 			await firstValueFrom(network.leader$.pipe(first((l) => !!l)))
 			log.info(`nulling out client-controlled-states for disconnected client %s`, client.clientId)
 			const states = encodeContent({ [client.clientId]: null })
-			const message: SharedStoreMessage = { type: 'client-controlled-states', states }
+			const message: SharedStoreMessage = {
+				type: 'client-controlled-states',
+				states,
+			}
 			for (let clt of network.clients) {
 				if (clt.clientId === client.clientId) continue
 				clt.send(message)

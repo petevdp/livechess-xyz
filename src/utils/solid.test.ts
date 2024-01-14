@@ -1,7 +1,11 @@
-import { describe, expect, test } from 'vitest'
+import { createEffect, createRoot } from 'solid-js';
 import { createStore } from 'solid-js/store'
-import { createEffect, createRoot } from 'solid-js'
-import { storeToSignal } from './solid.ts'
+import { describe, expect, test } from 'vitest'
+
+
+
+import { storeToSignal } from './solid.ts';
+
 
 describe.only('solid utils', () => {
 	test.only('storeToSignal', () => {

@@ -1,9 +1,11 @@
-import type { Component } from 'solid-js'
-import { splitProps } from 'solid-js'
-
 import { HoverCard as HoverCardPrimitive } from '@kobalte/core'
+import type { Component } from 'solid-js';
+import { splitProps } from 'solid-js';
 
-import { cn } from '~/lib/utils'
+
+
+import { cn } from '~/lib/utils';
+
 
 const HoverCard: Component<HoverCardPrimitive.HoverCardRootProps> = (props) => {
 	return <HoverCardPrimitive.Root gutter={4} {...props} />

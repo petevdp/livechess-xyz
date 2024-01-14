@@ -1,12 +1,19 @@
-import * as R from '../room.ts'
-import * as GL from './gameLogic.ts'
-import * as P from '../player.ts'
-import { Accessor, createEffect, createMemo, createSignal, from, getOwner, observable, onCleanup } from 'solid-js'
-import { combineLatest, concatMap, distinctUntilChanged, from as rxFrom, Observable, ReplaySubject } from 'rxjs'
-import { isEqual } from 'lodash'
-import { map } from 'rxjs/operators'
-import { storeToSignal } from '~/utils/solid.ts'
-import { unwrap } from 'solid-js/store'
+import { isEqual } from 'lodash';
+import { Observable, ReplaySubject, combineLatest, concatMap, distinctUntilChanged, from as rxFrom } from 'rxjs';
+import { map } from 'rxjs/operators';
+import { Accessor, createEffect, createMemo, createSignal, from, getOwner, observable, onCleanup } from 'solid-js';
+import { unwrap } from 'solid-js/store';
+
+
+
+import { storeToSignal } from '~/utils/solid.ts';
+
+
+
+import * as P from '../player.ts';
+import * as R from '../room.ts';
+import * as GL from './gameLogic.ts';
+
 
 export type PlayerWithColor = P.Player & { color: GL.Color }
 
@@ -189,7 +196,10 @@ export class Game {
 	}
 
 	get players() {
-		return this.room.members.map((p) => ({ ...p, color: this.getPlayerColor(p.id) }))
+		return this.room.members.map((p) => ({
+			...p,
+			color: this.getPlayerColor(p.id),
+		}))
 	}
 
 	get isClientPlayerParticipating() {
@@ -297,7 +307,10 @@ export class Game {
 		if (move) {
 			if (res.promoted && !this.currentPromotion) {
 				// while we're promoting, display the promotion square as containing the pawn
-				res.board.pieces[this.currentMove.to] = { type: 'pawn', color: this.board.toMove }
+				res.board.pieces[this.currentMove.to] = {
+					type: 'pawn',
+					color: this.board.toMove,
+				}
 			}
 
 			// this displays whatever move we've made while we're placing the duck as well
@@ -368,9 +381,15 @@ export class Game {
 					path: [...this.gameStatePath, 'boardHistory', newBoardIndex],
 					value: newBoardHistoryEntry,
 				},
-				{ path: [...this.gameStatePath, 'moveHistory', '__push__'], value: result.move },
+				{
+					path: [...this.gameStatePath, 'moveHistory', '__push__'],
+					value: result.move,
+				},
 				{ path: [...this.gameStatePath, 'drawDeclinedBy'], value: null },
-				{ path: [...this.gameStatePath, 'drawOffers'], value: { white: null, black: null } },
+				{
+					path: [...this.gameStatePath, 'drawOffers'],
+					value: {white: null, black: null},
+				},
 			]
 		})
 	}
@@ -387,7 +406,12 @@ export class Game {
 			const eventType = drawIsOfferedBy ? 'draw-accepted' : 'draw-offered'
 			return {
 				events: [{ type: eventType, playerId: this.bottomPlayer.id }],
-				mutations: [{ path: [...this.gameStatePath, 'drawOffers', this.bottomPlayer.color], value: offerTime }],
+				mutations: [
+					{
+						path: [...this.gameStatePath, 'drawOffers', this.bottomPlayer.color],
+						value: offerTime,
+					},
+				],
 			}
 		})
 	}
@@ -402,7 +426,12 @@ export class Game {
 			if (drawIsOfferedBy !== this.bottomPlayer.color) return
 			return {
 				events: [{ type: 'draw-canceled', playerId: this.bottomPlayer.id }],
-				mutations: [{ path: [...this.gameStatePath, 'drawOffers', this.bottomPlayer.color], value: null }],
+				mutations: [
+					{
+						path: [...this.gameStatePath, 'drawOffers', this.bottomPlayer.color],
+						value: null,
+					},
+				],
 			}
 		})
 	}

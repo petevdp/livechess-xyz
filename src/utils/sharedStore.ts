@@ -1,8 +1,9 @@
-import { createStore, produce, unwrap } from 'solid-js/store'
-import { concatMap, endWith, firstValueFrom, merge, Observable, share, Subject, Subscription } from 'rxjs'
-import isEqual from 'lodash/isEqual'
-import { batch, createSignal, onCleanup } from 'solid-js'
-import { until } from '@solid-primitives/promise'
+import { until } from '@solid-primitives/promise';
+import isEqual from 'lodash/isEqual';
+import { Observable, Subject, Subscription, concatMap, endWith, firstValueFrom, merge, share } from 'rxjs';
+import { batch, createSignal, onCleanup } from 'solid-js';
+import { createStore, produce, unwrap } from 'solid-js/store';
+
 
 //TODO attact metadata such as eventName to transactions, so we don't have to do as many manual delta checks
 
@@ -41,7 +42,9 @@ export type NewNetworkResponse = {
 export type Base64String = string
 
 type ClientControlledState = { [key: string]: any | null } | null
-export type ClientControlledStates<T extends ClientControlledState> = { [key: string]: T }
+export type ClientControlledStates<T extends ClientControlledState> = {
+	[key: string]: T
+}
 
 export type ClientConfig<T> = {
 	clientId: string
@@ -404,7 +407,11 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 			setIsLeader(true)
 			// we don't have to do any manual handling of the store at this point, because if there is anything that's already inflight from this store it will come back here and be processed once the leader has been updated
 			provider.send({ type: 'ack-promote-to-leader' })
-			provider.broadcastAsCommitted({ index: appliedTransactions.length, mutations: [], actions: [] })
+			provider.broadcastAsCommitted({
+				index: appliedTransactions.length,
+				mutations: [],
+				actions: [],
+			})
 		})
 	)
 	//#endregion

@@ -1,15 +1,22 @@
-import * as P from './player.ts'
-import * as GL from './game/gameLogic.ts'
-import * as G from './game/game.ts'
-import { PLAYER_TIMEOUT, SERVER_HOST } from '../config.ts'
-import { initSharedStore, newNetwork, SharedStore, SharedStoreProvider, StoreMutation } from '~/utils/sharedStore.ts'
-import { createEffect, createMemo, createRoot, createSignal, getOwner, onCleanup, Owner, runWithOwner, untrack } from 'solid-js'
-import { until } from '@solid-primitives/promise'
-import { trackDeep, trackStore } from '@solid-primitives/deep'
-import { createIdSync } from '~/utils/ids.ts'
-import { unwrap } from 'solid-js/store'
-import { concatMap } from 'rxjs'
-import { isEqual } from 'lodash'
+import { trackDeep, trackStore } from '@solid-primitives/deep';
+import { until } from '@solid-primitives/promise';
+import { isEqual } from 'lodash';
+import { concatMap } from 'rxjs';
+import { Owner, createEffect, createMemo, createRoot, createSignal, getOwner, onCleanup, runWithOwner, untrack } from 'solid-js';
+import { unwrap } from 'solid-js/store';
+
+
+
+import { createIdSync } from '~/utils/ids.ts';
+import { SharedStore, SharedStoreProvider, StoreMutation, initSharedStore, newNetwork } from '~/utils/sharedStore.ts';
+
+
+
+import { PLAYER_TIMEOUT, SERVER_HOST } from '../config.ts';
+import * as G from './game/game.ts';
+import * as GL from './game/gameLogic.ts';
+import * as P from './player.ts';
+
 
 // TODO normalize language from "color swap" to "pieces swap"
 
@@ -151,15 +158,27 @@ export async function connectToRoom(
 					agreePieceSwap: false,
 				} satisfies GameParticipantDetails
 				if (state.gameParticipants.white) {
-					mutations.push({ path: ['gameParticipants', 'black'], value: gameParticipant })
+					mutations.push({
+						path: ['gameParticipants', 'black'],
+						value: gameParticipant,
+					})
 				} else if (state.gameParticipants.black) {
-					mutations.push({ path: ['gameParticipants', 'white'], value: gameParticipant })
+					mutations.push({
+						path: ['gameParticipants', 'white'],
+						value: gameParticipant,
+					})
 				} else {
-					mutations.push({ path: ['gameParticipants', Math.random() < 0.5 ? 'white' : 'black'], value: gameParticipant })
+					mutations.push({
+						path: ['gameParticipants', Math.random() < 0.5 ? 'white' : 'black'],
+						value: gameParticipant,
+					})
 				}
 			}
 
-			return { mutations, events: [{ type: 'player-connected', playerId: player.id }] }
+			return {
+				mutations,
+				events: [{type: 'player-connected', playerId: player.id}],
+			}
 		})
 	}
 	//#endregion
@@ -207,7 +226,12 @@ export class Room {
 							if (playerIndex === -1 || !player.disconnectedAt) return []
 							return {
 								events: [{ type: 'player-reconnected', playerId: player.id }],
-								mutations: [{ path: ['members', playerIndex, 'disconnectedAt'], value: undefined }],
+								mutations: [
+									{
+										path: ['members', playerIndex, 'disconnectedAt'],
+										value: undefined,
+									},
+								],
 							}
 						})
 					} else if (previouslyConnected.has(player.id) && !isConnected) {
@@ -220,7 +244,12 @@ export class Room {
 							console.log('player disconnected', player.id, 'at', disconnectedAt, 'state', state)
 							return {
 								events: [{ type: 'player-disconnected', playerId: player.id }],
-								mutations: [{ path: ['members', playerIndex, 'disconnectedAt'], value: disconnectedAt }],
+								mutations: [
+									{
+										path: ['members', playerIndex, 'disconnectedAt'],
+										value: disconnectedAt,
+									},
+								],
 							}
 						})
 					}
@@ -252,7 +281,13 @@ export class Room {
 			.map((player): GameParticipant[] => {
 				const gameParticipant = Object.values(this.rollbackState.gameParticipants).find((gp) => gp.id === player.id)
 				if (!gameParticipant) return []
-				return [{ ...player, ...gameParticipant, color: this.playerColor(gameParticipant.id)! }]
+				return [
+					{
+						...player,
+						...gameParticipant,
+						color: this.playerColor(gameParticipant.id)!,
+					},
+				]
 			})
 			.flat()
 	}
@@ -325,7 +360,12 @@ export class Room {
 				_name = `${name} (${duplicates.length})`
 			}
 
-			return [{ path: ['members', state.members.findIndex((p) => p.id === this.player.id), 'name'], value: _name }]
+			return [
+				{
+					path: ['members', state.members.findIndex((p) => p.id === this.player.id), 'name'],
+					value: _name,
+				},
+			]
 		})
 	}
 
@@ -378,12 +418,18 @@ export class Room {
 		return [
 			{
 				path: ['gameParticipants', this.leftPlayer!.color],
-				value: { ...this.rollbackState.gameParticipants[this.rightPlayer!.color], agreePieceSwap: false },
+				value: {
+					...this.rollbackState.gameParticipants[this.rightPlayer!.color],
+					agreePieceSwap: false,
+				},
 			},
 			{
 				path: ['gameParticipants', this.rightPlayer!.color],
 				// always clone because this object will have been mutated by the previous mutation
-				value: { ...this.rollbackState.gameParticipants[this.leftPlayer!.color], agreePieceSwap: false },
+				value: {
+					...this.rollbackState.gameParticipants[this.leftPlayer!.color],
+					agreePieceSwap: false,
+				},
 			},
 		]
 	}
@@ -395,7 +441,10 @@ export class Room {
 			return {
 				events: [{ type: 'decline-or-cancel-piece-swap', playerId: this.player.id }],
 				mutations: [
-					{ path: ['members', this.members.findIndex((p) => p.id === this.player.id), 'agreePieceSwap'], value: false },
+					{
+						path: ['members', this.members.findIndex((p) => p.id === this.player.id), 'agreePieceSwap'],
+						value: false,
+					},
 					{
 						path: ['members', this.members.findIndex((p) => p.id === this.rightPlayer!.id), 'agreePieceSwap'],
 						value: false,
@@ -417,20 +466,36 @@ export class Room {
 					})
 					const gameId = createIdSync(6)
 					return [
-						{ path: ['gameParticipants', this.leftPlayer!.color, 'isReadyForGame'], value: false },
-						{ path: ['gameParticipants', this.rightPlayer!.color, 'isReadyForGame'], value: false },
+						{
+							path: ['gameParticipants', this.leftPlayer!.color, 'isReadyForGame'],
+							value: false,
+						},
+						{
+							path: ['gameParticipants', this.rightPlayer!.color, 'isReadyForGame'],
+							value: false,
+						},
 						{ path: ['status'], value: 'playing' },
 						{ path: ['activeGameId'], value: gameId },
 						{ path: ['gameStates', gameId], value: gameState },
 					] satisfies StoreMutation[]
 				} else {
-					return [{ path: ['gameParticipants', this.leftPlayer!.color, 'isReadyForGame'], value: true }]
+					return [
+						{
+							path: ['gameParticipants', this.leftPlayer!.color, 'isReadyForGame'],
+							value: true,
+						},
+					]
 				}
 			})
 		} else {
 			this.sharedStore.setStoreWithRetries(() => {
 				if (!this.isPlayerParticipating || !this.leftPlayer!.isReadyForGame) return []
-				return [{ path: ['gameParticipants', this.leftPlayer!.color, 'isReadyForGame'], value: false }]
+				return [
+					{
+						path: ['gameParticipants', this.leftPlayer!.color, 'isReadyForGame'],
+						value: false,
+					},
+				]
 			})
 		}
 	}

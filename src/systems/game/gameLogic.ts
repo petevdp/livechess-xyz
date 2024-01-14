@@ -1,5 +1,7 @@
-import hash from 'object-hash'
-import { partition } from 'lodash'
+import { partition } from 'lodash';
+import hash from 'object-hash';
+
+
 //#region primitives
 
 export const PIECES = ['pawn', 'knight', 'bishop', 'rook', 'queen', 'king', 'duck'] as const
@@ -145,7 +147,10 @@ export type GameState = {
 	resigned?: Color
 }
 
-export type Board = { pieces: { [square: string]: ColoredPiece }; toMove: Color }
+export type Board = {
+	pieces: { [square: string]: ColoredPiece }
+	toMove: Color
+}
 export type MoveHistory = Move[]
 export type BoardHistoryEntry = { hash: string; board: Board; index: number }
 export type Coords = {
@@ -327,7 +332,6 @@ export function validateDuckPlacement(duck: string, board: Board) {
 	return !board.pieces[duck]
 }
 
-
 // Uncritically apply a move to the board. Does not mutate input.
 function applyMoveToBoard(move: CandidateMove | Move, board: Board) {
 	const _move = (typeof move.from === 'string' ? moveToCandidateMove(move as Move) : move) as CandidateMove
@@ -346,7 +350,6 @@ function applyMoveToBoard(move: CandidateMove | Move, board: Board) {
 		}
 	}
 
-
 	if (_move.castle) {
 		// move rook
 		const rank = board.toMove === 'white' ? 0 : 7
@@ -359,7 +362,10 @@ function applyMoveToBoard(move: CandidateMove | Move, board: Board) {
 		}
 	}
 	if (_move.enPassant) {
-		const enPassantCapture = { x: _move.to.x, y: _move.from.y } satisfies Coords
+		const enPassantCapture = {
+			x: _move.to.x,
+			y: _move.from.y,
+		} satisfies Coords
 		delete newBoard.pieces[notationFromCoords(enPassantCapture)]
 	}
 	let promoted = false
@@ -823,7 +829,11 @@ export function getVisibleSquares(game: GameState, color: Color) {
 		if (!noopSquareAndPiece) return new Set()
 		const [noopSquare, noopPiece] = noopSquareAndPiece
 		const noopCoords = coordsFromNotation(noopSquare)
-		const candidateMove = { from: noopCoords, to: noopCoords, piece: noopPiece.type } satisfies CandidateMove
+		const candidateMove = {
+			from: noopCoords,
+			to: noopCoords,
+			piece: noopPiece.type,
+		} satisfies CandidateMove
 		const [newBoard] = applyMoveToBoard(candidateMove, getBoard(game))
 
 		simulated.boardHistory.push({

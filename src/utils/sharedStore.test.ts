@@ -1,12 +1,16 @@
-import {describe, expect, it, test} from 'vitest'
-import {buildTransaction, initSharedStore, newNetwork, SharedStore, SharedStoreProvider} from './sharedStore.ts'
-import {until} from '@solid-primitives/promise'
-import {createEffect, createRoot} from 'solid-js'
-import {sleep} from './time.ts'
-import {SERVER_HOST} from '../config.ts'
-import {unwrap} from 'solid-js/store'
-import {trackStore} from '@solid-primitives/deep'
-import {firstValueFrom} from 'rxjs'
+import { trackStore } from '@solid-primitives/deep';
+import { until } from '@solid-primitives/promise';
+import { firstValueFrom } from 'rxjs';
+import { createEffect, createRoot } from 'solid-js';
+import { unwrap } from 'solid-js/store';
+import { describe, expect, it, test } from 'vitest';
+
+
+
+import { SERVER_HOST } from '../config.ts';
+import { SharedStore, SharedStoreProvider, buildTransaction, initSharedStore, newNetwork } from './sharedStore.ts';
+import { sleep } from './time.ts';
+
 
 /**
  * All of the tests below assume that the sharedstore server  is running on localhost:8080
@@ -82,8 +86,14 @@ describe('network provider/shared store', () => {
 
 		await until(() => leaderStore.initialized() && follower1Store.initialized() && follower2Store.initialized())
 
-		const follower1Set = follower1Store.setStore({ path: ['ayy'], value: 'follower1 was here' })
-		const follower2Set = follower2Store.setStore({ path: ['ayy'], value: 'follower2 was here' })
+		const follower1Set = follower1Store.setStore({
+			path: ['ayy'],
+			value: 'follower1 was here',
+		})
+		const follower2Set = follower2Store.setStore({
+			path: ['ayy'],
+			value: 'follower2 was here',
+		})
 		await Promise.all([follower1Set, follower2Set])
 		// whether follower1 or follower2 wins is nondeterministic
 		if (await follower1Set) {
@@ -230,7 +240,10 @@ describe('network provider/shared store', () => {
 		await until(() => follower1Store.initialized() && leaderStore.initialized() && follower2Store.initialized())
 
 		await follower2Store.setStore({ path: ['arr'], value: [] })
-		const follower1MutDone = follower1Store.setStore({ path: ['arr', 0], value: 'ayy' })
+		const follower1MutDone = follower1Store.setStore({
+			path: ['arr', 0],
+			value: 'ayy',
+		})
 		const follower2MutDone = follower2Store.setStoreWithRetries((s: any) => [
 			{
 				path: ['arr', s.arr.length],
@@ -294,7 +307,10 @@ describe('network provider/shared store', () => {
 
 		await until(() => followerStore.initialized() && leaderStore.initialized())
 		await until(() => leaderStore.clientControlledStates[provider2.clientId!])
-		expect(leaderStore.clientControlledStates).toEqual({ [provider1.clientId!]: { a: 1 }, [provider2.clientId!]: { b: 2 } })
+		expect(leaderStore.clientControlledStates).toEqual({
+			[provider1.clientId!]: { a: 1 },
+			[provider2.clientId!]: { b: 2 },
+		})
 
 		provider2.ws.close()
 		await until(() => !leaderStore.clientControlledStates[provider2.clientId!])
@@ -327,13 +343,19 @@ describe('network provider/shared store', () => {
 		})
 
 		leaderStore.setStoreWithRetries(() => {
-			return { mutations: [{ path: ['ayy'], value: 'lmao' }], events: ['action1'] }
+			return {
+				mutations: [{ path: ['ayy'], value: 'lmao' }],
+				events: ['action1'],
+			}
 		})
 
 		expect((await firstValueFrom(followerStore.action$)).type).toEqual('action1')
 
 		followerStore.setStoreWithRetries(() => {
-			return { mutations: [{ path: ['lmao'], value: 'ayy' }], events: ['action2'] }
+			return {
+				mutations: [{ path: ['lmao'], value: 'ayy' }],
+				events: ['action2'],
+			}
 		})
 
 		expect((await firstValueFrom(leaderStore.action$)).type).toEqual('action2')

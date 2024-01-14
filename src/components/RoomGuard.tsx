@@ -1,15 +1,22 @@
-import { useNavigate, useParams } from '@solidjs/router'
-import { createEffect, createSignal, getOwner, Match, Show, Switch } from 'solid-js'
-import * as R from '~/systems/room.ts'
-import * as P from '~/systems/player.ts'
-import { AppContainer, ScreenFittingContent } from './AppContainer.tsx'
-import { Room } from './Room.tsx'
-import { until } from '@solid-primitives/promise'
-import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card.tsx'
-import { Input } from '~/components/ui/input.tsx'
-import { Checkbox } from '~/components/ui/checkbox.tsx'
-import { Label } from '~/components/ui/label.tsx'
-import { Button } from '~/components/ui/button.tsx'
+import { until } from '@solid-primitives/promise';
+import { useNavigate, useParams } from '@solidjs/router';
+import { Match, Show, Switch, createEffect, createSignal, getOwner } from 'solid-js';
+
+
+
+import { Button } from '~/components/ui/button.tsx';
+import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card.tsx';
+import { Checkbox } from '~/components/ui/checkbox.tsx';
+import { Input } from '~/components/ui/input.tsx';
+import { Label } from '~/components/ui/label.tsx';
+import * as P from '~/systems/player.ts';
+import * as R from '~/systems/room.ts';
+
+
+
+import { AppContainer, ScreenFittingContent } from './AppContainer.tsx';
+import { Room } from './Room.tsx';
+
 
 type ConnectionStatus = 'connected' | 'disconnected' | 'connecting'
 type PlayerFormState =
@@ -25,7 +32,9 @@ export function RoomGuard() {
 	const [connectionStatus, setConnectionStatus] = createSignal<ConnectionStatus>(R.room() ? 'connected' : 'disconnected')
 	const navigate = useNavigate()
 	const owner = getOwner()!
-	const [playerFormState, setPlayerFormState] = createSignal<PlayerFormState>({ state: 'hidden' })
+	const [playerFormState, setPlayerFormState] = createSignal<PlayerFormState>({
+		state: 'hidden',
+	})
 
 	async function initPlayer(numPlayers: number): Promise<{ player: P.Player; isSpectating: boolean }> {
 		setPlayerFormState({
@@ -33,7 +42,10 @@ export function RoomGuard() {
 			props: {
 				numPlayers,
 				submitPlayer: (name, isSpectating) => {
-					setPlayerFormState({ state: 'submitted', payload: { name, isSpectating } })
+					setPlayerFormState({
+						state: 'submitted',
+						payload: { name, isSpectating },
+					})
 				},
 			},
 		})

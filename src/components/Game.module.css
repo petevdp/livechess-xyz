@@ -5,7 +5,7 @@
 }
 
 .boardContainer {
-	@apply bg-card text-card-foreground rounded-lg border shadow-sm p-2;
+	@apply rounded-lg border bg-card p-2 text-card-foreground shadow-sm;
 
 	display: grid;
 	grid-template-columns: max-content 1fr max-content 1fr max-content;
@@ -40,12 +40,12 @@
 			grid-template-columns: 1fr max-content max-content 1fr;
 			grid-template-rows: min-content auto min-content repeat(3, auto);
 			grid-template-areas:
-			'top-left-actions    opponent        opponent          clock-opponent'
-			'board               board           board             board'
-			'bottom-left-actions player          player            clock-player'
-			'captured-player     captured-player captured-opponent captured-opponent'
-		  'move-nav            move-nav        move-nav          move-nav'
-			'move-history        move-history    move-history      move-history';
+				'top-left-actions    opponent        opponent          clock-opponent'
+				'board               board           board             board'
+				'bottom-left-actions player          player            clock-player'
+				'captured-player     captured-player captured-opponent captured-opponent'
+				'move-nav            move-nav        move-nav          move-nav'
+				'move-history        move-history    move-history      move-history';
 		}
 	}
 }
@@ -64,7 +64,7 @@
 }
 
 .bottomRightActions {
-	grid-area: bottom-right-actions
+	grid-area: bottom-right-actions;
 }
 
 .moveNav {
@@ -74,12 +74,10 @@
 	width: 100%;
 }
 
-
 @media screen and (max-aspect-ratio: 1/1) {
 	.moveNav {
 		@apply self-start;
 	}
-
 }
 
 .bottomPlayer {
@@ -99,9 +97,8 @@
 }
 
 .actionsPanel {
-	@apply space-x-1 flex justify-end text-sm
+	@apply flex justify-end space-x-1 text-sm;
 }
-
 
 .moveHistoryContainer {
 	grid-area: move-history;
@@ -112,29 +109,25 @@
 	overflow-y: auto;
 }
 
-
 @media screen and (max-aspect-ratio: 1/1) {
 	.moveHistoryContainer {
-		@apply w-full h-full flex flex-row
+		@apply flex h-full w-full flex-row;
 	}
-
-
 }
-
 
 /* move history */
 
 .moveHistory {
-	@apply flex flex-col h-full w-full;
+	@apply flex h-full w-full flex-col;
 	align-items: flex-end;
 }
 
 .moveHistoryEntry {
-	@apply flex flex-row p-[.10rem] h-min whitespace-nowrap items-center text-xs;
+	@apply flex h-min flex-row items-center whitespace-nowrap p-[.10rem] text-xs;
 }
 
 .moveHistoryEntry div {
-	@apply flex flex-row w-20 justify-evenly rounded p-[.25rem] pl-0 h-min whitespace-nowrap;
+	@apply flex h-min w-20 flex-row justify-evenly whitespace-nowrap rounded p-[.25rem] pl-0;
 }
 
 .capturedPieces {
@@ -161,7 +154,6 @@
 	height: 30px;
 }
 
-
 @media screen and (max-aspect-ratio: 1/1) {
 	.capturedPieces {
 		width: auto;
@@ -182,7 +174,6 @@
 		height: 1.5em;
 	}
 
-
 	.moveHistory {
 		display: grid;
 		grid-template-columns: repeat(auto-fit, 105px);
@@ -195,19 +186,13 @@
 		/*grid-column: 1 / 100;*/
 	}
 
-
 	.moveHistoryEntry {
 	}
 
 	.moveHistoryEntry > div {
 	}
 
-
 	.singleMove > div {
 		@apply flex justify-start;
 	}
 }
-
-
-
-
