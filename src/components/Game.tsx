@@ -479,8 +479,9 @@ export function Game(props: { gameId: string }) {
 
 	//#endregion
 
-	//#region sound effects for incoming moves
+	//#region warn with sound effect on low time
 	let initAudio = false
+	// this code is horrific, please fix it
 	createEffect(() => {
 		if (!initAudio) {
 			initAudio = true
@@ -490,7 +491,7 @@ export function Game(props: { gameId: string }) {
 		if (!move) return
 	})
 	const warnReaction = createReaction(() => {
-		Audio.playLowTimeSound()
+		Audio.playSound('lowTime')
 	})
 
 	const [pastWarnThreshold, setPastWarnThreshold] = createSignal(false)
@@ -505,7 +506,9 @@ export function Game(props: { gameId: string }) {
 		}
 	})
 	warnReaction(pastWarnThreshold)
+	//#endregion
 
+	//#region sound effects for incoming moves
 	createEffect(() => {
 		if (game.viewingLiveBoard && game.isClientPlayerParticipating && game.board.toMove !== game.bottomPlayer.color) return
 		console.log('playing sound effect for incoming move', game.currentBoardView.lastMove)
@@ -515,19 +518,47 @@ export function Game(props: { gameId: string }) {
 	})
 	//#endregion
 
+	//#region game outcome sound effects
+	{
+		let init = false
+		createEffect(() => {
+			if (!game.outcome || !game.isClientPlayerParticipating) {
+				if (!init) {
+					init = true
+				}
+				return
+			}
+
+			if (game.outcome.winner === game.bottomPlayer.color) {
+				if (!init) {
+					init = true
+					return
+				}
+				Audio.playSound('winner')
+			} else {
+				if (!init) {
+					init = true
+					return
+				}
+				Audio.playSound('loser')
+			}
+		})
+	}
+	//#endregion
+
 	return (
 		<div class={styles.boardPageWrapper}>
 			<div class={styles.boardContainer}>
 				<div class={styles.moveHistoryContainer}>
 					<MoveHistory />
 				</div>
-				<Player class={styles.topPlayer} player={game.bottomPlayer} />
+				<Player class={styles.topPlayer} player={game.topPlayer}/>
 				<Clock
 					class={styles.clockTopPlayer}
-					clock={game.clock[game.bottomPlayer.color]}
-					ticking={game.isPlayerTurn(game.topPlayer.color) && game.clock[game.bottomPlayer.color] > 0}
+					clock={game.clock[game.topPlayer.color]}
+					ticking={game.isPlayerTurn(game.topPlayer.color) && game.clock[game.topPlayer.color] > 0}
 					timeControl={game.gameConfig.timeControl}
-					color={game.bottomPlayer.color}
+					color={game.topPlayer.color}
 				/>
 				<div class={`${styles.topLeftActions} flex flex-col items-start space-x-1`}>
 					<Button variant="ghost" size="icon" onclick={() => setBoardFlipped((f) => !f)} class="mb-1">

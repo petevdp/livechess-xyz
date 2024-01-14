@@ -228,12 +228,13 @@ function moveToCandidateMove(move: Move): CandidateMove {
 
 //#region game status
 
-function checkmated(game: GameState) {
+export function checkmated(game: GameState) {
 	return inCheck(getBoard(game)) && noMoves(game)
 }
 
-function kingCaptured(game: GameState) {
-	return !Object.values(getBoard(game).pieces).some((piece) => piece.type === 'king' && piece.color === getBoard(game).toMove)
+export function kingCaptured(board: Board) {
+	const piece = { color: board.toMove, type: 'king' } satisfies ColoredPiece
+	return !findPiece(piece, board)
 }
 
 function stalemated(game: GameState) {
@@ -269,10 +270,10 @@ export function getGameOutcome(state: GameState, config: ParsedGameConfig) {
 	} else if (!Object.values(state.drawOffers).includes(null)) {
 		winner = null
 		reason = 'draw-accepted'
-	} else if (VARIANTS_ALLOWING_SELF_CHECKS.includes(config.variant) && checkmated(state)) {
+	} else if (!VARIANTS_ALLOWING_SELF_CHECKS.includes(config.variant) && checkmated(state)) {
 		winner = oppositeColor(getBoard(state).toMove)
 		reason = 'checkmate'
-	} else if (config.variant === 'fog-of-war' && kingCaptured(state)) {
+	} else if (VARIANTS_ALLOWING_SELF_CHECKS.includes(config.variant) && kingCaptured(getBoard(state))) {
 		winner = oppositeColor(getBoard(state).toMove)
 		reason = 'king-captured'
 	} else if (stalemated(state)) {
@@ -718,12 +719,16 @@ function inBounds(coords: Coords) {
 }
 
 function findPiece(piece: ColoredPiece, board: Board) {
-	return Object.entries(board.pieces).find(([_, _piece]) => _piece?.type === piece.type && _piece.color === piece.color)![0]
+	return Object.keys(board.pieces).find((square) => {
+		const _piece = board.pieces[square]!
+		return _piece.type === piece.type && _piece.color === piece.color
+	})
 }
 
 export function inCheck(board: Board) {
-	const king = coordsFromNotation(findPiece({ color: board.toMove, type: 'king' }, board))
-	return squareAttacked(king, board)
+	const king = findPiece({ color: board.toMove, type: 'king' }, board)
+	if (!king) return false
+	return squareAttacked(coordsFromNotation(king), board)
 }
 
 function squareAttacked(square: Coords, board: Board) {

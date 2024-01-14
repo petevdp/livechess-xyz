@@ -265,7 +265,7 @@ export class Game {
 
 	getLegalMovesForSquare(startingSquare: string) {
 		if (!this.board.pieces[startingSquare]) return []
-		return GL.getLegalMoves([GL.coordsFromNotation(startingSquare)], this.stateSignal(), this.gameConfig.variant === 'fog-of-war')
+		return GL.getLegalMoves([GL.coordsFromNotation(startingSquare)], this.stateSignal(), GL.VARIANTS_ALLOWING_SELF_CHECKS.includes(this.gameConfig.variant))
 	}
 
 	capturedPieces(color: GL.Color) {
@@ -318,48 +318,48 @@ export class Game {
 			this.currentMove = move
 		}
 		if (this.outcome || !this.currentMove) return { type: 'invalid' }
-		const res = GL.validateAndPlayMove(
+		const result = GL.validateAndPlayMove(
 			this.currentMove.from,
 			this.currentMove.to,
 			this.stateSignal(),
-			!!this.currentDuckPlacement || GL.VARIANTS_ALLOWING_SELF_CHECKS.includes(this.gameConfig.variant),
+			GL.VARIANTS_ALLOWING_SELF_CHECKS.includes(this.gameConfig.variant),
 			this.currentPromotion || undefined,
 			this.currentDuckPlacement || undefined
 		)
-		if (!res) {
+		if (!result) {
 			this.currentDuckPlacement = null
 			return { type: 'invalid' }
 		}
 		if (move) {
-			if (res.promoted && !this.currentPromotion) {
+			if (result.promoted && !this.currentPromotion) {
 				// while we're promoting, display the promotion square as containing the pawn
-				res.board.pieces[this.currentMove.to] = {
+				result.board.pieces[this.currentMove.to] = {
 					type: 'pawn',
 					color: this.board.toMove,
 				}
 			}
 
 			// this displays whatever move we've made while we're placing the duck as well
-			this.setBoardWithCurrentMove(res.board)
+			this.setBoardWithCurrentMove(result.board)
 		}
 
 		// this is a dumb way of doing this, we should return validation errors from validateAndPlayMove instead
-		if (res?.promoted && !this.currentPromotion) {
+		if (result?.promoted && !this.currentPromotion && !GL.kingCaptured(result.board)) {
 			this.setChoosingPromotion(true)
-			this.setBoardWithCurrentMove(res.board)
-			return { type: 'promoting', move: res.move }
+			this.setBoardWithCurrentMove(result.board)
+			return {type: 'promoting', move: result.move}
 		}
 		this.setChoosingPromotion(false)
 
-		if (this.gameConfig.variant === 'duck' && !this.currentDuckPlacement) {
+		if (this.gameConfig.variant === 'duck' && !this.currentDuckPlacement && !GL.kingCaptured(result.board)) {
 			this.setPlacingDuck(true)
-			this.setBoardWithCurrentMove(res.board)
-			let prevDuckPlacement = Object.keys(res.board.pieces).find((square) => res.board.pieces[square]!.type === 'duck')
+			this.setBoardWithCurrentMove(result.board)
+			let prevDuckPlacement = Object.keys(result.board.pieces).find((square) => result.board.pieces[square]!.type === 'duck')
 			if (prevDuckPlacement) {
 				// render previous duck while we're placing the new one, so it's clear that the duck can't be placed in the same spot twice
-				res.board.pieces[prevDuckPlacement] = GL.DUCK
+				result.board.pieces[prevDuckPlacement] = GL.DUCK
 			}
-			return { type: 'placing-duck', move: res.move }
+			return {type: 'placing-duck', move: result.move}
 		}
 
 		let expectedMoveIndex = this.state.moveHistory.length
