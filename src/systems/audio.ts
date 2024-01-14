@@ -9,6 +9,7 @@ import promoteSound from '~/assets/audio/promote.mp3'
 import quackSound from '~/assets/audio/quack.mp3'
 import successBellSound from '~/assets/audio/success-bell.mp3'
 import * as GL from '~/systems/game/gameLogic.ts'
+import * as P from '~/systems/player.ts'
 
 export const audio = {
 	movePlayer: new Audio(moveSelfSound),
@@ -24,6 +25,7 @@ export const audio = {
 }
 
 export function playSound(name: keyof typeof audio) {
+	if (P.settings.muteAudio) return
 	audio[name].play().catch((e) => {
 		console.warn('unable to play audio', audio[name], e)
 	})

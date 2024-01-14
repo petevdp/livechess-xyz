@@ -1,21 +1,17 @@
-import { until } from '@solid-primitives/promise';
-import { useNavigate, useParams } from '@solidjs/router';
-import { Match, Show, Switch, createEffect, createSignal, getOwner } from 'solid-js';
+import { until } from '@solid-primitives/promise'
+import { useNavigate, useParams } from '@solidjs/router'
+import { Match, Show, Switch, createEffect, createSignal, getOwner } from 'solid-js'
 
+import { Button } from '~/components/ui/button.tsx'
+import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card.tsx'
+import { Checkbox } from '~/components/ui/checkbox.tsx'
+import { Input } from '~/components/ui/input.tsx'
+import { Label } from '~/components/ui/label.tsx'
+import * as P from '~/systems/player.ts'
+import * as R from '~/systems/room.ts'
 
-
-import { Button } from '~/components/ui/button.tsx';
-import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card.tsx';
-import { Checkbox } from '~/components/ui/checkbox.tsx';
-import { Input } from '~/components/ui/input.tsx';
-import { Label } from '~/components/ui/label.tsx';
-import * as P from '~/systems/player.ts';
-import * as R from '~/systems/room.ts';
-
-
-
-import { AppContainer, ScreenFittingContent } from './AppContainer.tsx';
-import { Room } from './Room.tsx';
+import { AppContainer, ScreenFittingContent } from './AppContainer.tsx'
+import { Room } from './Room.tsx'
 
 
 type ConnectionStatus = 'connected' | 'disconnected' | 'connecting'
@@ -102,19 +98,19 @@ type PlayerFormProps = {
 }
 
 export function PlayerForm(props: PlayerFormProps) {
-	const [displayName, setDisplayName] = createSignal<string>(P.playerName() || '')
+	const [displayName, setDisplayName] = createSignal<string>(P.settings.name || '')
 	const [isSpectating, setIsSpectating] = createSignal(props.numPlayers >= 2)
 	const [submitted, setSubmitted] = createSignal(false)
 	const onSubmit = (e: SubmitEvent) => {
 		e.preventDefault()
 		if (submitted()) return
 		setSubmitted(true)
-		P.setPlayerName(displayName().trim())
+		P.setSettings({ name: displayName().trim() })
 		props.submitPlayer(displayName(), props.numPlayers >= 2 || isSpectating())
 	}
 
 	createEffect(() => {
-		if (P.playerName()) setDisplayName(P.playerName()!)
+		if (P.settings.name) setDisplayName(P.settings.name)
 	})
 
 	return (

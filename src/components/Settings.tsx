@@ -1,28 +1,33 @@
-import { createEffect, createSignal } from 'solid-js';
+import { createEffect, createSignal } from 'solid-js'
 
-
-
-import SettingsSvg from '~/assets/icons/settings.svg';
-import { Button } from '~/components/ui/button.tsx';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog.tsx';
-import { Input } from '~/components/ui/input.tsx';
+import SettingsSvg from '~/assets/icons/settings.svg'
+import { Button } from '~/components/ui/button.tsx'
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+	DialogTrigger,
+} from '~/components/ui/dialog.tsx'
+import { Input } from '~/components/ui/input.tsx'
 import { Label } from '~/components/ui/label.tsx'
 import * as P from '~/systems/player.ts'
-
 
 export function SettingsDialog() {
 	const [nickname, setNickname] = createSignal('')
 	const [submitted, setSubmitted] = createSignal(false)
 	createEffect(() => {
-		if (P.playerName()) {
-			setNickname(P.playerName()!)
+		if (P.settings.name) {
+			setNickname(P.settings.name!)
 		}
 	})
 
 	const onSubmit = (e: SubmitEvent) => {
 		e.preventDefault()
 		if (submitted()) return
-		P.setPlayerName(nickname().trim())
+		P.setSettings({ name: nickname().trim() })
 		setSubmitted(true)
 		// hacky but better than overriding default dialog behavior
 		triggerButtonRef?.click()
@@ -35,7 +40,7 @@ export function SettingsDialog() {
 		<Dialog
 			onOpenChange={(open) => {
 				if (open) {
-					setNickname(P.playerName()!)
+					setNickname(P.settings.name!)
 					setSubmitted(false)
 				}
 			}}
