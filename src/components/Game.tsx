@@ -161,7 +161,9 @@ export function Game(props: { gameId: string }) {
 		for (let move of legalMovesForActivePiece()) {
 			// draw dot in center of move end
 			const [x, y] = boardCoordsToDisplayCoords(move.to, boardFlipped(), squareSize())
-			if (game.currentBoardView.board.pieces[GL.notationFromCoords(move.to)]) {
+			const piece = game.currentBoardView.board.pieces[GL.notationFromCoords(move.to)]
+			// we need to check if the piece is our color we visually move pieces in the current board view while we're placing a duck and promoting
+			if (piece && piece.type !== 'duck' && piece.color !== game.bottomPlayer.color) {
 				ctx.fillStyle = captureHighlightColor
 				ctx.fillRect(x, y, squareSize(), squareSize())
 			} else {
