@@ -80,7 +80,6 @@ export function Game(props: { gameId: string }) {
 
 	const boardSize = () => {
 		let adjusted = Math.floor(boardSizeCss() * window.devicePixelRatio)
-		adjusted -= adjusted % 8
 		return adjusted
 	}
 
@@ -461,6 +460,7 @@ export function Game(props: { gameId: string }) {
 			switch (event.type) {
 				case 'draw-offered':
 					toast(`${event.participant.name} offered a draw`)
+					Audio.playSound('drawOffered')
 					break
 				case 'draw-canceled':
 					toast(`${event.participant.name} cancelled their draw offer`)

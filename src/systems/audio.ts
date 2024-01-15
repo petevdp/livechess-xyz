@@ -1,5 +1,6 @@
 import captureSound from '~/assets/audio/capture.mp3'
 import castleSound from '~/assets/audio/castle.mp3'
+import drawOffered from '~/assets/audio/draw-offered.mp3'
 import gameStartSound from '~/assets/audio/game-start.mp3'
 import loseSound from '~/assets/audio/lose.mp3'
 import lowTimeSound from '~/assets/audio/low-time.mp3'
@@ -24,6 +25,7 @@ export const audio = {
 	winner: new Audio(successBellSound),
 	loser: new Audio(loseSound),
 	gameStart: new Audio(gameStartSound),
+	drawOffered: new Audio(drawOffered),
 }
 
 export function playSound(name: keyof typeof audio) {
