@@ -289,12 +289,12 @@ export function Game(props: { gameId: string }) {
 			return String.fromCharCode('a'.charCodeAt(0) + col) + (8 - row)
 		}
 
-		const touchOffsetX = P.settings.touchOffsetDirection === 'left' ? -20 : 20
-		const touchOffsetY = -Math.abs(touchOffsetX)
+		const touchOffsetX = () => (P.settings.touchOffsetDirection === 'left' ? -20 : 20)
+		const touchOffsetY = () => -Math.abs(touchOffsetX())
 		grabbedPieceCanvas.addEventListener('mousemove', (e) => moveListener(e.clientX, e.clientY))
 		grabbedPieceCanvas.addEventListener('touchmove', (e) => {
 			for (let touch of e.targetTouches) {
-				const touchingPiece = moveListener(touch.clientX + touchOffsetX, touch.clientY + touchOffsetY)
+				const touchingPiece = moveListener(touch.clientX + touchOffsetX(), touch.clientY + touchOffsetY())
 				if (touchingPiece) {
 					e.preventDefault()
 				}
@@ -370,7 +370,7 @@ export function Game(props: { gameId: string }) {
 		grabbedPieceCanvas.addEventListener('mouseup', (e) => mouseUpListener(e.clientX, e.clientY))
 		grabbedPieceCanvas.addEventListener('touchend', (e) => {
 			for (let touch of e.changedTouches) {
-				mouseUpListener(touch.clientX + touchOffsetX, touch.clientY + -touchOffsetY)
+				mouseUpListener(touch.clientX + touchOffsetX(), touch.clientY + touchOffsetY())
 				break
 			}
 		})

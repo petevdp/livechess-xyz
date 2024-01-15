@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '~/components/ui/hover-card.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip.tsx'
 import { Choice, MultiChoiceButton } from '~/components/utils/MultiChoiceButton.tsx'
+import * as Audio from '~/systems/audio.ts'
 import * as GL from '~/systems/game/gameLogic.ts'
 import * as P from '~/systems/player.ts'
 import * as R from '~/systems/room.ts'
@@ -47,6 +48,9 @@ export function Room() {
 				} else {
 					toast(`${action.player.name} reconnected`)
 				}
+				break
+			case 'new-game':
+				Audio.playSound('gameStart')
 				break
 		}
 	})

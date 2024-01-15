@@ -39,6 +39,7 @@ export type RoomEvent =
 				| 'player-connected'
 				| 'player-disconnected'
 				| 'player-reconnected'
+				| 'new-game'
 				| G.DrawEventType
 			playerId: string
 	  }
@@ -374,7 +375,14 @@ export class Room {
 	configureNewGame() {
 		this.sharedStore.setStoreWithRetries(() => {
 			if (!this.rightPlayer || !this.rollbackState.activeGameId) return
-			return [...this.getPieceSwapMutation(), { path: ['status'], value: 'pregame' }, { path: ['activeGameId'], value: undefined }]
+			return [
+				...this.getPieceSwapMutation(),
+				{path: ['status'], value: 'pregame'},
+				{
+					path: ['activeGameId'],
+					value: undefined,
+				},
+			]
 		})
 	}
 
@@ -467,19 +475,22 @@ export class Room {
 						[this.rightPlayer.id]: this.rightPlayer.id === this.rollbackState.gameParticipants.white.id ? 'white' : 'black',
 					})
 					const gameId = createIdSync(6)
-					return [
-						{
-							path: ['gameParticipants', this.leftPlayer!.color, 'isReadyForGame'],
-							value: false,
-						},
-						{
-							path: ['gameParticipants', this.rightPlayer!.color, 'isReadyForGame'],
-							value: false,
-						},
-						{ path: ['status'], value: 'playing' },
-						{ path: ['activeGameId'], value: gameId },
-						{ path: ['gameStates', gameId], value: gameState },
-					] satisfies StoreMutation[]
+					return {
+						events: [{type: 'new-game', playerId: this.player.id}],
+						mutations: [
+							{
+								path: ['gameParticipants', this.leftPlayer!.color, 'isReadyForGame'],
+								value: false,
+							},
+							{
+								path: ['gameParticipants', this.rightPlayer!.color, 'isReadyForGame'],
+								value: false,
+							},
+							{path: ['status'], value: 'playing'},
+							{path: ['activeGameId'], value: gameId},
+							{path: ['gameStates', gameId], value: gameState},
+						] satisfies StoreMutation[],
+					}
 				} else {
 					return [
 						{

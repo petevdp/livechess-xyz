@@ -1,9 +1,7 @@
-import { For, Show } from 'solid-js';
+import { For, Show } from 'solid-js'
 
-
-
-import { Button, ButtonProps } from '~/components/ui/button.tsx';
-import { cn } from '~/lib/utils.ts';
+import { Button, ButtonProps } from '~/components/ui/button.tsx'
+import { cn } from '~/lib/utils.ts'
 
 
 export type Choice<T> = { id: T; label: string }
@@ -15,14 +13,14 @@ export function MultiChoiceButton<T extends string>(props: {
 	onChange: (id: T) => void
 	listClass?: string
 	classList?: Record<string, boolean>
-	containerClass: string
+	containerClass?: string
 	classListButton?: Record<string, boolean>
 	variant?: ButtonProps['variant']
 	disabled?: boolean
 }) {
 	props.classList ||= {}
 	return (
-		<div class={cn('flex flex-col', props.containerClass)}>
+		<div class={cn('flex flex-col', props.containerClass || '')}>
 			<Show when={props.label}>
 				<label class="col-span-full text-center">{props.label}</label>
 			</Show>
