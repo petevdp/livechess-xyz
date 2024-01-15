@@ -1,8 +1,8 @@
-import { until } from '@solid-primitives/promise';
-import isEqual from 'lodash/isEqual';
-import { Observable, Subject, Subscription, concatMap, endWith, firstValueFrom, merge, share } from 'rxjs';
-import { batch, createSignal, onCleanup } from 'solid-js';
-import { createStore, produce, unwrap } from 'solid-js/store';
+import { until } from '@solid-primitives/promise'
+import isEqual from 'lodash/isEqual'
+import { Observable, Subject, Subscription, concatMap, endWith, firstValueFrom, merge, share } from 'rxjs'
+import { batch, createSignal, onCleanup } from 'solid-js'
+import { createStore, produce, unwrap } from 'solid-js/store'
 
 
 //TODO attact metadata such as eventName to transactions, so we don't have to do as many manual delta checks
@@ -15,23 +15,23 @@ export type StoreMutation = {
 	value: any
 }
 
-type NewSharedStoreOrderedTransaction<Event extends object> = {
+type NewSharedStoreOrderedTransaction<Event extends any> = {
 	index: number
 	mutations: StoreMutation[]
 	actions: Event[]
 }
 
-type NewSharedStoreUnorderedTransaction<Event extends object> = {
+type NewSharedStoreUnorderedTransaction<Event extends any> = {
 	index: null
 	mutations: StoreMutation[]
 	actions: Event[]
 }
 
-type NewSharedStoreTransaction<Event extends object> = NewSharedStoreOrderedTransaction<Event> | NewSharedStoreUnorderedTransaction<Event>
-export type SharedStoreTransaction<Event extends object> = NewSharedStoreTransaction<Event> & {
+type NewSharedStoreTransaction<Event extends any> = NewSharedStoreOrderedTransaction<Event> | NewSharedStoreUnorderedTransaction<Event>
+export type SharedStoreTransaction<Event extends any> = NewSharedStoreTransaction<Event> & {
 	mutationId: string
 }
-export type SharedStoreOrderedTransaction<Event extends object> = NewSharedStoreOrderedTransaction<Event> & {
+export type SharedStoreOrderedTransaction<Event extends any> = NewSharedStoreOrderedTransaction<Event> & {
 	mutationId: string
 }
 
@@ -95,11 +95,15 @@ export type SharedStoreMessage =
 
 //#endregion
 
-export type SharedStore<
-	T extends object,
-	CCS extends ClientControlledState = ClientControlledState,
-	Event extends object = object,
-> = ReturnType<typeof initSharedStore<T, CCS, Event>>
+export type SharedStore<T extends any, CCS extends ClientControlledState = ClientControlledState, Event extends any = any> = ReturnType<
+	typeof initSharedStore<T, CCS, Event>
+>
+
+// magical strings wooooo
+export const DELETE = '__DELETE__'
+
+export const PUSH = '__PUSH__'
+
 
 /**
  * Create a shared store that can be used to synchronize state between multiple clients, and can rollback any conflicting changes.
@@ -107,7 +111,7 @@ export type SharedStore<
  * @param startingState only used if we're the first client in the room
  * @param startingClientState only used if we're the first client in the room
  */
-export function initSharedStore<S extends object, CCS extends ClientControlledState = ClientControlledState, Event extends object = object>(
+export function initSharedStore<S extends any, CCS extends ClientControlledState = ClientControlledState, Event extends any = any>(
 	provider: SharedStoreProvider<Event>,
 	startingClientState = {} as CCS,
 	startingState: S = {} as S
@@ -150,6 +154,7 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 	function dispatchEvents(actions: Event[]) {
 		return setStoreWithRetries(() => ({ events: actions, mutations: [] }))
 	}
+
 	//#endregion
 
 	//#region outgoing transactions
@@ -205,8 +210,8 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 				mut.path = interpolatePath(mut.path, lockstepStore)
 			}
 			batch(() => {
-				applyMutationsToStore(transaction.mutations, setRollbackStore)
-				applyMutationsToStore(transaction.mutations, setLockstepStore)
+				applyMutationsToStore(transaction.mutations, setRollbackStore, rollbackStore)
+				applyMutationsToStore(transaction.mutations, setLockstepStore, lockstepStore)
 			})
 			let orderedTransaction: SharedStoreOrderedTransaction<Event>
 			if (transaction.index == null) {
@@ -235,7 +240,7 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 			// only update rollback store if this transaction must be applied on a particular transaction index, otherwise the history could end up irreconcilable
 			if (transaction.index) {
 				batch(() => {
-					applyMutationsToStore(transaction.mutations, setRollbackStore)
+					applyMutationsToStore(transaction.mutations, setRollbackStore, rollbackStore)
 				})
 				appliedTransactions.push(transaction)
 				previousValues.set(transaction.index!, previous)
@@ -283,8 +288,26 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 	//#endregion
 
 	//#region handle incoming transactions
-	const applyMutationsToStore = (mutations: StoreMutation[], setStore: (...args: any[]) => any) => {
+	const applyMutationsToStore = (mutations: StoreMutation[], setStore: (...args: any[]) => any, store: any) => {
 		for (let mutation of mutations) {
+			const container = unwrap(resolveValue(mutation.path.slice(0, -1), store))
+			if (mutation.value === DELETE && container instanceof Array) {
+				setStore(
+					...mutation.path.slice(0, -1),
+					(container as any[]).filter((_, i) => i !== mutation.path[mutation.path.length - 1])
+				)
+				return
+			} else if (mutation.value === DELETE && typeof container === 'object') {
+				setStore(
+					produce((store) => {
+						const container = resolveValue(mutation.path.slice(0, -1), store)
+						delete container[mutation.path[mutation.path.length - 1]]
+					})
+				)
+				return
+			} else if (mutation.value === DELETE) {
+				throw new Error('unhandled type ' + typeof container)
+			}
 			setStore(...mutation.path, mutation.value)
 		}
 	}
@@ -300,8 +323,8 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 
 			// we've received the first valid mutation with this index
 			if (receivedAtom.index === appliedTransactions.length) {
-				applyMutationsToStore(receivedAtom.mutations, setRollbackStore)
-				applyMutationsToStore(receivedAtom.mutations, setLockstepStore)
+				applyMutationsToStore(receivedAtom.mutations, setRollbackStore, rollbackStore)
+				applyMutationsToStore(receivedAtom.mutations, setLockstepStore, lockstepStore)
 				appliedTransactions.push(receivedAtom)
 				// this is now canonical state, and we can broadcast it
 				provider.broadcastAsCommitted(receivedAtom, receivedAtom.mutationId)
@@ -320,7 +343,7 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 			//#endregion
 		}
 		//#region  we're a follower, listening to mutations from the leader
-		applyMutationsToStore(receivedAtom.mutations, setLockstepStore)
+		applyMutationsToStore(receivedAtom.mutations, setLockstepStore, lockstepStore)
 		if (appliedTransactions.length >= receivedAtom.index + 1) {
 			const mutationToCompare = appliedTransactions[receivedAtom.index]
 
@@ -340,7 +363,7 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 				const atomToRollback = appliedTransactions[i]
 				if (i === receivedAtom.index) {
 					// we're done, set the new head of the applied mutations
-					applyMutationsToStore(receivedAtom.mutations, setRollbackStore)
+					applyMutationsToStore(receivedAtom.mutations, setRollbackStore, rollbackStore)
 					previousValues.delete(atomToRollback.index)
 					break
 				} else {
@@ -356,7 +379,7 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 			appliedTransactions.push(receivedAtom)
 		} else {
 			appliedTransactions.push(receivedAtom)
-			applyMutationsToStore(receivedAtom.mutations, setRollbackStore)
+			applyMutationsToStore(receivedAtom.mutations, setRollbackStore, rollbackStore)
 		}
 		console.debug(provider.clientId, 'dispatching events')
 		for (let action of receivedAtom.actions) {
@@ -506,7 +529,7 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 		setClientControlledState,
 		isLeader,
 		dispose,
-		action$: event$,
+		event$,
 		dispatchEvents,
 	}
 }
@@ -517,7 +540,7 @@ function interpolatePath(path: (string | number)[], store: any) {
 	const _path = [...path]
 	for (let i = 0; i < _path.length; i++) {
 		const elt = _path[i]
-		if (elt === '__push__') {
+		if (elt === PUSH) {
 			if (!Array.isArray(current)) throw new Error("can't push to non-array")
 			if (i !== _path.length - 1) throw new Error("can't push to non-terminal path")
 			_path[i] = current.length
@@ -533,13 +556,26 @@ function interpolatePath(path: (string | number)[], store: any) {
 	return _path
 }
 
+function resolveValue(path: (string | number)[], store: any) {
+	let current = store
+	for (let i = 0; i < path.length; i++) {
+		const elt = path[i]
+		if (!current) {
+			console.error('attempted to resolve invalid path for store', path, store)
+			throw new Error('invalid path')
+		}
+		current = current[elt]
+	}
+	return current
+}
+
 function areTransactionsEqual(a: NewSharedStoreTransaction<any>, b: NewSharedStoreTransaction<any>) {
 	const _a = { mutations: a.mutations, index: a.index }
 	const _b = { mutations: b.mutations, index: b.index }
 	return isEqual(_a, _b)
 }
 
-export class SharedStoreProvider<Event extends object> {
+export class SharedStoreProvider<Event extends any> {
 	private message$: Observable<SharedStoreMessage>
 	public ws: WebSocket
 	disconnected$: Promise<undefined>
@@ -744,7 +780,7 @@ function parseContent(content: Base64String) {
 	return JSON.parse(atob(content))
 }
 
-export class SharedStoreTransactionBuilder<Event extends object> {
+export class SharedStoreTransactionBuilder<Event extends any> {
 	mutations: StoreMutation[] = []
 	private commit$ = new Subject<boolean>()
 
@@ -777,7 +813,7 @@ export class SharedStoreTransactionBuilder<Event extends object> {
 	}
 }
 
-export async function buildTransaction<Event extends object>(fn: (t: SharedStoreTransactionBuilder<Event>) => Promise<void>) {
+export async function buildTransaction<Event extends any>(fn: (t: SharedStoreTransactionBuilder<Event>) => Promise<void>) {
 	const transaction = new SharedStoreTransactionBuilder<Event>()
 	try {
 		await fn(transaction)

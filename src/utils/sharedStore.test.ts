@@ -1,15 +1,13 @@
-import { trackStore } from '@solid-primitives/deep';
-import { until } from '@solid-primitives/promise';
-import { firstValueFrom } from 'rxjs';
-import { createEffect, createRoot } from 'solid-js';
-import { unwrap } from 'solid-js/store';
-import { describe, expect, it, test } from 'vitest';
+import { trackStore } from '@solid-primitives/deep'
+import { until } from '@solid-primitives/promise'
+import { firstValueFrom } from 'rxjs'
+import { createEffect, createRoot } from 'solid-js'
+import { unwrap } from 'solid-js/store'
+import { describe, expect, it, test } from 'vitest'
 
-
-
-import { SERVER_HOST } from '../config.ts';
-import { SharedStore, SharedStoreProvider, buildTransaction, initSharedStore, newNetwork } from './sharedStore.ts';
-import { sleep } from './time.ts';
+import { SERVER_HOST } from '../config.ts'
+import { DELETE, PUSH, SharedStore, SharedStoreProvider, buildTransaction, initSharedStore, newNetwork } from './sharedStore.ts'
+import { sleep } from './time.ts'
 
 
 /**
@@ -146,17 +144,13 @@ describe('network provider/shared store', () => {
 		const toDispose: Function[] = []
 		let originalLeaderStore = null as unknown as ReturnType<typeof initSharedStore>
 		let followerStore = null as unknown as ReturnType<typeof initSharedStore>
-
 		createRoot((dispose) => {
 			toDispose.push(dispose)
 			originalLeaderStore = initSharedStore(provider1)
 			followerStore = initSharedStore(provider2)
 		})
-
 		await until(() => originalLeaderStore.initialized() && followerStore.initialized())
-
 		provider1.ws.close()
-
 		await until(() => followerStore.isLeader())
 		let followerStore2 = null as unknown as ReturnType<typeof initSharedStore>
 		createRoot((d) => {
@@ -165,6 +159,9 @@ describe('network provider/shared store', () => {
 		})
 		await until(() => followerStore2.initialized())
 		expect(followerStore2.isLeader()).toBe(false)
+		for (const d of toDispose) {
+			d()
+		}
 	})
 
 	test('can handle dynamic transactions', async () => {
@@ -238,20 +235,19 @@ describe('network provider/shared store', () => {
 			follower2Store = initSharedStore(provider3)
 		})
 		await until(() => follower1Store.initialized() && leaderStore.initialized() && follower2Store.initialized())
-
 		await follower2Store.setStore({ path: ['arr'], value: [] })
-		const follower1MutDone = follower1Store.setStore({
-			path: ['arr', 0],
-			value: 'ayy',
-		})
-		const follower2MutDone = follower2Store.setStoreWithRetries((s: any) => [
+		await follower1Store.setStoreWithRetries(() => [
+			{
+				path: ['arr', 0],
+				value: 'ayy',
+			},
+		])
+		await follower2Store.setStoreWithRetries((s: any) => [
 			{
 				path: ['arr', s.arr.length],
 				value: 'lmao',
 			},
 		])
-
-		await Promise.all([follower1MutDone, follower2MutDone])
 		expect(leaderStore.lockstepStore.arr[0]).toBe('ayy')
 		expect(leaderStore.lockstepStore.arr[1]).toBe('lmao')
 		dispose()
@@ -279,8 +275,8 @@ describe('network provider/shared store', () => {
 
 		await until(() => follower1Store.initialized() && leaderStore.initialized())
 
-		leaderStore.setStore({ path: ['arr', '__push__'], value: 1 })
-		const success = await follower1Store.setStore({ path: ['arr', '__push__'], value: 2 }, undefined, [], false)
+		leaderStore.setStore({ path: ['arr', PUSH], value: 1 })
+		const success = await follower1Store.setStore({ path: ['arr', PUSH], value: 2 }, undefined, [], false)
 
 		expect(success).toBe(true)
 		expect(leaderStore.lockstepStore.arr).toEqual([1, 2])
@@ -323,6 +319,7 @@ describe('network provider/shared store', () => {
 	test('actions', async () => {
 		const network = await newNetwork(SERVER_HOST)
 		const provider1 = new SharedStoreProvider(SERVER_HOST, network.networkId)
+
 		const provider2 = new SharedStoreProvider(SERVER_HOST, network.networkId)
 
 		let leaderStore = null as unknown as SharedStore<any>
@@ -337,11 +334,6 @@ describe('network provider/shared store', () => {
 
 		await until(() => followerStore.initialized() && leaderStore.initialized())
 
-		console.log({
-			leaderStore: provider1.clientId,
-			followerStore: provider2.clientId,
-		})
-
 		leaderStore.setStoreWithRetries(() => {
 			return {
 				mutations: [{ path: ['ayy'], value: 'lmao' }],
@@ -349,7 +341,7 @@ describe('network provider/shared store', () => {
 			}
 		})
 
-		expect((await firstValueFrom(followerStore.action$)).type).toEqual('action1')
+		expect(await firstValueFrom(followerStore.event$)).toEqual('action1')
 
 		followerStore.setStoreWithRetries(() => {
 			return {
@@ -357,9 +349,35 @@ describe('network provider/shared store', () => {
 				events: ['action2'],
 			}
 		})
+		expect(await firstValueFrom(leaderStore.event$)).toEqual('action2')
 
-		expect((await firstValueFrom(leaderStore.action$)).type).toEqual('action2')
+		dispose()
+	})
 
+	test('can delete entries', async () => {
+		const network = await newNetwork(SERVER_HOST)
+		const provider1 = new SharedStoreProvider(SERVER_HOST, network.networkId)
+		const provider2 = new SharedStoreProvider(SERVER_HOST, network.networkId)
+
+		let leaderStore = null as unknown as SharedStore<any>
+		let followerStore = null as unknown as SharedStore<any>
+
+		let dispose = () => {}
+		createRoot((d) => {
+			dispose = d
+			leaderStore = initSharedStore(provider1, undefined, { a: [1, 2, 3] })
+			followerStore = initSharedStore(provider2)
+		})
+
+		await until(() => followerStore.initialized() && leaderStore.initialized())
+
+		followerStore.setStoreWithRetries(() => {
+			return [{ path: ['a', 1], value: DELETE }]
+		})
+
+		await until(() => followerStore.lockstepStore.a.length === 2)
+		expect(followerStore.lockstepStore.a).toEqual([1, 3])
+		expect(leaderStore.lockstepStore.a).toEqual([1, 3])
 		dispose()
 	})
 })

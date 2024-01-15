@@ -2,6 +2,7 @@ import { isEqual } from 'lodash'
 import {
 	For,
 	Match,
+	ParentProps,
 	Show,
 	Switch,
 	batch,
@@ -641,8 +642,8 @@ function Player(props: { player: G.PlayerWithColor; class: string }) {
 			<Show when={game.bottomPlayer.color === props.player.color} fallback={title}>
 				<HoverCard placement="bottom" open={game.placingDuck()}>
 					<HoverCardTrigger>{title}</HoverCardTrigger>
-					<HoverCardContent class="bg-destructive p-1 text-sm flex items-center justify-between">
-						<span class="text-balance">{`${usingTouch() ? 'Tap' : 'Click'} to place duck`}</span>
+					<HoverCardContent class="bg-destructive p-1 w-max text-sm flex space-x-2 items-center justify-between">
+						<span class="text-balance">{`${usingTouch() ? 'Tap' : 'Click'} square to place duck`}</span>
 						<Button
 							class="text-xs whitespace-nowrap bg-black"
 							variant="secondary"
@@ -699,32 +700,18 @@ function ActionsPanel(props: { class: string; placingDuck: boolean }) {
 		<span class={props.class}>
 			<Switch>
 				<Match when={!game.outcome}>
-					<Show when={game.drawIsOfferedBy === null}>
-						<Button title="Offer Draw" size="icon" variant="ghost" onclick={() => game.offerOrAcceptDraw()}>
-							<OfferDrawSvg />
-						</Button>
-						<Button title="Resign" size="icon" variant="ghost" onclick={() => game.resign()}>
-							<ResignSvg />
-						</Button>
-					</Show>
-					<Switch>
-						<Match when={game.drawIsOfferedBy === game.bottomPlayer.color}>
-							<Button size="sm" onClick={() => game.cancelDraw()}>
-								Cancel Draw
+					<DrawHoverCard>
+						<span>
+							<Button disabled={!!game.drawIsOfferedBy} title="Offer Draw" size="icon" variant="ghost"
+											onclick={() => game.offerOrAcceptDraw()}>
+								<OfferDrawSvg/>
 							</Button>
-						</Match>
-						<Match when={game.drawIsOfferedBy === game.topPlayer.color}>
-							<div class="flex space-x-1">
-								{/* TODO when we're at a small viewport, we should probably render this somewhere else */}
-								<Button size="sm" onClick={() => game.offerOrAcceptDraw()}>
-									Accept Draw
-								</Button>
-								<Button size="sm" onClick={() => game.declineDraw()}>
-									Decline Draw
-								</Button>
-							</div>
-						</Match>
-					</Switch>
+							<Button disabled={!!game.drawIsOfferedBy} title="Resign" size="icon" variant="ghost"
+											onclick={() => game.resign()}>
+								<ResignSvg/>
+							</Button>
+						</span>
+					</DrawHoverCard>
 				</Match>
 				<Match when={game.outcome}>
 					<Button size="sm" onclick={() => game.room.configureNewGame()}>
@@ -734,6 +721,32 @@ function ActionsPanel(props: { class: string; placingDuck: boolean }) {
 			</Switch>
 		</span>
 	)
+
+	function DrawHoverCard(props: ParentProps) {
+		return (
+			<HoverCard placement="bottom" open={!!game.drawIsOfferedBy}>
+				<HoverCardTrigger>{props.children}</HoverCardTrigger>
+				<HoverCardContent class="w-max p-[0.25rem]">
+					<Show when={game.drawIsOfferedBy === game.bottomPlayer.color}>
+						<Button size="sm" onClick={() => game.cancelDraw()}>
+							Cancel Draw
+						</Button>
+					</Show>
+					<Show when={game.drawIsOfferedBy === game.topPlayer.color}>
+						<div class="flex space-x-1">
+							{/* TODO when we're at a small viewport, we should probably render this somewhere else */}
+							<Button size="sm" onClick={() => game.offerOrAcceptDraw()}>
+								Accept Draw
+							</Button>
+							<Button size="sm" onClick={() => game.declineDraw()}>
+								Decline Draw
+							</Button>
+						</div>
+					</Show>
+				</HoverCardContent>
+			</HoverCard>
+		)
+	}
 }
 
 function MoveHistory() {

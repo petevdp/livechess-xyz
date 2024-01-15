@@ -1,12 +1,12 @@
 import { trackDeep, trackStore } from '@solid-primitives/deep'
 import { until } from '@solid-primitives/promise'
 import { isEqual } from 'lodash'
-import { concatMap } from 'rxjs'
+import { concatMap, interval } from 'rxjs'
 import { Owner, createEffect, createMemo, createRoot, createSignal, getOwner, onCleanup, runWithOwner, untrack } from 'solid-js'
 import { unwrap } from 'solid-js/store'
 
 import { createIdSync } from '~/utils/ids.ts'
-import { SharedStore, SharedStoreProvider, StoreMutation, initSharedStore, newNetwork } from '~/utils/sharedStore.ts'
+import { DELETE, PUSH, SharedStore, SharedStoreProvider, StoreMutation, initSharedStore, newNetwork } from '~/utils/sharedStore.ts'
 
 import { PLAYER_TIMEOUT, SERVER_HOST } from '../config.ts'
 import * as G from './game/game.ts'
@@ -149,7 +149,7 @@ export async function connectToRoom(
 			if (state.members.some((p) => p.id === playerId)) return []
 			const mutations: StoreMutation[] = [
 				{
-					path: ['members', '__push__'],
+					path: ['members', PUSH],
 					value: player satisfies RoomMember,
 				},
 			]
@@ -246,7 +246,7 @@ export class Room {
 							if (playerIndex === -1) return []
 							console.log('player disconnected', player.id, 'at', disconnectedAt, 'state', state)
 							return {
-								events: [{ type: 'player-disconnected', playerId: player.id }],
+								events: [],
 								mutations: [
 									{
 										path: ['members', playerIndex, 'disconnectedAt'],
@@ -259,6 +259,31 @@ export class Room {
 				}
 			})
 		})
+		interval(PLAYER_TIMEOUT / 4).subscribe(() => {
+			if (!this.sharedStore.isLeader()) return
+			for (let id of previouslyConnected) {
+				const member = this.members.find((p) => p.id === id)!
+				if (member.disconnectedAt !== undefined && Date.now() - member.disconnectedAt) {
+					this.sharedStore.setStoreWithRetries(() => {
+						const participant = this.participants.find((p) => p.id === id)!
+						if (!participant) return
+						if (this.state.status !== 'pregame') {
+							return { events: [{ type: 'player-disconnected', playerId: id }], mutations: [] }
+						}
+						return {
+							events: [{ type: 'player-disconnected', playerId: id }],
+							mutations: [
+								{
+									path: ['gameParticipants', participant.color],
+									value: DELETE,
+								},
+							],
+						}
+					})
+				}
+			}
+		})
+
 		//#endregion
 	}
 
@@ -320,7 +345,7 @@ export class Room {
 	}
 
 	get action$() {
-		return this.sharedStore.action$.pipe(
+		return this.sharedStore.event$.pipe(
 			concatMap((a) => {
 				let player = this.members.find((p) => p.id === a.playerId)!
 				if (!player) {
@@ -377,7 +402,7 @@ export class Room {
 			if (!this.rightPlayer || !this.rollbackState.activeGameId) return
 			return [
 				...this.getPieceSwapMutation(),
-				{path: ['status'], value: 'pregame'},
+				{ path: ['status'], value: 'pregame' },
 				{
 					path: ['activeGameId'],
 					value: undefined,
@@ -476,7 +501,7 @@ export class Room {
 					})
 					const gameId = createIdSync(6)
 					return {
-						events: [{type: 'new-game', playerId: this.player.id}],
+						events: [{ type: 'new-game', playerId: this.player.id }],
 						mutations: [
 							{
 								path: ['gameParticipants', this.leftPlayer!.color, 'isReadyForGame'],
@@ -486,9 +511,9 @@ export class Room {
 								path: ['gameParticipants', this.rightPlayer!.color, 'isReadyForGame'],
 								value: false,
 							},
-							{path: ['status'], value: 'playing'},
-							{path: ['activeGameId'], value: gameId},
-							{path: ['gameStates', gameId], value: gameState},
+							{ path: ['status'], value: 'playing' },
+							{ path: ['activeGameId'], value: gameId },
+							{ path: ['gameStates', gameId], value: gameState },
 						] satisfies StoreMutation[],
 					}
 				} else {

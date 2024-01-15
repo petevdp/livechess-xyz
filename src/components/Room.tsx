@@ -1,5 +1,5 @@
 import QRCode from 'qrcode'
-import { Match, ParentProps, Show, Switch, createResource, onCleanup } from 'solid-js'
+import { Match, ParentProps, Show, Switch, createResource, createSignal, onCleanup } from 'solid-js'
 import toast from 'solid-toast'
 
 import SwapSvg from '~/assets/icons/swap.svg'
@@ -106,13 +106,14 @@ function QrCodeDialog() {
 	const room = R.room()!
 	const [dataUrl] = createResource(() => QRCode.toDataURL(window.location.href, { scale: 12 }))
 	let btn: HTMLButtonElement | null = null
+	const [open, setOpen] = createSignal(false)
 	room.action$.subscribe((action) => {
-		if (action.type === 'player-connected') btn?.click()
+		if (action.type === 'player-connected' && open()) btn?.click()
 	})
 
 	return (
-		<Dialog>
-			<DialogTrigger ref={btn} as={Button}>
+		<Dialog onOpenChange={o => setOpen(o)}>
+			<DialogTrigger as={Button}>
 				Show QR Code
 			</DialogTrigger>
 			<DialogContent>
@@ -138,7 +139,7 @@ function GameConfigForm() {
 				choices={GL.VARIANTS.map((c) => ({ label: c, id: c }) satisfies Choice<GL.Variant>)}
 				selected={gameConfig().variant}
 				onChange={(v) => room!.setGameConfig({ variant: v })}
-				disabled={!room.isPlayerParticipating}
+				disabled={!room.isPlayerParticipating || room.leftPlayer?.isReadyForGame}
 			/>
 			<MultiChoiceButton
 				label="Time Control"
@@ -146,7 +147,7 @@ function GameConfigForm() {
 				choices={GL.TIME_CONTROLS.map((tc) => ({ label: tc, id: tc }) satisfies Choice<GL.TimeControl>)}
 				selected={gameConfig().timeControl}
 				onChange={(v) => room!.setGameConfig({ timeControl: v })}
-				disabled={!room.isPlayerParticipating}
+				disabled={!room.isPlayerParticipating || room.leftPlayer?.isReadyForGame}
 			/>
 			<MultiChoiceButton
 				label="Increment"
@@ -154,7 +155,7 @@ function GameConfigForm() {
 				choices={GL.INCREMENTS.map((i) => ({ label: `${i}s`, id: i }) satisfies Choice<GL.Increment>)}
 				selected={gameConfig().increment}
 				onChange={(v) => room!.setGameConfig({ increment: v })}
-				disabled={!room.isPlayerParticipating}
+				disabled={!room.isPlayerParticipating || room.leftPlayer?.isReadyForGame}
 			/>
 			<PlayerAwareness />
 		</div>
@@ -230,7 +231,7 @@ function PlayerAwareness() {
 			</Show>
 			<PlayerColorDisplay color={leftPlayerColor()} />
 			<SwapButton
-				disabled={!room.isPlayerParticipating || room.leftPlayer?.agreePieceSwap || room.rightPlayer?.agreePieceSwap}
+				disabled={!room.isPlayerParticipating || room.leftPlayer?.agreePieceSwap || room.rightPlayer?.agreePieceSwap || room.leftPlayer?.isReadyForGame}
 				alreadySwapping={room.leftPlayer?.agreePieceSwap || false}
 				initiatePieceSwap={() => room.initiateOrAgreePieceSwap()}
 			/>

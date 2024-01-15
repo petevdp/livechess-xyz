@@ -5,6 +5,7 @@ import { map } from 'rxjs/operators'
 import { Accessor, createEffect, createMemo, createSignal, from, getOwner, observable, onCleanup } from 'solid-js'
 import { unwrap } from 'solid-js/store'
 
+import { PUSH } from '~/utils/sharedStore.ts'
 import { storeToSignal, trackAndUnwrap } from '~/utils/solid.ts'
 
 import * as P from '../player.ts'
@@ -398,7 +399,7 @@ export class Game {
 						value: newBoardHistoryEntry,
 					},
 					{
-						path: [...this.gameStatePath, 'moveHistory', '__push__'],
+						path: [...this.gameStatePath, 'moveHistory', PUSH],
 						value: result.move,
 					},
 					{ path: [...this.gameStatePath, 'drawDeclinedBy'], value: null },

@@ -1,13 +1,12 @@
-import { createEffect, createSignal } from 'solid-js';
+import { createEffect, createSignal } from 'solid-js'
 
-
-
-import SettingsSvg from '~/assets/icons/settings.svg';
-import { Button } from '~/components/ui/button.tsx';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog.tsx';
-import { Input } from '~/components/ui/input.tsx';
-import { Label } from '~/components/ui/label.tsx';
-import { MultiChoiceButton } from '~/components/utils/MultiChoiceButton.tsx';
+import SettingsSvg from '~/assets/icons/settings.svg'
+import { Button } from '~/components/ui/button.tsx'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog.tsx'
+import { Input } from '~/components/ui/input.tsx'
+import { Label } from '~/components/ui/label.tsx'
+import { Switch } from '~/components/ui/switch.tsx'
+import { MultiChoiceButton } from '~/components/utils/MultiChoiceButton.tsx'
 import * as P from '~/systems/player.ts'
 
 
@@ -57,24 +56,22 @@ export function SettingsDialog() {
 						<DialogTitle>Settings</DialogTitle>
 					</DialogHeader>
 					<div class="grid gap-4 py-4">
-						<div class="grid grid-cols-4 items-center gap-4">
-							<Label for="nickname" class="text-right">
-								Display Name
+						<div class="flex w-full items-center justify-between space-x-2">
+							<Label for="nickname">
+								Nickname
 							</Label>
 							<Input
 								required={true}
 								pattern={'[a-zA-Z0-9 ]+'}
 								id="nickname"
 								value={nickname()}
-								class="col-span-3"
 								disabled={submitted()}
 								onchange={(e) => setNickname(e.target.value)}
 							/>
 						</div>
-						<div class="grid grid-cols-4 items-center gap-4">
+						<div class="flex w-full items-center justify-between space-x-2">
 							<Label class="text-right">Touch Offset Direction</Label>
 							<MultiChoiceButton
-								containerClass="grid-cols-4 grid grid-cols-4 items-center gap-4"
 								listClass="flex"
 								choices={[
 									{label: 'Left', id: 'left'},
@@ -82,6 +79,13 @@ export function SettingsDialog() {
 								]}
 								selected={P.settings.touchOffsetDirection}
 								onChange={(id) => P.setSettings({touchOffsetDirection: id})}
+							/>
+						</div>
+						<div class="flex w-full items-center justify-between space-x-2">
+							<Label class="text-right">Close QR Code Dialog on Join</Label>
+							<Switch
+								checked={P.settings.closeQrCodeDialogOnJoin}
+								onchange={() => P.setSettings({closeQrCodeDialogOnJoin: !P.settings.closeQrCodeDialogOnJoin})}
 							/>
 						</div>
 					</div>
