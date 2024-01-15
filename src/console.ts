@@ -9,6 +9,7 @@ import * as GL from './systems/game/gameLogic.ts';
 import * as Pieces from './systems/piece.tsx';
 import * as P from './systems/player.ts';
 import * as R from './systems/room.ts';
+import * as SS from './utils/sharedStore.ts';
 
 
 const appConsole = {
@@ -18,6 +19,7 @@ const appConsole = {
 	M,
 	GL,
 	Pieces: Pieces,
+	SS,
 }
 
 const utils = {

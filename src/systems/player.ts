@@ -1,10 +1,14 @@
-import { makePersisted } from '@solid-primitives/storage'
-import { createEffect, createSignal } from 'solid-js'
-import { createStore } from 'solid-js/store'
+import { makePersisted } from '@solid-primitives/storage';
+import { createEffect, createSignal } from 'solid-js';
+import { createStore } from 'solid-js/store';
 
-import { createId } from '~/utils/ids.ts'
 
-import * as R from './room.ts'
+
+import { createId } from '~/utils/ids.ts';
+
+
+
+import * as R from './room.ts';
 
 
 export type Player = {
@@ -15,6 +19,7 @@ export type Player = {
 export type PlayerSettings = {
 	name: string | null
 	muteAudio: boolean
+	touchOffsetDirection: 'left' | 'right'
 }
 
 const [_playerId, setPlayerId] = makePersisted(createSignal(null as string | null), {
@@ -25,6 +30,7 @@ export const [settings, setSettings] = makePersisted(
 	createStore<PlayerSettings>({
 		name: null,
 		muteAudio: false,
+		touchOffsetDirection: 'left',
 	}),
 	{ name: 'settings', storage: localStorage }
 )

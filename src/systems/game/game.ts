@@ -1,20 +1,24 @@
-import { until } from '@solid-primitives/promise'
-import { isEqual } from 'lodash'
-import { Observable, ReplaySubject, combineLatest, concatMap, distinctUntilChanged, from as rxFrom } from 'rxjs'
-import { map } from 'rxjs/operators'
-import { Accessor, createEffect, createMemo, createSignal, from, getOwner, observable, onCleanup } from 'solid-js'
-import { unwrap } from 'solid-js/store'
+import { until } from '@solid-primitives/promise';
+import { isEqual } from 'lodash';
+import { Observable, ReplaySubject, combineLatest, concatMap, distinctUntilChanged, from as rxFrom } from 'rxjs';
+import { map } from 'rxjs/operators';
+import { Accessor, createEffect, createMemo, createSignal, from, getOwner, observable, onCleanup } from 'solid-js';
+import { unwrap } from 'solid-js/store';
 
-import { storeToSignal, trackAndUnwrap } from '~/utils/solid.ts'
 
-import * as P from '../player.ts'
-import * as R from '../room.ts'
-import * as GL from './gameLogic.ts'
+
+import { storeToSignal, trackAndUnwrap } from '~/utils/solid.ts';
+
+
+
+import * as P from '../player.ts';
+import * as R from '../room.ts';
+import * as GL from './gameLogic.ts';
 
 
 export type PlayerWithColor = P.Player & { color: GL.Color }
 
-type BoardView = {
+export type BoardView = {
 	board: GL.Board
 	inCheck: boolean
 	lastMove: GL.Move | null

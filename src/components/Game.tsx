@@ -1,6 +1,6 @@
-import { until } from '@solid-primitives/promise';
+import { createWindowSize } from '@solid-primitives/resize-observer';
 import { isEqual } from 'lodash';
-import { For, Match, Show, Switch, batch, createEffect, createMemo, createReaction, createSignal, onCleanup, onMount } from 'solid-js';
+import { For, Match, Show, Switch, batch, createEffect, createMemo, createReaction, createSignal, onCleanup, onMount, untrack } from 'solid-js';
 import toast from 'solid-toast';
 
 
@@ -19,6 +19,7 @@ import * as Audio from '~/systems/audio.ts';
 import * as G from '~/systems/game/game.ts';
 import * as GL from '~/systems/game/gameLogic.ts';
 import * as Pieces from '~/systems/piece.tsx';
+import * as P from '~/systems/player.ts';
 import * as R from '~/systems/room.ts';
 
 
@@ -57,7 +58,7 @@ export function Game(props: { gameId: string }) {
 		}
 	}
 
-	const boardSize = (): number => {
+	const boardSizeCss = (): number => {
 		if (windowSize().width < windowSize().height && windowSize().width > 700) {
 			return windowSize().width - 80
 		} else if (windowSize().width < windowSize().height && windowSize().width <= 700) {
@@ -67,15 +68,39 @@ export function Game(props: { gameId: string }) {
 		}
 	}
 
-	const squareSize = () => boardSize() / 8
+	const boardSize = () => {
+		let adjusted = Math.floor(boardSizeCss() * window.devicePixelRatio)
+		console.log('ratio: ', window.devicePixelRatio, 'adjusted: ', adjusted)
+		return adjusted
+	}
+
 	createEffect(() => {
-		Pieces.setSquareSize(squareSize())
+		Pieces.setSquareSize(boardSizeCss() / 8)
 	})
+	const squareSize = Pieces.squareSize
 
 	//#endregion
 
 	//#region board rendering and mouse events
-	const canvas = (<canvas width={boardSize()} height={boardSize()} />) as HTMLCanvasElement
+
+	const canvasProps = () => {
+		return {
+			style: {width: `${boardSizeCss()}px`, height: `${boardSizeCss()}px`},
+			width: boardSize(),
+			height: boardSize()
+		}
+	}
+
+	function scaleAndReset(context: CanvasRenderingContext2D) {
+		context.clearRect(0, 0, boardSizeCss(), boardSizeCss())
+		context.setTransform(1, 0, 0, 1, 0, 0)
+		context.scale(devicePixelRatio, devicePixelRatio)
+	}
+
+	const boardCanvas = (<canvas {...canvasProps()} />) as HTMLCanvasElement
+	const highlightsCanvas = (<canvas {...canvasProps()} />) as HTMLCanvasElement
+	const piecesCanvas = (<canvas {...canvasProps()} />) as HTMLCanvasElement
+	const grabbedPieceCanvas = (<canvas {...canvasProps()} />) as HTMLCanvasElement
 
 	//#region board and interaction state
 	const [boardFlipped, setBoardFlipped] = createSignal(false)
@@ -95,166 +120,103 @@ export function Game(props: { gameId: string }) {
 		return game.getLegalMovesForSquare(_square)
 	})
 
-	// TODO Lots of optimization to be done here
 	//#region rendering
-	function render() {
-		const ctx = canvas.getContext('2d')!
-		//#region draw board
-		const shouldHideNonVisible = game.gameConfig.variant === 'fog-of-war' && !game.outcome
 
-		// fill in light squares as background
-		ctx.fillStyle = shouldHideNonVisible ? BOARD_COLORS.lightFog : BOARD_COLORS.light
-		ctx.fillRect(0, 0, canvas.width, canvas.height)
-
-		if (shouldHideNonVisible) {
-			ctx.fillStyle = BOARD_COLORS.light
-			for (let square of game.currentBoardView.visibleSquares) {
-				let { x, y } = GL.coordsFromNotation(square)
-				if ((x + y) % 2 === 0) continue
-				;[x, y] = boardCoordsToDisplayCoords({ x, y }, boardFlipped(), squareSize())
-				ctx.fillRect(x, y, squareSize(), squareSize())
-			}
+	//#region render board
+	createEffect(async () => {
+		if (!Pieces.initialized()) return
+		// handle all reactivity here so we know renderBoard itself will run fast
+		const args: RenderBoardArgs = {
+			squareSize: squareSize(),
+			boardFlipped: boardFlipped(),
+			shouldHideNonVisible: game.gameConfig.variant === 'fog-of-war' && !game.outcome,
+			visibleSquares: game.currentBoardView.visibleSquares,
+			context: boardCanvas.getContext('2d')!,
 		}
+		Pieces.pieceChangedEpoch()
+		scaleAndReset(args.context)
 
-		// fill in dark squares
-		for (let i = 0; i < 8; i++) {
-			for (let j = i % 2; j < 8; j += 2) {
-				let visible =
-					!shouldHideNonVisible ||
-					game.currentBoardView.visibleSquares.has(
-						GL.notationFromCoords({
-							x: j,
-							y: i,
-						})
-					)
+		untrack(() => {
+			args.context.clearRect(0, 0, boardSize(), boardSize())
+			renderBoard(args)
+		})
+	})
 
-				const [x, y] = boardCoordsToDisplayCoords({ x: j, y: i }, boardFlipped(), squareSize())
+	//#endregion
 
-				ctx.fillStyle = visible ? BOARD_COLORS.dark : BOARD_COLORS.darkFog
-				ctx.fillRect(x, y, squareSize(), squareSize())
-			}
+	function getBoardView() {
+		// consolidating signals for boardview
+		return {
+			board: game.currentBoardView.board,
+			lastMove: game.currentBoardView.lastMove,
+			visibleSquares: game.currentBoardView.visibleSquares,
+			inCheck: game.currentBoardView.inCheck,
 		}
-
-		//#endregion
-
-		//#region draw last move highlight
-		const highlightColor = '#aff682'
-		if (game.currentBoardView.lastMove && !shouldHideNonVisible) {
-			const highlightedSquares = [game.currentBoardView.lastMove.from, game.currentBoardView.lastMove.to]
-			for (let square of highlightedSquares) {
-				if (!square) continue
-				const [x, y] = squareNotationToDisplayCoords(square, boardFlipped(), squareSize())
-				ctx.fillStyle = highlightColor
-				ctx.fillRect(x, y, squareSize(), squareSize())
-			}
-		}
-		//#endregion
-
-		//#region draw legal move highlights
-		const dotColor = '#f2f2f2'
-		const captureHighlightColor = '#fc3c3c'
-		for (let move of legalMovesForActivePiece()) {
-			// draw dot in center of move end
-			const [x, y] = boardCoordsToDisplayCoords(move.to, boardFlipped(), squareSize())
-			const piece = game.currentBoardView.board.pieces[GL.notationFromCoords(move.to)]
-			// we need to check if the piece is our color we visually move pieces in the current board view while we're placing a duck and promoting
-			if (piece && piece.type !== 'duck' && piece.color !== game.bottomPlayer.color) {
-				ctx.fillStyle = captureHighlightColor
-				ctx.fillRect(x, y, squareSize(), squareSize())
-			} else {
-				ctx.fillStyle = dotColor
-				ctx.beginPath()
-				ctx.arc(x + squareSize() / 2, y + squareSize() / 2, squareSize() / 10, 0, 2 * Math.PI)
-				ctx.fill()
-				ctx.closePath()
-			}
-		}
-		//#endregion
-
-		//#region draw pieces
-		for (let [square, piece] of Object.entries(game.currentBoardView.board.pieces)) {
-			if (
-				(grabbedMousePos() && activePieceSquare() === square) ||
-				(shouldHideNonVisible ? !game.currentBoardView.visibleSquares.has(square) : false)
-			) {
-				continue
-			}
-
-			let x = square[0].charCodeAt(0) - 'a'.charCodeAt(0)
-			let y = 8 - parseInt(square[1])
-			if (boardFlipped()) {
-				x = 7 - x
-				y = 7 - y
-			}
-			ctx.drawImage(Pieces.getCachedPiece(piece), x * squareSize(), y * squareSize(), squareSize(), squareSize())
-		}
-		//#endregion
-
-
-		//#region draw hovered move highlight
-		const moveHighlightColor = '#ffffff'
-		if (
-			hoveredSquare() &&
-			activePieceSquare() &&
-			legalMovesForActivePiece().some((m) => isEqual(m.to, GL.coordsFromNotation(hoveredSquare()!)))
-		) {
-			// draw empty square in hovered square
-			const [x, y] = squareNotationToDisplayCoords(hoveredSquare()!, boardFlipped(), squareSize())
-			ctx.beginPath()
-			ctx.strokeStyle = moveHighlightColor
-			const lineWidth = squareSize() / 16
-			ctx.lineWidth = lineWidth
-			ctx.rect(x + lineWidth / 2, y + lineWidth / 2, squareSize() - lineWidth, squareSize() - lineWidth)
-			ctx.stroke()
-			ctx.closePath()
-		}
-		//#endregion
-
-		//#region draw clicked move highlight
-		const clickedHighlightColor = '#809dfd'
-
-		if (activePieceSquare()) {
-			const [x, y] = squareNotationToDisplayCoords(activePieceSquare()!, boardFlipped(), squareSize())
-			ctx.beginPath()
-			ctx.strokeStyle = clickedHighlightColor
-			const lineWidth = squareSize() / 16
-			ctx.lineWidth = lineWidth
-			ctx.rect(x + lineWidth / 2, y + lineWidth / 2, squareSize() - lineWidth, squareSize() - lineWidth)
-			ctx.stroke()
-			ctx.closePath()
-		}
-
-		//#endregion
-
-		//#region draw grabbed piece
-		if (grabbedMousePos()) {
-			let x = grabbedMousePos()!.x
-			let y = grabbedMousePos()!.y
-			ctx.drawImage(
-				Pieces.getCachedPiece(game.currentBoardView.board.pieces[activePieceSquare()!]!),
-				x - squareSize() / 2,
-				y - squareSize() / 2,
-				squareSize(),
-				squareSize()
-			)
-		}
-
-		if (game.placingDuck() && currentMousePos()) {
-			const { x, y } = currentMousePos()!
-			ctx.drawImage(Pieces.getCachedPiece(GL.DUCK), x - squareSize() / 2, y - squareSize() / 2, squareSize(), squareSize())
-		}
-
-		//#endregion
-
-		// run this function every frame
-		requestAnimationFrame(render)
 	}
 
-	// preload piece images
-	onMount(async () => {
-		await until(() => Pieces.initialized())
-		requestAnimationFrame(render)
+	//#region render highlights
+	createEffect(() => {
+		const args: RenderHighlightsArgs = {
+			squareSize: squareSize(),
+			boardFlipped: boardFlipped(),
+			shouldHideNonVisible: game.gameConfig.variant === 'fog-of-war' && !game.outcome,
+			boardView: getBoardView(),
+			legalMovesForActivePiece: legalMovesForActivePiece(),
+			playerColor: game.bottomPlayer.color,
+			activePieceSquare: activePieceSquare(),
+			hoveredSquare: hoveredSquare(),
+			context: highlightsCanvas.getContext('2d')!,
+		}
+		scaleAndReset(args.context)
+		Pieces.pieceChangedEpoch()
+
+		untrack(() => {
+			args.context.clearRect(0, 0, boardSize(), boardSize())
+			renderHighlights(args)
+		})
 	})
+	//#endregion
+
+	//#region render pieces
+	createEffect(() => {
+		const args: RenderPiecesArgs = {
+			squareSize: squareSize(),
+			boardFlipped: boardFlipped(),
+			shouldHideNonVisible: game.gameConfig.variant === 'fog-of-war' && !game.outcome,
+			boardView: getBoardView(),
+			grabbedMousePos: grabbedMousePos(),
+			activePieceSquare: activePieceSquare(),
+			context: piecesCanvas.getContext('2d')!,
+		}
+		Pieces.pieceChangedEpoch()
+		scaleAndReset(args.context)
+		untrack(() => {
+			renderPieces(args)
+		})
+	})
+	//#endregion
+
+	//#region render grabbed piece
+	createEffect(() => {
+		const args: RenderGrabbedPieceArgs = {
+			squareSize: squareSize(),
+			boardView: getBoardView(),
+			grabbedMousePos: grabbedMousePos(),
+			activePieceSquare: activePieceSquare(),
+			currentMousePos: usingTouch() ? null : currentMousePos(),
+			context: grabbedPieceCanvas.getContext('2d')!,
+			placingDuck: game.placingDuck(),
+			touchScreen: usingTouch(),
+		}
+		Pieces.pieceChangedEpoch()
+
+		scaleAndReset(args.context)
+		untrack(() => {
+			args.context.clearRect(0, 0, boardSize(), boardSize())
+			renderGrabbedPiece(args)
+		})
+	})
+	//#endregion
 
 	createEffect(() => {
 		if (game.bottomPlayer.color === 'black') {
@@ -267,19 +229,19 @@ export function Game(props: { gameId: string }) {
 	// contextually set cursor style
 	createEffect(() => {
 		if (!game.isClientPlayerParticipating || !game.viewingLiveBoard) {
-			if (canvas.style.cursor !== 'default') canvas.style.cursor = 'default'
+			if (grabbedPieceCanvas.style.cursor !== 'default') grabbedPieceCanvas.style.cursor = 'default'
 			return
 		}
 		if (grabbingPieceSquare()) {
-			canvas.style.cursor = 'grabbing'
+			grabbedPieceCanvas.style.cursor = 'grabbing'
 		} else if (
 			hoveredSquare() &&
 			game.currentBoardView.board.pieces[hoveredSquare()!] &&
 			game.currentBoardView.board.pieces[hoveredSquare()!]!.color === game.bottomPlayer.color
 		) {
-			canvas.style.cursor = 'grab'
+			grabbedPieceCanvas.style.cursor = 'grab'
 		} else {
-			canvas.style.cursor = 'default'
+			grabbedPieceCanvas.style.cursor = 'default'
 		}
 	})
 
@@ -302,8 +264,7 @@ export function Game(props: { gameId: string }) {
 			setGrabbedMousePos(null)
 			const res = await resPromise
 			if (res.type !== 'invalid') {
-				console.log('playing sound effect for local move', res.move)
-				Audio.playSoundEffectForMove(res.move, true)
+				Audio.playSoundEffectForMove(res.move, true, true)
 			}
 		})
 	}
@@ -320,25 +281,49 @@ export function Game(props: { gameId: string }) {
 			return String.fromCharCode('a'.charCodeAt(0) + col) + (8 - row)
 		}
 
-		canvas.addEventListener('mousemove', (e) => {
-			if (!game.isClientPlayerParticipating) return
+		const touchOffsetX = P.settings.touchOffsetDirection === 'left' ? -20 : 20
+		const touchOffsetY = -Math.abs(touchOffsetX)
+		grabbedPieceCanvas.addEventListener('mousemove', (e) => moveListener(e.clientX, e.clientY))
+		grabbedPieceCanvas.addEventListener('touchmove', (e) => {
+			for (let touch of e.targetTouches) {
+				const touchingPiece = moveListener(touch.clientX + touchOffsetX, touch.clientY + touchOffsetY)
+				if (touchingPiece) {
+					e.preventDefault()
+				}
+				break
+			}
+		})
+
+		function moveListener(clientX: number, clientY: number) {
+			let modified = false
+			if (!game.isClientPlayerParticipating) return modified
 			batch(() => {
-				const rect = canvas.getBoundingClientRect()
-				const x = e.clientX - rect.left
-				const y = e.clientY - rect.top
+				const rect = grabbedPieceCanvas.getBoundingClientRect()
+				const x = clientX - rect.left
+				const y = clientY - rect.top
 				// check if mouse is over a square with a piece
 				setHoveredSquare(getSquareFromDisplayCoords(x, y))
 				if (grabbingPieceSquare() || grabbingPieceSquare()) {
 					setGrabbedMousePos({ x, y })
+					modified = true
 				}
 				setCurrentMousePos({ x, y })
 			})
+			return modified
+		}
+
+		grabbedPieceCanvas.addEventListener('mousedown', (e) => mouseDownListener(e.clientX, e.clientY))
+		grabbedPieceCanvas.addEventListener('touchstart', (e) => {
+			for (let touch of e.targetTouches) {
+				mouseDownListener(touch.clientX, touch.clientY)
+				break
+			}
 		})
 
-		canvas.addEventListener('mousedown', (e) => {
+		function mouseDownListener(clientX: number, clientY: number) {
 			if (!game.isClientPlayerParticipating || !game.viewingLiveBoard) return
-			const rect = canvas.getBoundingClientRect()
-			const [x, y] = [e.clientX - rect.left, e.clientY - rect.top]
+			const rect = grabbedPieceCanvas.getBoundingClientRect()
+			const [x, y] = [clientX - rect.left, clientY - rect.top]
 			const mouseSquare = getSquareFromDisplayCoords(x, y)
 			if (game.placingDuck()) {
 				game.currentDuckPlacement = mouseSquare
@@ -348,7 +333,7 @@ export function Game(props: { gameId: string }) {
 
 			if (activePieceSquare()) {
 				if (isLegalForActive(mouseSquare)) {
-					makeMove({from: activePieceSquare()!, to: mouseSquare})
+					makeMove({ from: activePieceSquare()!, to: mouseSquare })
 					return
 				}
 
@@ -372,12 +357,20 @@ export function Game(props: { gameId: string }) {
 			} else {
 				setActivePieceSquare(null)
 			}
+		}
+
+		grabbedPieceCanvas.addEventListener('mouseup', (e) => mouseUpListener(e.clientX, e.clientY))
+		grabbedPieceCanvas.addEventListener('touchend', (e) => {
+			for (let touch of e.changedTouches) {
+				mouseUpListener(touch.clientX + touchOffsetX, touch.clientY + -touchOffsetY)
+				break
+			}
 		})
 
-		canvas.addEventListener('mouseup', (e) => {
+		function mouseUpListener(clientX: number, clientY: number) {
 			if (!game.isClientPlayerParticipating || !game.viewingLiveBoard) return
-			const rect = canvas.getBoundingClientRect()
-			const square = getSquareFromDisplayCoords(e.clientX - rect.left, e.clientY - rect.top)
+			const rect = grabbedPieceCanvas.getBoundingClientRect()
+			const square = getSquareFromDisplayCoords(clientX - rect.left, clientY - rect.top)
 			const _activePiece = activePieceSquare()
 
 			if (_activePiece && _activePiece !== square) {
@@ -388,7 +381,7 @@ export function Game(props: { gameId: string }) {
 			}
 			setGrabbingPieceSquare(false)
 			setGrabbedMousePos(null)
-		})
+		}
 	})
 
 	//#endregion
@@ -400,8 +393,8 @@ export function Game(props: { gameId: string }) {
 	const promoteModalPosition = () => {
 		if (!game.choosingPromotion) return undefined
 		let [x, y] = squareNotationToDisplayCoords(game.currentMove!.to, boardFlipped(), squareSize())
-		y += canvas.getBoundingClientRect().top + window.scrollY
-		x += canvas.getBoundingClientRect().left + window.scrollX
+		y += boardCanvas.getBoundingClientRect().top + window.scrollY
+		x += boardCanvas.getBoundingClientRect().left + window.scrollX
 		if (boardSize() / 2 < x) {
 			x -= 180
 		}
@@ -416,7 +409,7 @@ export function Game(props: { gameId: string }) {
 				<For each={GL.PROMOTION_PIECES}>
 					{(pp) => (
 						<Button
-							classList={{'bg-neutral-200': game.bottomPlayer.color !== 'white'}}
+							classList={{ 'bg-neutral-200': game.bottomPlayer.color !== 'white' }}
 							variant={game.bottomPlayer.color === 'white' ? 'ghost' : 'default'}
 							size="icon"
 							onclick={() => {
@@ -424,7 +417,7 @@ export function Game(props: { gameId: string }) {
 								makeMove()
 							}}
 						>
-							<img alt={pp} src={Pieces.getPieceSrc({type: pp, color: game.bottomPlayer.color})}/>
+							<img alt={pp} src={Pieces.getPieceSrc({ type: pp, color: game.bottomPlayer.color })} />
 						</Button>
 					)}
 				</For>
@@ -506,9 +499,10 @@ export function Game(props: { gameId: string }) {
 	//#region sound effects for incoming moves
 	createEffect(() => {
 		if (game.viewingLiveBoard && game.isClientPlayerParticipating && game.board.toMove !== game.bottomPlayer.color) return
-		console.log('playing sound effect for incoming move', game.currentBoardView.lastMove)
 		if (game.currentBoardView.lastMove) {
-			Audio.playSoundEffectForMove(game.currentBoardView.lastMove, false)
+			const isVisible =
+				game.gameConfig.variant !== 'fog-of-war' || game.currentBoardView.visibleSquares.has(game.currentBoardView.lastMove.to)
+			Audio.playSoundEffectForMove(game.currentBoardView.lastMove, false, isVisible)
 		}
 	})
 	//#endregion
@@ -572,7 +566,12 @@ export function Game(props: { gameId: string }) {
 					pieces={game.capturedPieces(game.topPlayer.color)}
 					capturedBy={'bottom-player'}
 				/>
-				<div class={styles.board}>{canvas}</div>
+				<div class={styles.board}>
+					<span>{boardCanvas}</span>
+					<span class="absolute -translate-y-full">{highlightsCanvas}</span>
+					<span class="absolute -translate-y-full">{piecesCanvas}</span>
+					<span class="absolute -translate-y-full">{grabbedPieceCanvas}</span>
+				</div>
 				<Show when={game.isClientPlayerParticipating} fallback={<div class={styles.bottomLeftActions} />}>
 					<ActionsPanel class={styles.bottomLeftActions} placingDuck={game.placingDuck()} />
 				</Show>
@@ -793,8 +792,10 @@ function CapturedPieces(props: {
 	return (
 		<div class={`${styles.capturedPieces} ${styles[props.capturedBy]}`}>
 			<For each={props.pieces}>
-				{(piece) => <img class={styles.capturedPiece} src={Pieces.getPieceSrc(piece)} alt={piece.type}
-												 title={`${piece.color} ${piece.type}`}/>}
+				{(piece) => (
+					<img class={styles.capturedPiece} src={Pieces.getPieceSrc(piece)} alt={piece.type}
+							 title={`${piece.color} ${piece.type}`}/>
+				)}
 			</For>
 		</div>
 	)
@@ -843,6 +844,190 @@ function MoveNav() {
 			</Button>
 		</div>
 	)
+}
+
+type RenderBoardArgs = {
+	context: CanvasRenderingContext2D
+	shouldHideNonVisible: boolean
+	squareSize: number
+	boardFlipped: boolean
+	visibleSquares: Set<string>
+}
+
+function renderBoard(args: RenderBoardArgs) {
+	const ctx = args.context
+	// fill in light squares as background
+	ctx.fillStyle = args.shouldHideNonVisible ? BOARD_COLORS.lightFog : BOARD_COLORS.light
+	ctx.fillRect(0, 0, args.squareSize * 8, args.squareSize * 8)
+
+	if (args.shouldHideNonVisible) {
+		ctx.fillStyle = BOARD_COLORS.light
+		for (let square of args.visibleSquares) {
+			let { x, y } = GL.coordsFromNotation(square)
+			if ((x + y) % 2 === 0) continue
+			;[x, y] = boardCoordsToDisplayCoords({ x, y }, args.boardFlipped, args.squareSize)
+			ctx.fillRect(x, y, args.squareSize, args.squareSize)
+		}
+	}
+
+	// fill in dark squares
+	for (let i = 0; i < 8; i++) {
+		for (let j = i % 2; j < 8; j += 2) {
+			let visible =
+				!args.shouldHideNonVisible ||
+				args.visibleSquares.has(
+					GL.notationFromCoords({
+						x: j,
+						y: i,
+					})
+				)
+
+			const [x, y] = boardCoordsToDisplayCoords({ x: j, y: i }, args.boardFlipped, args.squareSize)
+
+			ctx.fillStyle = visible ? BOARD_COLORS.dark : BOARD_COLORS.darkFog
+			ctx.fillRect(x, y, args.squareSize, args.squareSize)
+		}
+	}
+}
+
+type RenderPiecesArgs = {
+	context: CanvasRenderingContext2D
+	shouldHideNonVisible: boolean
+	squareSize: number
+	boardFlipped: boolean
+	boardView: G.BoardView
+	grabbedMousePos: { x: number; y: number } | null
+	activePieceSquare: string | null
+}
+
+function renderPieces(args: RenderPiecesArgs) {
+	const ctx = args.context
+	for (let [square, piece] of Object.entries(args.boardView.board.pieces)) {
+		if (
+			(args.grabbedMousePos && args.activePieceSquare === square) ||
+			(args.shouldHideNonVisible ? !args.boardView.visibleSquares.has(square) : false)
+		) {
+			continue
+		}
+
+		let x = square[0].charCodeAt(0) - 'a'.charCodeAt(0)
+		let y = 8 - parseInt(square[1])
+		if (args.boardFlipped) {
+			x = 7 - x
+			y = 7 - y
+		}
+		ctx.drawImage(Pieces.getCachedPiece(piece), x * args.squareSize, y * args.squareSize, args.squareSize, args.squareSize)
+	}
+}
+
+type RenderHighlightsArgs = {
+	context: CanvasRenderingContext2D
+	boardView: G.BoardView
+	shouldHideNonVisible: boolean
+	squareSize: number
+	boardFlipped: boolean
+	legalMovesForActivePiece: GL.CandidateMove[]
+	playerColor: GL.Color
+	hoveredSquare: string | null
+	activePieceSquare: string | null
+}
+
+function renderHighlights(args: RenderHighlightsArgs) {
+	const ctx = args.context
+	//#region draw last move highlight
+	const highlightColor = '#aff682'
+	if (args.boardView.lastMove && !args.shouldHideNonVisible) {
+		const highlightedSquares = [args.boardView.lastMove.from, args.boardView.lastMove.to]
+		for (let square of highlightedSquares) {
+			if (!square) continue
+			const [x, y] = squareNotationToDisplayCoords(square, args.boardFlipped, args.squareSize)
+			ctx.fillStyle = highlightColor
+			ctx.fillRect(x, y, args.squareSize, args.squareSize)
+		}
+	}
+	//#endregion
+
+	//#region draw legal move highlights
+	const dotColor = '#f2f2f2'
+	const captureHighlightColor = '#fc3c3c'
+	for (let move of args.legalMovesForActivePiece) {
+		// draw dot in center of move end
+		const [x, y] = boardCoordsToDisplayCoords(move.to, args.boardFlipped, args.squareSize)
+		const piece = args.boardView.board.pieces[GL.notationFromCoords(move.to)]
+		// we need to check if the piece is our color we visually move pieces in the current board view while we're placing a duck and promoting
+		if (piece && piece.type !== 'duck' && piece.color !== args.playerColor) {
+			ctx.fillStyle = captureHighlightColor
+			ctx.fillRect(x, y, args.squareSize, args.squareSize)
+		} else {
+			ctx.fillStyle = dotColor
+			ctx.beginPath()
+			ctx.arc(x + args.squareSize / 2, y + args.squareSize / 2, args.squareSize / 10, 0, 2 * Math.PI)
+			ctx.fill()
+			ctx.closePath()
+		}
+	}
+
+	//#endregion
+
+	function renderHighlightRect(color: string, square: string) {
+		const [x, y] = squareNotationToDisplayCoords(square, args.boardFlipped, args.squareSize)
+		ctx.beginPath()
+		ctx.strokeStyle = color
+		const lineWidth = args.squareSize / 16
+		ctx.lineWidth = lineWidth
+		ctx.rect(x + lineWidth / 2, y + lineWidth / 2, args.squareSize - lineWidth, args.squareSize - lineWidth)
+		ctx.stroke()
+		ctx.closePath()
+	}
+
+	//#region draw hovered move highlight
+	const moveHighlightColor = '#ffffff'
+	if (
+		args.hoveredSquare &&
+		args.activePieceSquare &&
+		args.legalMovesForActivePiece.some((m) => isEqual(m.to, GL.coordsFromNotation(args.hoveredSquare!)))
+	) {
+		// draw empty square in hovered square
+		renderHighlightRect(moveHighlightColor, args.hoveredSquare!)
+	}
+	//#endregion
+
+	//#region draw clicked move highlight
+	const clickedHighlightColor = '#809dfd'
+
+	if (args.activePieceSquare) {
+		renderHighlightRect(clickedHighlightColor, args.activePieceSquare)
+	}
+
+	//#endregion
+}
+
+type RenderGrabbedPieceArgs = {
+	context: CanvasRenderingContext2D
+	grabbedMousePos: { x: number; y: number } | null
+	boardView: G.BoardView
+	squareSize: number
+	activePieceSquare: string | null
+	placingDuck: boolean
+	currentMousePos: { x: number; y: number } | null
+	touchScreen: boolean
+}
+
+function renderGrabbedPiece(args: RenderGrabbedPieceArgs) {
+	const ctx = args.context
+
+	const size = args.touchScreen ? args.squareSize * 1.5 : args.squareSize
+	if (args.grabbedMousePos) {
+		let x = args.grabbedMousePos!.x
+		let y = args.grabbedMousePos!.y
+		ctx.drawImage(Pieces.getCachedPiece(args.boardView.board.pieces[args.activePieceSquare!]!), x - size / 2, y - size / 2, size, size)
+	}
+
+	if (args.placingDuck && args.currentMousePos) {
+		const { x, y } = args.currentMousePos!
+		const size = args.touchScreen ? args.squareSize * 1.5 : args.squareSize
+		ctx.drawImage(Pieces.getCachedPiece(GL.DUCK), x - size / 2, y - size / 2, size, size)
+	}
 }
 
 function showGameOutcome(outcome: GL.GameOutcome): [string, string] {
@@ -899,7 +1084,6 @@ function checkPastWarnThreshold(timeControl: GL.TimeControl, clock: number) {
 	}
 }
 
-
 //#region check if user is using touch screen
 // we're doing it this way so we can differentiate users that are using their touch screen
 const [usingTouch, setUsingTouch] = createSignal(false)
@@ -912,3 +1096,33 @@ function touchListener() {
 document.addEventListener('touchstart', touchListener)
 
 //#endregion
+
+// adapted from: https://www.npmjs.com/package/intrinsic-scale
+function getObjectFitSize(
+	contains: boolean /* true = contain, false = cover */,
+	containerWidth: number,
+	containerHeight: number,
+	width: number,
+	height: number
+) {
+	let doRatio = width / height
+	let cRatio = containerWidth / containerHeight
+	let targetWidth = 0
+	let targetHeight = 0
+	let test = contains ? doRatio > cRatio : doRatio < cRatio
+
+	if (test) {
+		targetWidth = containerWidth
+		targetHeight = targetWidth / doRatio
+	} else {
+		targetHeight = containerHeight
+		targetWidth = targetHeight * doRatio
+	}
+
+	return {
+		width: targetWidth,
+		height: targetHeight,
+		x: (containerWidth - targetWidth) / 2,
+		y: (containerHeight - targetHeight) / 2,
+	}
+}

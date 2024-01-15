@@ -5,6 +5,8 @@ import toast from 'solid-toast';
 
 
 import SwapSvg from '~/assets/icons/swap.svg';
+import BlackPawnSvg from '~/assets/pieces/bpawn.svg';
+import WhitePawnSvg from '~/assets/pieces/wpawn.svg';
 import { ScreenFittingContent } from '~/components/AppContainer.tsx';
 import { Button } from '~/components/ui/button.tsx';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '~/components/ui/card.tsx';
@@ -14,9 +16,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip
 import { Choice, MultiChoiceButton } from '~/components/utils/MultiChoiceButton.tsx';
 import * as GL from '~/systems/game/gameLogic.ts';
 import * as Pieces from '~/systems/piece.tsx'
-import * as PC from '~/systems/piece.tsx'
-import * as P from '~/systems/player.ts';
-import * as R from '~/systems/room.ts';
+import * as P from '~/systems/player.ts'
+import * as R from '~/systems/room.ts'
 
 
 
@@ -235,7 +236,7 @@ function PlayerAwareness() {
 function PlayerColorDisplay(props: { color: GL.Color }) {
 	return (
 		<div class="ml-auto mr-auto flex w-[5rem] items-center justify-center">
-			<img alt={`${props.color} king`} src={PC.getPieceSrc({type: 'king', color: props.color})}/>
+			{props.color === 'white' ? <WhitePawnSvg class="w-full h-full"/> : <BlackPawnSvg class="w-full h-full"/>}
 		</div>
 	)
 }

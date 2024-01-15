@@ -1,5 +1,5 @@
-import { partition } from 'lodash'
-import hash from 'object-hash'
+import { partition } from 'lodash';
+import hash from 'object-hash';
 
 
 //#region primitives
@@ -523,7 +523,12 @@ function pawnMoves(start: Coords, board: Board, history: MoveHistory) {
 		let lastMoveX = coordsFromNotation(lastMove.to).x
 		let lastMoveY = coordsFromNotation(lastMove.to).y
 		const isHorizontallyAdjacent = Math.abs(start.x - lastMoveX) === 1 && start.y === lastMoveY
-		if (movedTwoRanks && isHorizontallyAdjacent) {
+		const destinationSquarePiece = board.pieces[notationFromCoords({ x: lastMoveX, y: lastMoveY + direction })]
+		if (
+			movedTwoRanks &&
+			isHorizontallyAdjacent &&
+			(!destinationSquarePiece || destinationSquarePiece.color === oppositeColor(board.toMove))
+		) {
 			addMove({
 				to: { x: lastMoveX, y: lastMoveY + direction },
 				enPassant: notationFromCoords({ x: lastMoveX, y: lastMoveY }),

@@ -1,19 +1,15 @@
-import { createEffect, createSignal } from 'solid-js'
+import { createEffect, createSignal } from 'solid-js';
 
-import SettingsSvg from '~/assets/icons/settings.svg'
-import { Button } from '~/components/ui/button.tsx'
-import {
-	Dialog,
-	DialogContent,
-	DialogDescription,
-	DialogFooter,
-	DialogHeader,
-	DialogTitle,
-	DialogTrigger,
-} from '~/components/ui/dialog.tsx'
-import { Input } from '~/components/ui/input.tsx'
-import { Label } from '~/components/ui/label.tsx'
+
+
+import SettingsSvg from '~/assets/icons/settings.svg';
+import { Button } from '~/components/ui/button.tsx';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog.tsx';
+import { Input } from '~/components/ui/input.tsx';
+import { Label } from '~/components/ui/label.tsx';
+import { MultiChoiceButton } from '~/components/utils/MultiChoiceButton.tsx';
 import * as P from '~/systems/player.ts'
+
 
 export function SettingsDialog() {
 	const [nickname, setNickname] = createSignal('')
@@ -59,7 +55,6 @@ export function SettingsDialog() {
 				<form onSubmit={onSubmit}>
 					<DialogHeader>
 						<DialogTitle>Settings</DialogTitle>
-						<DialogDescription>Make changes to your profile here. Click save when you're done.</DialogDescription>
 					</DialogHeader>
 					<div class="grid gap-4 py-4">
 						<div class="grid grid-cols-4 items-center gap-4">
@@ -74,6 +69,19 @@ export function SettingsDialog() {
 								class="col-span-3"
 								disabled={submitted()}
 								onchange={(e) => setNickname(e.target.value)}
+							/>
+						</div>
+						<div class="grid grid-cols-4 items-center gap-4">
+							<Label class="text-right">Touch Offset Direction</Label>
+							<MultiChoiceButton
+								containerClass="grid-cols-4 grid grid-cols-4 items-center gap-4"
+								listClass="flex"
+								choices={[
+									{label: 'Left', id: 'left'},
+									{label: 'Right', id: 'right'},
+								]}
+								selected={P.settings.touchOffsetDirection}
+								onChange={(id) => P.setSettings({touchOffsetDirection: id})}
 							/>
 						</div>
 					</div>
