@@ -1,32 +1,40 @@
-import { createWindowSize } from '@solid-primitives/resize-observer';
-import { isEqual } from 'lodash';
-import { For, Match, Show, Switch, batch, createEffect, createMemo, createReaction, createSignal, onCleanup, onMount, untrack } from 'solid-js';
-import toast from 'solid-toast';
+import { isEqual } from 'lodash'
+import {
+	For,
+	Match,
+	Show,
+	Switch,
+	batch,
+	createEffect,
+	createMemo,
+	createReaction,
+	createSignal,
+	onCleanup,
+	onMount,
+	untrack,
+} from 'solid-js'
+import toast from 'solid-toast'
 
+import FirstSvg from '~/assets/icons/first.svg'
+import FlipBoardSvg from '~/assets/icons/flip-board.svg'
+import LastSvg from '~/assets/icons/last.svg'
+import NextSvg from '~/assets/icons/next.svg'
+import OfferDrawSvg from '~/assets/icons/offer-draw.svg'
+import PrevSvg from '~/assets/icons/prev.svg'
+import ResignSvg from '~/assets/icons/resign.svg'
+import { Dialog, DialogContent, DialogDescription, DialogHeader } from '~/components/ui/dialog.tsx'
+import { BOARD_COLORS } from '~/config.ts'
+import { cn } from '~/lib/utils.ts'
+import * as Audio from '~/systems/audio.ts'
+import * as G from '~/systems/game/game.ts'
+import * as GL from '~/systems/game/gameLogic.ts'
+import * as Pieces from '~/systems/piece.tsx'
+import * as P from '~/systems/player.ts'
+import * as R from '~/systems/room.ts'
 
-
-import FirstSvg from '~/assets/icons/first.svg';
-import FlipBoardSvg from '~/assets/icons/flip-board.svg';
-import LastSvg from '~/assets/icons/last.svg';
-import NextSvg from '~/assets/icons/next.svg';
-import OfferDrawSvg from '~/assets/icons/offer-draw.svg';
-import PrevSvg from '~/assets/icons/prev.svg';
-import ResignSvg from '~/assets/icons/resign.svg';
-import { Dialog, DialogContent, DialogDescription, DialogHeader } from '~/components/ui/dialog.tsx';
-import { BOARD_COLORS } from '~/config.ts';
-import { cn } from '~/lib/utils.ts';
-import * as Audio from '~/systems/audio.ts';
-import * as G from '~/systems/game/game.ts';
-import * as GL from '~/systems/game/gameLogic.ts';
-import * as Pieces from '~/systems/piece.tsx';
-import * as P from '~/systems/player.ts';
-import * as R from '~/systems/room.ts';
-
-
-
-import styles from './Game.module.css';
-import { Button } from './ui/button.tsx';
-import * as Modal from './utils/Modal.tsx';
+import styles from './Game.module.css'
+import { Button } from './ui/button.tsx'
+import * as Modal from './utils/Modal.tsx'
 
 
 //TODO provide some method to view the current game's config
@@ -70,7 +78,7 @@ export function Game(props: { gameId: string }) {
 
 	const boardSize = () => {
 		let adjusted = Math.floor(boardSizeCss() * window.devicePixelRatio)
-		console.log('ratio: ', window.devicePixelRatio, 'adjusted: ', adjusted)
+		adjusted -= adjusted % 8
 		return adjusted
 	}
 

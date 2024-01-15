@@ -1,25 +1,21 @@
-import { until } from '@solid-primitives/promise';
-import { createEffect, createSignal } from 'solid-js';
+import { until } from '@solid-primitives/promise'
+import { createEffect, createSignal } from 'solid-js'
 
+import bbishop from '~/assets/pieces/bBishop.svg'
+import bking from '~/assets/pieces/bKing.svg'
+import bknight from '~/assets/pieces/bKnight.svg'
+import bpawn from '~/assets/pieces/bPawn.svg'
+import bqueen from '~/assets/pieces/bQueen.svg'
+import brook from '~/assets/pieces/bRook.svg'
+import duck from '~/assets/pieces/duck.svg'
+import wbishop from '~/assets/pieces/wBishop.svg'
+import wking from '~/assets/pieces/wKing.svg'
+import wknight from '~/assets/pieces/wKnight.svg'
+import wpawn from '~/assets/pieces/wPawn.svg'
+import wqueen from '~/assets/pieces/wQueen.svg'
+import wrook from '~/assets/pieces/wRook.svg'
 
-
-import bbishop from '~/assets/pieces/bbishop.svg';
-import bking from '~/assets/pieces/bking.svg';
-import bknight from '~/assets/pieces/bknight.svg';
-import bpawn from '~/assets/pieces/bpawn.svg';
-import bqueen from '~/assets/pieces/bqueen.svg';
-import brook from '~/assets/pieces/brook.svg';
-import duck from '~/assets/pieces/duck.svg';
-import wbishop from '~/assets/pieces/wbishop.svg';
-import wking from '~/assets/pieces/wking.svg';
-import wknight from '~/assets/pieces/wknight.svg';
-import wpawn from '~/assets/pieces/wpawn.svg';
-import wqueen from '~/assets/pieces/wqueen.svg';
-import wrook from '~/assets/pieces/wrook.svg';
-
-
-
-import * as GL from './game/gameLogic.ts';
+import * as GL from './game/gameLogic.ts'
 
 
 const pieces = {
@@ -57,7 +53,6 @@ function loadPiece(key: keyof typeof pieces, squareSize: number) {
 
 export function initPieceSystem() {
 	createEffect(() => {
-		console.log('updating piece size: ', squareSize())
 		let promises: Promise<void>[] = []
 		for (const key in pieces) {
 			promises.push(
