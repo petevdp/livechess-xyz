@@ -103,11 +103,18 @@ function Lobby() {
 }
 
 function QrCodeDialog() {
+	const room = R.room()!
 	const [dataUrl] = createResource(() => QRCode.toDataURL(window.location.href, { scale: 12 }))
+	let btn: HTMLButtonElement | null = null
+	room.action$.subscribe((action) => {
+		if (action.type === 'player-connected') btn?.click()
+	})
 
 	return (
 		<Dialog>
-			<DialogTrigger as={Button}>Show QR Code</DialogTrigger>
+			<DialogTrigger ref={btn} as={Button}>
+				Show QR Code
+			</DialogTrigger>
 			<DialogContent>
 				<DialogHeader>
 					<DialogTitle>Scan to Join LiveChess Room</DialogTitle>

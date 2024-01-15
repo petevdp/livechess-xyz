@@ -1,19 +1,15 @@
-import { until } from '@solid-primitives/promise';
-import { isEqual } from 'lodash';
-import { Observable, ReplaySubject, combineLatest, concatMap, distinctUntilChanged, from as rxFrom } from 'rxjs';
-import { map } from 'rxjs/operators';
-import { Accessor, createEffect, createMemo, createSignal, from, getOwner, observable, onCleanup } from 'solid-js';
-import { unwrap } from 'solid-js/store';
+import { until } from '@solid-primitives/promise'
+import { isEqual } from 'lodash'
+import { Observable, ReplaySubject, combineLatest, concatMap, distinctUntilChanged, from as rxFrom } from 'rxjs'
+import { map } from 'rxjs/operators'
+import { Accessor, createEffect, createMemo, createSignal, from, getOwner, observable, onCleanup } from 'solid-js'
+import { unwrap } from 'solid-js/store'
 
+import { storeToSignal, trackAndUnwrap } from '~/utils/solid.ts'
 
-
-import { storeToSignal, trackAndUnwrap } from '~/utils/solid.ts';
-
-
-
-import * as P from '../player.ts';
-import * as R from '../room.ts';
-import * as GL from './gameLogic.ts';
+import * as P from '../player.ts'
+import * as R from '../room.ts'
+import * as GL from './gameLogic.ts'
 
 
 export type PlayerWithColor = P.Player & { color: GL.Color }
@@ -105,7 +101,7 @@ export class Game {
 		const inCheck = createMemo(() => GL.inCheck(viewedBoard()))
 		const visibleSquares = createMemo(() => {
 			if (this.gameConfig.variant === 'fog-of-war') {
-				return GL.getVisibleSquares(this.stateSignal(), this.topPlayer.color)
+				return GL.getVisibleSquares(this.stateSignal(), this.bottomPlayer.color)
 			}
 			// just avoid computing this when not needed
 			return new Set()
@@ -494,7 +490,7 @@ export class Game {
 			return [
 				{
 					path: [...this.gameStatePath, 'resigned'],
-					value: this.bottomPlayer.id,
+					value: this.bottomPlayer.color,
 				},
 			]
 		})

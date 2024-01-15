@@ -23,6 +23,7 @@ import OfferDrawSvg from '~/assets/icons/offer-draw.svg'
 import PrevSvg from '~/assets/icons/prev.svg'
 import ResignSvg from '~/assets/icons/resign.svg'
 import { Dialog, DialogContent, DialogDescription, DialogHeader } from '~/components/ui/dialog.tsx'
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '~/components/ui/hover-card.tsx'
 import { BOARD_COLORS } from '~/config.ts'
 import { cn } from '~/lib/utils.ts'
 import * as Audio from '~/systems/audio.ts'
@@ -93,9 +94,9 @@ export function Game(props: { gameId: string }) {
 
 	const canvasProps = () => {
 		return {
-			style: {width: `${boardSizeCss()}px`, height: `${boardSizeCss()}px`},
+			style: { width: `${boardSizeCss()}px`, height: `${boardSizeCss()}px` },
 			width: boardSize(),
-			height: boardSize()
+			height: boardSize(),
 		}
 	}
 
@@ -629,9 +630,35 @@ function GameOutcomeDialog() {
 }
 
 function Player(props: { player: G.PlayerWithColor; class: string }) {
+	const game = G.game()!
+	const title = (
+		<>
+			{props.player.name} <i class="text-neutral-400">({props.player.color})</i>
+		</>
+	)
 	return (
 		<div class={props.class + ' m-auto whitespace-nowrap'}>
-			{props.player.name} <i class="text-neutral-400">({props.player.color})</i>
+			<Show when={game.bottomPlayer.color === props.player.color} fallback={title}>
+				<HoverCard placement="bottom" open={game.placingDuck()}>
+					<HoverCardTrigger>{title}</HoverCardTrigger>
+					<HoverCardContent class="bg-destructive p-1 text-sm flex items-center justify-between">
+						<span class="text-balance">{`${usingTouch() ? 'Tap' : 'Click'} to place duck`}</span>
+						<Button
+							class="text-xs whitespace-nowrap bg-black"
+							variant="secondary"
+							size="sm"
+							onclick={() => {
+								game.setPlacingDuck(false)
+								game.currentDuckPlacement = null
+								game.setBoardWithCurrentMove(null)
+								game.currentMove = null
+							}}
+						>
+							Change Move
+						</Button>
+					</HoverCardContent>
+				</HoverCard>
+			</Show>
 		</div>
 	)
 }
@@ -671,24 +698,6 @@ function ActionsPanel(props: { class: string; placingDuck: boolean }) {
 	return (
 		<span class={props.class}>
 			<Switch>
-				<Match when={props.placingDuck}>
-					<div class="flex items-center justify-between space-x-2 rounded bg-destructive p-0.5 text-white">
-						<span
-							class=" break-words pl-[.75rem] text-xs">{`${usingTouch() ? 'Tap' : 'Click'} square to place duck`}</span>
-						<Button
-							variant="link"
-							size="sm"
-							onclick={() => {
-								game.setPlacingDuck(false)
-								game.currentDuckPlacement = null
-								game.setBoardWithCurrentMove(null)
-								game.currentMove = null
-							}}
-						>
-							Cancel
-						</Button>
-					</div>
-				</Match>
 				<Match when={!game.outcome}>
 					<Show when={game.drawIsOfferedBy === null}>
 						<Button title="Offer Draw" size="icon" variant="ghost" onclick={() => game.offerOrAcceptDraw()}>
