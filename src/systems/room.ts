@@ -96,7 +96,7 @@ export async function connectToRoom(
 			members: [],
 			status: 'pregame',
 			gameParticipants: {} as RoomState['gameParticipants'],
-			gameConfig: GL.defaultGameConfig,
+			gameConfig: GL.getDefaultGameConfig(),
 			gameStates: {},
 		}
 	}

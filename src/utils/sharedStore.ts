@@ -18,13 +18,13 @@ export type StoreMutation = {
 type NewSharedStoreOrderedTransaction<Event extends any> = {
 	index: number
 	mutations: StoreMutation[]
-	actions: Event[]
+	events: Event[]
 }
 
 type NewSharedStoreUnorderedTransaction<Event extends any> = {
 	index: null
 	mutations: StoreMutation[]
-	actions: Event[]
+	events: Event[]
 }
 
 type NewSharedStoreTransaction<Event extends any> = NewSharedStoreOrderedTransaction<Event> | NewSharedStoreUnorderedTransaction<Event>
@@ -95,7 +95,7 @@ export type SharedStoreMessage =
 
 //#endregion
 
-export type SharedStore<T extends any, CCS extends ClientControlledState = ClientControlledState, Event extends any = any> = ReturnType<
+export type SharedStore<T extends object, CCS extends ClientControlledState = ClientControlledState, Event extends any = any> = ReturnType<
 	typeof initSharedStore<T, CCS, Event>
 >
 
@@ -111,7 +111,7 @@ export const PUSH = '__PUSH__'
  * @param startingState only used if we're the first client in the room
  * @param startingClientState only used if we're the first client in the room
  */
-export function initSharedStore<S extends any, CCS extends ClientControlledState = ClientControlledState, Event extends any = any>(
+export function initSharedStore<S extends object, CCS extends ClientControlledState = ClientControlledState, Event extends any = any>(
 	provider: SharedStoreProvider<Event>,
 	startingClientState = {} as CCS,
 	startingState: S = {} as S
@@ -151,8 +151,8 @@ export function initSharedStore<S extends any, CCS extends ClientControlledState
 	/**
 	 * Dispatches action with no attached mutations
 	 */
-	function dispatchEvents(actions: Event[]) {
-		return setStoreWithRetries(() => ({ events: actions, mutations: [] }))
+	function dispatchEvents(events: Event[]) {
+		return setStoreWithRetries(() => ({events: events, mutations: []}))
 	}
 
 	//#endregion
@@ -164,7 +164,7 @@ export function initSharedStore<S extends any, CCS extends ClientControlledState
 	const setStore = async (
 		mutation: StoreMutation,
 		transactionBuilder?: SharedStoreTransactionBuilder<Event>,
-		actions: Event[] = [],
+		events: Event[] = [],
 		rollback = true
 	) => {
 		await until(initialized)
@@ -182,11 +182,11 @@ export function initSharedStore<S extends any, CCS extends ClientControlledState
 				return
 			}
 
-			transaction = transactionBuilder.build(appliedTransactions.length, actions)
+			transaction = transactionBuilder.build(appliedTransactions.length, events)
 		} else {
 			transaction = {
 				index: appliedTransactions.length,
-				actions,
+				events: events,
 				mutations: [mutation],
 			}
 		}
@@ -196,7 +196,7 @@ export function initSharedStore<S extends any, CCS extends ClientControlledState
 		} else {
 			_transaction = {
 				mutations: transaction.mutations,
-				actions,
+				events: events,
 				index: null,
 			}
 		}
@@ -231,7 +231,7 @@ export function initSharedStore<S extends any, CCS extends ClientControlledState
 			}
 			appliedTransactions.push(orderedTransaction)
 			provider.broadcastAsCommitted(orderedTransaction)
-			for (let action of orderedTransaction.actions) {
+			for (let action of orderedTransaction.events) {
 				event$.next(action)
 			}
 			return true
@@ -267,13 +267,13 @@ export function initSharedStore<S extends any, CCS extends ClientControlledState
 			if ('mutations' in res) {
 				transaction = {
 					index: appliedTransactions.length,
-					actions: res.events,
+					events: res.events,
 					mutations: res.mutations,
 				}
 			} else {
 				transaction = {
 					mutations: res,
-					actions: [],
+					events: [],
 					index: appliedTransactions.length,
 				}
 			}
@@ -328,7 +328,7 @@ export function initSharedStore<S extends any, CCS extends ClientControlledState
 				appliedTransactions.push(receivedAtom)
 				// this is now canonical state, and we can broadcast it
 				provider.broadcastAsCommitted(receivedAtom, receivedAtom.mutationId)
-				for (let action of receivedAtom.actions) {
+				for (let action of receivedAtom.events) {
 					event$.next(action)
 				}
 			} else {
@@ -352,7 +352,7 @@ export function initSharedStore<S extends any, CCS extends ClientControlledState
 				// everything is fine, we don't need to store the previous value anymore
 				previousValues.delete(receivedAtom.index)
 				console.debug(provider.clientId, 'dispatching events')
-				for (let action of receivedAtom.actions) {
+				for (let action of receivedAtom.events) {
 					event$.next(action)
 				}
 				return
@@ -382,7 +382,7 @@ export function initSharedStore<S extends any, CCS extends ClientControlledState
 			applyMutationsToStore(receivedAtom.mutations, setRollbackStore, rollbackStore)
 		}
 		console.debug(provider.clientId, 'dispatching events')
-		for (let action of receivedAtom.actions) {
+		for (let action of receivedAtom.events) {
 			event$.next(action)
 		}
 		//#endregion
@@ -433,7 +433,7 @@ export function initSharedStore<S extends any, CCS extends ClientControlledState
 			provider.broadcastAsCommitted({
 				index: appliedTransactions.length,
 				mutations: [],
-				actions: [],
+				events: [],
 			})
 		})
 	)
@@ -804,10 +804,10 @@ export class SharedStoreTransactionBuilder<Event extends any> {
 		this.mutations.push(mutation)
 	}
 
-	build(index: number, actions: Event[]): NewSharedStoreOrderedTransaction<Event> {
+	build(index: number, events: Event[]): NewSharedStoreOrderedTransaction<Event> {
 		return {
 			index,
-			actions,
+			events,
 			mutations: this.mutations,
 		}
 	}

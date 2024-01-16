@@ -54,6 +54,16 @@ export type CandidateMoveOptions = {
 	promotion?: PromotionPiece
 }
 
+export type MoveDisambiguation =
+	| {
+			type: 'promotion'
+			piece: PromotionPiece
+	  }
+	| {
+			type: 'castle'
+			castling: boolean
+	  }
+
 export function getStartPos(variant: Variant) {
 	if (variant === 'fischer-random') {
 		// https://en.wikipedia.org/wiki/Fischer_random_chess_numbering_scheme
@@ -194,11 +204,11 @@ export type ParsedGameConfig = {
 	timeControl: number
 	increment: number
 }
-export const defaultGameConfig: GameConfig = {
+export const getDefaultGameConfig = (): GameConfig => ({
 	variant: 'regular',
 	timeControl: '5m',
 	increment: '1',
-}
+})
 
 export type GameState = {
 	players: { [id: string]: Color }
@@ -364,7 +374,7 @@ export function validateAndPlayMove(
 	to: string,
 	game: GameState,
 	allowSelfChecks: boolean,
-	promotionPiece?: PromotionPiece,
+	moveDisambiguation?: MoveDisambiguation,
 	duck?: string
 ) {
 	if (!getBoard(game).pieces[from] || getBoard(game).pieces[from].color !== getBoard(game).toMove) {
@@ -376,10 +386,18 @@ export function validateAndPlayMove(
 	}
 
 	const candidateMoves = getLegalMoves([coordsFromNotation(from)], game, allowSelfChecks)
-	const candidate = candidateMoves.find((m) => notationFromCoords(m.to) === to && (promotionPiece ? m.promotion === promotionPiece : true))
-	if (!candidate) {
-		return
-	}
+	// handle cases where multiple moves match a from/to square pairing
+	const candidates = candidateMoves.filter((m) => {
+		if (notationFromCoords(m.to) !== to) return false
+		if (moveDisambiguation?.type === 'promotion') {
+			return m.promotion === moveDisambiguation.piece
+		}
+		if (moveDisambiguation?.type === 'castle') {
+			return !!m.castle === moveDisambiguation.castling
+		}
+		return true
+	})
+	const candidate = candidates[0]
 	const isCapture = !!getBoard(game).pieces[to]
 	//@ts-ignore
 	let [newBoard, promoted] = applyMoveToBoard(candidate, getBoard(game))
@@ -395,7 +413,6 @@ export function validateAndPlayMove(
 	return {
 		board: newBoard,
 		move,
-		promoted,
 	}
 }
 
@@ -424,19 +441,18 @@ function applyMoveToBoard(move: CandidateMove | Move, board: Board) {
 
 	if (_move.castle) {
 		// move rook
+		const { rookLeft, rookRight } = findBackRankRooks(board, board.toMove)
 		const rank = board.toMove === 'white' ? 0 : 7
-		const direction = _move.to.x === 6 ? -1 : 1
-		let startingRookFile = -1
-		for (let i = _move.to.x - direction; i >= 0 && i < 8; i -= direction) {
-			const square = notationFromCoords({ x: i, y: rank })
-			if (newBoard.pieces[square]?.type === 'rook') {
-				startingRookFile = i
-				break
+		const direction = _move.to.x === 6 ? 1 : -1
+		const currentRookSquare = notationFromCoords(direction === 1 ? rookRight! : rookLeft!)
+		if (notationFromCoords(_move.to) !== currentRookSquare) {
+			if (direction === 1) {
+				delete newBoard.pieces[currentRookSquare]
+			} else {
+				delete newBoard.pieces[currentRookSquare]
 			}
 		}
-		const endingRookFile = _move.to.x === 2 ? 3 : 5
-
-		delete newBoard.pieces[notationFromCoords({ x: startingRookFile, y: rank })]
+		const endingRookFile = direction === 1 ? 5 : 3
 		newBoard.pieces[notationFromCoords({ x: endingRookFile, y: rank })] = {
 			color: board.toMove,
 			type: 'rook',
@@ -674,6 +690,30 @@ function rookMoves(start: Coords, board: Board) {
 	return moves.map((m) => newCandidateMove({ from: start, to: m, piece: 'rook' }))
 }
 
+function findBackRankRooks(board: Board, color: Color) {
+	let rookLeft = null as Coords | null
+	let rookRight = null as Coords | null
+	const rank = color === 'white' ? 0 : 7
+	let passedKing = false
+	for (let i = 0; i < 8; i++) {
+		const square = notationFromCoords({ x: i, y: rank })
+		const piece = board.pieces[square]
+		if (piece?.type === 'king' && piece.color === color) {
+			passedKing = true
+			continue
+		}
+		if (piece?.type === 'rook' && piece.color === color) {
+			if (!passedKing) rookLeft = { x: i, y: rank } satisfies Coords
+			else {
+				rookRight = { x: i, y: rank } satisfies Coords
+				break
+			}
+		}
+	}
+	return { rookLeft, rookRight }
+}
+
+// why do we need starting board?
 function kingMoves(start: Coords, board: Board, startingBoard: Board, moveHistory: MoveHistory, checkCastling: boolean) {
 	let moves: Coords[] = []
 	const directions = [
@@ -700,23 +740,11 @@ function kingMoves(start: Coords, board: Board, startingBoard: Board, moveHistor
 		})
 	)
 
+	if (!checkCastling) return candidateMoves
 	const rank = board.toMove === 'white' ? 0 : 7
-	const rookDirections = [] as Coords[]
-
 	//#region find starting rooksj
-	let rookLeft = null as Coords | null
-	let rookRight = null as Coords | null
-	for (let i = 0; i < 8; i++) {
-		const square = notationFromCoords({ x: i, y: 0 })
-		const piece = startingBoard.pieces[square]
-		if (piece?.type === 'rook' && piece.color === 'white') {
-			if (!rookLeft) rookLeft = { x: i, y: 0 } satisfies Coords
-			else {
-				rookRight = { x: i, y: 0 } satisfies Coords
-				break
-			}
-		}
-	}
+	// we need to look up the rook positions here because of fischer random chess, where the rooks can be in different places
+	const {rookLeft, rookRight} = findBackRankRooks(startingBoard, board.toMove)
 	if (!rookLeft || !rookRight) {
 		console.warn({ startingBoard })
 		throw new Error('invalid starting board')
@@ -724,52 +752,66 @@ function kingMoves(start: Coords, board: Board, startingBoard: Board, moveHistor
 	//#endregion
 
 	const eligibleRooks = [] as Coords[]
-	if (pieceHasMoved(start, moveHistory)) {
+	if (squarePartOfMove(start, moveHistory)) {
 		return candidateMoves
 	}
-
-	if (!pieceHasMoved(rookLeft, moveHistory)) {
+	const sideDirections: ('a' | 'h')[] = []
+	if (!squarePartOfMove(rookLeft, moveHistory)) {
 		eligibleRooks.push(rookLeft)
-		rookDirections.push({ x: -1, y: 0 } satisfies Coords)
+		sideDirections.push('a')
 	}
-	if (!pieceHasMoved(rookRight, moveHistory)) {
+	if (!squarePartOfMove(rookRight, moveHistory)) {
 		eligibleRooks.push(rookRight)
-		rookDirections.push({ x: 1, y: 0 } satisfies Coords)
+		sideDirections.push('h')
 	}
 
-	if (!checkCastling) return candidateMoves
 
 	for (let i = 0; i < eligibleRooks.length; i++) {
-		const direction = rookDirections[i]
+		// most of the compexity in here is due to having to account for fischer random rules
+		const direction = sideDirections[i]
 		const rook = eligibleRooks[i]
 
 		const newKingSquare = {
-			x: direction.x === 1 ? 6 : 2,
+			x: direction === 'h' ? 6 : 2,
 			y: rank,
 		} satisfies Coords
 		let valid = true
-		for (let i = start.x + direction.x; i != newKingSquare.x + direction.x; i += direction.x) {
-			const square = { x: i, y: rank } satisfies Coords
-			// we can move through the rook
-			if ((board.pieces[notationFromCoords(square)] && !isEqual(square, rook)) || squareAttacked(square, board, startingBoard)) {
-				valid = false
-				break
+		let kingMovementDirection = newKingSquare.x - start.x
+		// normalize to t or -1
+		if (kingMovementDirection !== 0) {
+			kingMovementDirection = kingMovementDirection / Math.abs(kingMovementDirection)
+			for (let i = start.x; i != newKingSquare.x + kingMovementDirection; i += kingMovementDirection) {
+				const square = { x: i, y: rank } satisfies Coords
+				// we can move through the rook
+				if (
+					(board.pieces[notationFromCoords(square)] && !isEqual(square, rook) && !isEqual(square, start)) ||
+					squareAttacked(square, board, startingBoard)
+				) {
+					valid = false
+					break
+				}
 			}
+		}
+		if (!valid) {
+			continue
 		}
 
 		const newRookSquare = {
-			x: direction.x === 1 ? 3 : 2,
+			x: direction === 'h' ? 5 : 3,
 			y: rank,
 		}
-		for (let i = rook.x - direction.x; i != newRookSquare.x - direction.x; i -= direction.x) {
-			const square = { x: i, y: rank } satisfies Coords
-			console.log({ square: notationFromCoords(square) })
-			if (board.pieces[notationFromCoords(square)] && !isEqual(square, start)) {
-				valid = false
-				break
+		let rookMovementDirection = newRookSquare.x - rook.x
+		if (rookMovementDirection !== 0) {
+			// normalize to t or -1
+			rookMovementDirection = rookMovementDirection / Math.abs(rookMovementDirection)
+			for (let i = rook.x; i != newRookSquare.x + rookMovementDirection; i += rookMovementDirection) {
+				const square: Coords = { x: i, y: rank }
+				if (board.pieces[notationFromCoords(square)] && !isEqual(square, start) && !isEqual(square, rook)) {
+					valid = false
+					break
+				}
 			}
 		}
-		console.log({ valid, newRookSquare: notationFromCoords(newRookSquare) })
 
 		if (!valid) {
 			continue
@@ -791,9 +833,9 @@ function kingMoves(start: Coords, board: Board, startingBoard: Board, moveHistor
 //#endregion
 
 //#region move helpers
-function pieceHasMoved(coords: Coords, history: MoveHistory) {
+function squarePartOfMove(coords: Coords, history: MoveHistory) {
 	const notation = notationFromCoords(coords)
-	return history.some((move) => move.from === notation)
+	return history.some((move) => move.from === notation || move.to === notation)
 }
 
 type TerminateReason = 'piece' | 'bounds' | 'capture' | 'max'

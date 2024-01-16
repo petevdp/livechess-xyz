@@ -274,7 +274,7 @@ export function Game(props: { gameId: string }) {
 			setGrabbingPieceSquare(false)
 			setGrabbedMousePos(null)
 			const res = await resPromise
-			if (res.type !== 'invalid') {
+			if (res.type === 'accepted') {
 				Audio.playSoundEffectForMove(res.move, true, true)
 			}
 		})
@@ -402,8 +402,8 @@ export function Game(props: { gameId: string }) {
 	//#region promotion
 
 	const promoteModalPosition = () => {
-		if (!game.choosingPromotion) return undefined
-		let [x, y] = squareNotationToDisplayCoords(game.currentMove!.to, boardFlipped(), squareSize())
+		if (!game.currentMoveAmbiguity) return undefined
+		let [x, y] = squareNotationToDisplayCoords(game.currentMove()!.to, boardFlipped(), squareSize())
 		y += boardCanvas.getBoundingClientRect().top + window.scrollY
 		x += boardCanvas.getBoundingClientRect().left + window.scrollX
 		if (boardSize() / 2 < x) {
@@ -416,26 +416,56 @@ export function Game(props: { gameId: string }) {
 	Modal.addModal({
 		title: null,
 		render: () => (
-			<div class="flex w-[180px] flex-row justify-between space-x-1">
-				<For each={GL.PROMOTION_PIECES}>
-					{(pp) => (
-						<Button
-							classList={{ 'bg-neutral-200': game.bottomPlayer.color !== 'white' }}
-							variant={game.bottomPlayer.color === 'white' ? 'ghost' : 'default'}
-							size="icon"
-							onclick={() => {
-								game.currentPromotion = pp
-								makeMove()
-							}}
-						>
-							<img alt={pp} src={Pieces.getPieceSrc({ type: pp, color: game.bottomPlayer.color })} />
-						</Button>
-					)}
-				</For>
-			</div>
+			<Switch>
+				<Match when={game.currentMoveAmbiguity?.type === 'promotion'}>
+					<div class="flex w-[180px] flex-row justify-between space-x-1">
+						<For each={GL.PROMOTION_PIECES}>
+							{(pp) => (
+								<Button
+									classList={{ 'bg-neutral-200': game.bottomPlayer.color !== 'white' }}
+									variant={game.bottomPlayer.color === 'white' ? 'ghost' : 'default'}
+									size="icon"
+									onclick={() => {
+										if (game.currentMoveAmbiguity?.type !== 'promotion') return
+										game.setCurrentDisambiguation({ type: 'promotion', piece: pp as GL.PromotionPiece })
+										makeMove()
+									}}
+								>
+									<img alt={pp} src={Pieces.getPieceSrc({ type: pp, color: game.bottomPlayer.color })} />
+								</Button>
+							)}
+						</For>
+					</div>
+				</Match>
+				<Match when={game.currentMoveAmbiguity?.type === 'castle'}>
+					<div class="flex flex-col items-center">
+						<h3>Castle?</h3>
+						<div class="flex space-between space-x-1">
+							<Button
+								onclick={() => {
+									if (game.currentMoveAmbiguity?.type !== 'castle') return
+									game.setCurrentDisambiguation({ type: 'castle', castling: true })
+									game.tryMakeMove()
+								}}
+							>
+								Yes
+							</Button>
+							<Button
+								onclick={() => {
+									if (game.currentMoveAmbiguity?.type !== 'castle') return
+									game.setCurrentDisambiguation({ type: 'castle', castling: false })
+									game.tryMakeMove()
+								}}
+							>
+								No
+							</Button>
+						</div>
+					</div>
+				</Match>
+			</Switch>
 		),
 		position: promoteModalPosition,
-		visible: () => game.choosingPromotion(),
+		visible: () => !!game.currentMoveAmbiguity,
 		closeOnEscape: false,
 		closeOnOutsideClick: false,
 		setVisible: () => {},
@@ -661,7 +691,7 @@ function Player(props: { player: G.PlayerWithColor; class: string }) {
 								game.setPlacingDuck(false)
 								game.currentDuckPlacement = null
 								game.setBoardWithCurrentMove(null)
-								game.currentMove = null
+								game.setCurrentMove(null)
 							}}
 						>
 							Change Move
@@ -1140,33 +1170,3 @@ function touchListener() {
 document.addEventListener('touchstart', touchListener)
 
 //#endregion
-
-// adapted from: https://www.npmjs.com/package/intrinsic-scale
-function getObjectFitSize(
-	contains: boolean /* true = contain, false = cover */,
-	containerWidth: number,
-	containerHeight: number,
-	width: number,
-	height: number
-) {
-	let doRatio = width / height
-	let cRatio = containerWidth / containerHeight
-	let targetWidth = 0
-	let targetHeight = 0
-	let test = contains ? doRatio > cRatio : doRatio < cRatio
-
-	if (test) {
-		targetWidth = containerWidth
-		targetHeight = targetWidth / doRatio
-	} else {
-		targetHeight = containerHeight
-		targetWidth = targetHeight * doRatio
-	}
-
-	return {
-		width: targetWidth,
-		height: targetHeight,
-		x: (containerWidth - targetWidth) / 2,
-		y: (containerHeight - targetHeight) / 2,
-	}
-}
