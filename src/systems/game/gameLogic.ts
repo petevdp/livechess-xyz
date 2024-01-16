@@ -1,5 +1,5 @@
-import { partition } from 'lodash';
-import hash from 'object-hash';
+import { isEqual, partition } from 'lodash'
+import hash from 'object-hash'
 
 
 //#region primitives
@@ -53,8 +53,67 @@ export type CandidateMoveOptions = {
 	enPassant?: string
 	promotion?: PromotionPiece
 }
-export const startPos = () =>
-	({
+
+export function getStartPos(variant: Variant) {
+	if (variant === 'fischer-random') {
+		// https://en.wikipedia.org/wiki/Fischer_random_chess_numbering_scheme
+		let lineup: Piece[]
+		//#region generate random lineup
+		{
+			function remainingIndexes(lineup: (Piece | null)[]) {
+				return lineup.map((piece, index) => (piece === null ? [index] : [])).flat()
+			}
+
+			let fischerNumber = Math.floor(Math.random() * 960)
+			const _lineup: (Piece | null)[] = Array(8).fill(null)
+
+			// bishop
+			const lightBishopFile = fischerNumber % 4
+			_lineup[lightBishopFile * 2 + 1] = 'bishop'
+			fischerNumber = Math.floor(fischerNumber / 4)
+			const darkBishopFile = fischerNumber % 4
+			_lineup[darkBishopFile * 2] = 'bishop'
+			fischerNumber = Math.floor(fischerNumber / 4)
+
+			const queenNum = fischerNumber % 6
+			let freeIndexes = remainingIndexes(_lineup)
+			_lineup[freeIndexes[queenNum]] = 'queen'
+			fischerNumber = Math.floor(fischerNumber / 6)
+			// can do programatically but bleh
+			const knightTable = [
+				[0, 1],
+				[0, 2],
+				[0, 3],
+				[0, 4],
+				[1, 2],
+				[1, 3],
+				[1, 4],
+				[2, 3],
+				[2, 4],
+				[3, 4],
+			]
+
+			freeIndexes = remainingIndexes(_lineup)
+			_lineup[freeIndexes[knightTable[fischerNumber][0]]] = 'knight'
+			_lineup[freeIndexes[knightTable[fischerNumber][1]]] = 'knight'
+			freeIndexes = remainingIndexes(_lineup)
+			_lineup[freeIndexes[0]] = 'rook'
+			_lineup[freeIndexes[1]] = 'king'
+			_lineup[freeIndexes[2]] = 'rook'
+			lineup = _lineup as Piece[]
+		}
+		//#endregion
+
+		const pieces: Board['pieces'] = {}
+		lineup.forEach((piece, index) => {
+			pieces[notationFromCoords({ x: index, y: 1 })] = { color: 'white', type: 'pawn' }
+			pieces[notationFromCoords({ x: index, y: 0 })] = { color: 'white', type: piece }
+			pieces[notationFromCoords({ x: index, y: 6 })] = { color: 'black', type: 'pawn' }
+			pieces[notationFromCoords({ x: index, y: 7 })] = { color: 'black', type: piece }
+		})
+		return { pieces, toMove: 'white' } as Board
+	}
+	return {
 		pieces: {
 			a1: { color: 'white', type: 'rook' },
 			b1: { color: 'white', type: 'knight' },
@@ -91,7 +150,9 @@ export const startPos = () =>
 			h7: { color: 'black', type: 'pawn' },
 		},
 		toMove: 'white',
-	}) as Board
+	} as Board
+}
+
 //#endregion
 
 //#region QUACK
@@ -162,10 +223,11 @@ export type Coords = {
 //#endregion
 
 export function newGameState(_config: GameConfig, players: GameState['players']): GameState {
+	const board = getStartPos(_config.variant)
 	const startingBoard: BoardHistoryEntry = {
-		board: startPos(),
+		board,
 		index: 0,
-		hash: hashBoard(startPos()),
+		hash: hashBoard(board),
 	}
 
 	return {
@@ -229,7 +291,7 @@ function moveToCandidateMove(move: Move): CandidateMove {
 //#region game status
 
 export function checkmated(game: GameState) {
-	return inCheck(getBoard(game)) && noMoves(game)
+	return inCheck(getBoard(game), game.boardHistory[0].board) && noMoves(game)
 }
 
 export function kingCaptured(board: Board) {
@@ -238,7 +300,7 @@ export function kingCaptured(board: Board) {
 }
 
 function stalemated(game: GameState) {
-	return !inCheck(getBoard(game)) && noMoves(game)
+	return !inCheck(getBoard(game), game.boardHistory[0].board) && noMoves(game)
 }
 
 function threefoldRepetition(game: GameState) {
@@ -321,7 +383,7 @@ export function validateAndPlayMove(
 	const isCapture = !!getBoard(game).pieces[to]
 	//@ts-ignore
 	let [newBoard, promoted] = applyMoveToBoard(candidate, getBoard(game))
-	const move = candidateMoveToMove(candidate, undefined, isCapture, inCheck(newBoard), duck)
+	const move = candidateMoveToMove(candidate, undefined, isCapture, inCheck(newBoard, game.boardHistory[0].board), duck)
 	if (duck) {
 		if (!validateDuckPlacement(duck, newBoard)) {
 			return
@@ -363,8 +425,17 @@ function applyMoveToBoard(move: CandidateMove | Move, board: Board) {
 	if (_move.castle) {
 		// move rook
 		const rank = board.toMove === 'white' ? 0 : 7
-		const startingRookFile = _move.to.x === 2 ? 0 : 7
+		const direction = _move.to.x === 6 ? -1 : 1
+		let startingRookFile = -1
+		for (let i = _move.to.x - direction; i >= 0 && i < 8; i -= direction) {
+			const square = notationFromCoords({ x: i, y: rank })
+			if (newBoard.pieces[square]?.type === 'rook') {
+				startingRookFile = i
+				break
+			}
+		}
 		const endingRookFile = _move.to.x === 2 ? 3 : 5
+
 		delete newBoard.pieces[notationFromCoords({ x: startingRookFile, y: rank })]
 		newBoard.pieces[notationFromCoords({ x: endingRookFile, y: rank })] = {
 			color: board.toMove,
@@ -403,14 +474,14 @@ export function getLegalMoves(piecePositions: Coords[], game: GameState, allowSe
 		if (piece.color !== getBoard(game).toMove) {
 			continue
 		}
-		candidateMoves = [...candidateMoves, ...getMovesFromCoords(start, getBoard(game), game.moveHistory, piece)]
+		candidateMoves = [...candidateMoves, ...getMovesFromCoords(start, getBoard(game), game.moveHistory, game.boardHistory[0].board, piece)]
 	}
 
 	if (!allowSelfChecks) {
 		candidateMoves = candidateMoves.filter((move) => {
 			const [newBoard] = applyMoveToBoard(move, getBoard(game))
 			newBoard.toMove = getBoard(game).toMove
-			return !inCheck(newBoard)
+			return !inCheck(newBoard, game.boardHistory[0].board)
 		})
 	}
 
@@ -421,6 +492,7 @@ function getMovesFromCoords(
 	coords: Coords,
 	board: Board,
 	history: MoveHistory,
+	startingPosition: Board,
 	piece: ColoredPiece | null = null,
 	checkCastling: boolean = true
 ) {
@@ -440,7 +512,7 @@ function getMovesFromCoords(
 		case 'queen':
 			return [...rookMoves(coords, board), ...bishopMoves(coords, board)]
 		case 'king':
-			return kingMoves(coords, board, history, checkCastling)
+			return kingMoves(coords, board, startingPosition, history, checkCastling)
 		case 'duck':
 			throw new Error('quack?')
 		default:
@@ -602,7 +674,7 @@ function rookMoves(start: Coords, board: Board) {
 	return moves.map((m) => newCandidateMove({ from: start, to: m, piece: 'rook' }))
 }
 
-function kingMoves(start: Coords, board: Board, history: MoveHistory, checkCastling: boolean) {
+function kingMoves(start: Coords, board: Board, startingBoard: Board, moveHistory: MoveHistory, checkCastling: boolean) {
 	let moves: Coords[] = []
 	const directions = [
 		[1, 0],
@@ -630,19 +702,38 @@ function kingMoves(start: Coords, board: Board, history: MoveHistory, checkCastl
 
 	const rank = board.toMove === 'white' ? 0 : 7
 	const rookDirections = [] as Coords[]
-	const rookA = { x: 0, y: rank } satisfies Coords
-	const rookH = { x: 7, y: rank } satisfies Coords
+
+	//#region find starting rooksj
+	let rookLeft = null as Coords | null
+	let rookRight = null as Coords | null
+	for (let i = 0; i < 8; i++) {
+		const square = notationFromCoords({ x: i, y: 0 })
+		const piece = startingBoard.pieces[square]
+		if (piece?.type === 'rook' && piece.color === 'white') {
+			if (!rookLeft) rookLeft = { x: i, y: 0 } satisfies Coords
+			else {
+				rookRight = { x: i, y: 0 } satisfies Coords
+				break
+			}
+		}
+	}
+	if (!rookLeft || !rookRight) {
+		console.warn({ startingBoard })
+		throw new Error('invalid starting board')
+	}
+	//#endregion
+
 	const eligibleRooks = [] as Coords[]
-	if (pieceHasMoved(start, history)) {
+	if (pieceHasMoved(start, moveHistory)) {
 		return candidateMoves
 	}
 
-	if (!pieceHasMoved(rookA, history)) {
-		eligibleRooks.push(rookA)
+	if (!pieceHasMoved(rookLeft, moveHistory)) {
+		eligibleRooks.push(rookLeft)
 		rookDirections.push({ x: -1, y: 0 } satisfies Coords)
 	}
-	if (!pieceHasMoved(rookH, history)) {
-		eligibleRooks.push(rookH)
+	if (!pieceHasMoved(rookRight, moveHistory)) {
+		eligibleRooks.push(rookRight)
 		rookDirections.push({ x: 1, y: 0 } satisfies Coords)
 	}
 
@@ -651,25 +742,36 @@ function kingMoves(start: Coords, board: Board, history: MoveHistory, checkCastl
 	for (let i = 0; i < eligibleRooks.length; i++) {
 		const direction = rookDirections[i]
 		const rook = eligibleRooks[i]
-		const [_moves, termination] = castLegalMoves(start, direction, 8, board)
-		const beforeRook = { x: rook.x - direction.x, y: rook.y } satisfies Coords
-		const movesNotation = _moves.map((m) => notationFromCoords(m))
 
 		const newKingSquare = {
-			x: start.x + direction.x * 2,
-			y: start.y,
+			x: direction.x === 1 ? 6 : 2,
+			y: rank,
 		} satisfies Coords
-		const kingSquares: Coords[] = []
-		for (let i = 0; i < 3; i++) {
-			kingSquares.push({
-				x: start.x + i * direction.x,
-				y: start.y,
-			} satisfies Coords)
+		let valid = true
+		for (let i = start.x + direction.x; i != newKingSquare.x + direction.x; i += direction.x) {
+			const square = { x: i, y: rank } satisfies Coords
+			// we can move through the rook
+			if ((board.pieces[notationFromCoords(square)] && !isEqual(square, rook)) || squareAttacked(square, board, startingBoard)) {
+				valid = false
+				break
+			}
 		}
-		const noChecksInKingPath = kingSquares.every((n) => !squareAttacked(n, board))
-		const castlingSquaresClear = movesNotation.includes(notationFromCoords(beforeRook)) && termination !== 'capture'
 
-		if (!castlingSquaresClear || !noChecksInKingPath) {
+		const newRookSquare = {
+			x: direction.x === 1 ? 3 : 2,
+			y: rank,
+		}
+		for (let i = rook.x - direction.x; i != newRookSquare.x - direction.x; i -= direction.x) {
+			const square = { x: i, y: rank } satisfies Coords
+			console.log({ square: notationFromCoords(square) })
+			if (board.pieces[notationFromCoords(square)] && !isEqual(square, start)) {
+				valid = false
+				break
+			}
+		}
+		console.log({ valid, newRookSquare: notationFromCoords(newRookSquare) })
+
+		if (!valid) {
 			continue
 		}
 
@@ -690,7 +792,8 @@ function kingMoves(start: Coords, board: Board, history: MoveHistory, checkCastl
 
 //#region move helpers
 function pieceHasMoved(coords: Coords, history: MoveHistory) {
-	return history.some((move) => move.from === notationFromCoords(coords))
+	const notation = notationFromCoords(coords)
+	return history.some((move) => move.from === notation)
 }
 
 type TerminateReason = 'piece' | 'bounds' | 'capture' | 'max'
@@ -730,13 +833,13 @@ function findPiece(piece: ColoredPiece, board: Board) {
 	})
 }
 
-export function inCheck(board: Board) {
+export function inCheck(board: Board, startingPosition: Board) {
 	const king = findPiece({ color: board.toMove, type: 'king' }, board)
 	if (!king) return false
-	return squareAttacked(coordsFromNotation(king), board)
+	return squareAttacked(coordsFromNotation(king), board, startingPosition)
 }
 
-function squareAttacked(square: Coords, board: Board) {
+function squareAttacked(square: Coords, board: Board, startingPosition: Board) {
 	const opponentPieces = [
 		...new Set(
 			Object.values(board.pieces)
@@ -749,7 +852,7 @@ function squareAttacked(square: Coords, board: Board) {
 			color: board.toMove,
 			type: simulatedPieceType,
 		} as ColoredPiece
-		const simulatedMoves = getMovesFromCoords(square, board, [], simulatedPiece, false)
+		const simulatedMoves = getMovesFromCoords(square, board, [], startingPosition, simulatedPiece, false)
 		for (let move of simulatedMoves) {
 			const attackingPiece = board.pieces[notationFromCoords(move.to)]
 			if (attackingPiece && attackingPiece.type === simulatedPieceType) {
@@ -812,7 +915,7 @@ export function moveToChessNotation(moveIndex: number, state: GameState): string
 	const capture = move.capture ? 'x' : ''
 	const to = move.to
 	const promotion = move.promotion ? '=' + move.promotion.toUpperCase() : ''
-	const check = inCheck(getBoard(state)) ? '+' : ''
+	const check = inCheck(getBoard(state), state.boardHistory[0].board) ? '+' : ''
 	const checkmate = check && checkmated(state) ? '#' : ''
 
 	if (move.castle) {

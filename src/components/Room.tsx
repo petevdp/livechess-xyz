@@ -6,6 +6,7 @@ import SwapSvg from '~/assets/icons/swap.svg'
 import BlackKingSvg from '~/assets/pieces/bKing.svg'
 import WhiteKingSvg from '~/assets/pieces/wKing.svg'
 import { ScreenFittingContent } from '~/components/AppContainer.tsx'
+import { HelpCard } from '~/components/HelpCard.tsx'
 import { Button } from '~/components/ui/button.tsx'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '~/components/ui/card.tsx'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog'
@@ -112,10 +113,8 @@ function QrCodeDialog() {
 	})
 
 	return (
-		<Dialog onOpenChange={o => setOpen(o)}>
-			<DialogTrigger as={Button}>
-				Show QR Code
-			</DialogTrigger>
+		<Dialog onOpenChange={(o) => setOpen(o)}>
+			<DialogTrigger as={Button}>Show QR Code</DialogTrigger>
 			<DialogContent>
 				<DialogHeader>
 					<DialogTitle>Scan to Join LiveChess Room</DialogTitle>
@@ -130,11 +129,23 @@ function GameConfigForm() {
 	const room = R.room()!
 	if (!room) throw new Error('room is not initialized')
 	const gameConfig = () => room!.rollbackState.gameConfig
+	const helpCardLabel = (
+		<label class="flex justify-center items-center text-inherit">
+			Variant{' '}
+			<Show when={room.rollbackState.gameConfig.variant !== 'regular'}>
+				<HelpCard variant={room.rollbackState.gameConfig.variant}>
+					<Button variant="link" class="p-1 leading-[24px] text-md text-inherit text-primary underline">
+						?
+					</Button>
+				</HelpCard>
+			</Show>
+		</label>
+	)
 
 	return (
 		<div class="flex flex-col gap-y-1">
 			<MultiChoiceButton
-				label="Variant"
+				label={helpCardLabel}
 				listClass="grid grid-cols-1 grid-cols-2 lg:grid-cols-4 text-sm space-x-0 gap-1"
 				choices={GL.VARIANTS.map((c) => ({ label: c, id: c }) satisfies Choice<GL.Variant>)}
 				selected={gameConfig().variant}
@@ -231,7 +242,12 @@ function PlayerAwareness() {
 			</Show>
 			<PlayerColorDisplay color={leftPlayerColor()} />
 			<SwapButton
-				disabled={!room.isPlayerParticipating || room.leftPlayer?.agreePieceSwap || room.rightPlayer?.agreePieceSwap || room.leftPlayer?.isReadyForGame}
+				disabled={
+					!room.isPlayerParticipating ||
+					room.leftPlayer?.agreePieceSwap ||
+					room.rightPlayer?.agreePieceSwap ||
+					room.leftPlayer?.isReadyForGame
+				}
 				alreadySwapping={room.leftPlayer?.agreePieceSwap || false}
 				initiatePieceSwap={() => room.initiateOrAgreePieceSwap()}
 			/>

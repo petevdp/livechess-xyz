@@ -99,7 +99,7 @@ export class Game {
 
 		this.stateSignal = storeToSignal(this.state)
 
-		const inCheck = createMemo(() => GL.inCheck(viewedBoard()))
+		const inCheck = createMemo(() => GL.inCheck(viewedBoard(), this.state.boardHistory[0].board))
 		const visibleSquares = createMemo(() => {
 			if (this.gameConfig.variant === 'fog-of-war') {
 				return GL.getVisibleSquares(this.stateSignal(), this.bottomPlayer.color)
@@ -267,7 +267,7 @@ export class Game {
 		}
 
 		const pieceCounts = getPieceCounts(
-			Object.values(GL.startPos().pieces)
+			Object.values(this.state.boardHistory[0].board.pieces)
 				.filter((p) => p.color === color)
 				.map((p) => p.type)
 		)

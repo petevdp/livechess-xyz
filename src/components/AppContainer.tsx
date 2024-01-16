@@ -31,7 +31,7 @@ export function AppContainer(props: ParentProps) {
 	return (
 		<div class={`w-[calc(100%_-_${scrollBarWidth}px]`}>
 			<div class="flex w-full justify-between p-[0.25rem] pb-[.5rem]">
-				<A href="/" class="inline-flex h-10 w-10 items-center justify-center">
+				<A href="/" class="inline-flex p-1 h-10 w-10 items-center justify-center">
 					{logo}
 				</A>
 				<div class="flex items-center justify-end space-x-1 font-light">

@@ -18,11 +18,13 @@ import toast from 'solid-toast'
 
 import FirstSvg from '~/assets/icons/first.svg'
 import FlipBoardSvg from '~/assets/icons/flip-board.svg'
+import HelpSvg from '~/assets/icons/help.svg'
 import LastSvg from '~/assets/icons/last.svg'
 import NextSvg from '~/assets/icons/next.svg'
 import OfferDrawSvg from '~/assets/icons/offer-draw.svg'
 import PrevSvg from '~/assets/icons/prev.svg'
 import ResignSvg from '~/assets/icons/resign.svg'
+import { HelpCard } from '~/components/HelpCard.tsx'
 import { Dialog, DialogContent, DialogDescription, DialogHeader } from '~/components/ui/dialog.tsx'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '~/components/ui/hover-card.tsx'
 import { BOARD_COLORS } from '~/config.ts'
@@ -559,10 +561,17 @@ export function Game(props: { gameId: string }) {
 					timeControl={game.gameConfig.timeControl}
 					color={game.topPlayer.color}
 				/>
-				<div class={`${styles.topLeftActions} flex flex-col items-start space-x-1`}>
+				<div class={`${styles.topLeftActions} flex items-start space-x-1`}>
 					<Button variant="ghost" size="icon" onclick={() => setBoardFlipped((f) => !f)} class="mb-1">
 						<FlipBoardSvg />
 					</Button>
+					<Show when={game.gameConfig.variant !== 'regular'}>
+						<HelpCard variant={game.gameConfig.variant}>
+							<Button variant="ghost" size="icon" class="mb-1">
+								<HelpSvg fill="white"/>
+							</Button>
+						</HelpCard>
+					</Show>
 				</div>
 				<CapturedPieces
 					size={boardSize() / 2}
@@ -702,8 +711,13 @@ function ActionsPanel(props: { class: string; placingDuck: boolean }) {
 				<Match when={!game.outcome}>
 					<DrawHoverCard>
 						<span>
-							<Button disabled={!!game.drawIsOfferedBy} title="Offer Draw" size="icon" variant="ghost"
-											onclick={() => game.offerOrAcceptDraw()}>
+							<Button
+								disabled={!!game.drawIsOfferedBy}
+								title="Offer Draw"
+								size="icon"
+								variant="ghost"
+								onclick={() => game.offerOrAcceptDraw()}
+							>
 								<OfferDrawSvg/>
 							</Button>
 							<Button disabled={!!game.drawIsOfferedBy} title="Resign" size="icon" variant="ghost"
