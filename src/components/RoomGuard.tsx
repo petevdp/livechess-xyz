@@ -1,7 +1,9 @@
 import { until } from '@solid-primitives/promise'
 import { useNavigate, useParams } from '@solidjs/router'
 import { Match, Show, Switch, createEffect, createSignal, getOwner } from 'solid-js'
+import toast from 'solid-toast'
 
+import { Spinner } from '~/components/Spinner.tsx'
 import { Button } from '~/components/ui/button.tsx'
 import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card.tsx'
 import { Checkbox } from '~/components/ui/checkbox.tsx'
@@ -60,9 +62,18 @@ export function RoomGuard() {
 			setConnectionStatus('connecting')
 			console.log('connecting to room', params.id)
 			// TODO need some sort of retry mechanism here
-			R.connectToRoom(params.id, P.playerId()!, initPlayer, owner, () => navigate('/')).then(() => {
-				setConnectionStatus('connected')
+			R.connectToRoom(params.id, P.playerId()!, initPlayer, owner, () => {
+				toast('connection aborted, please try again')
+				navigate('/')
 			})
+				.catch(() => {
+					setConnectionStatus('disconnected')
+					toast('connection failed, please try again')
+					navigate('/')
+				})
+				.then(() => {
+					setConnectionStatus('connected')
+				})
 		}
 	})
 
@@ -78,8 +89,9 @@ export function RoomGuard() {
 					<PlayerForm {...playerFormState().props} />
 				</Match>
 				<Match when={!R.room() || connectionStatus() === 'connecting'}>
-					{/* TODO add spinner */}
-					<div>loading...</div>
+					<ScreenFittingContent class="grid place-items-center">
+						<Spinner/>
+					</ScreenFittingContent>
 				</Match>
 				<Match when={connectionStatus() === 'disconnected'}>
 					<div>disconnected</div>
