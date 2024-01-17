@@ -588,6 +588,7 @@ export class SharedStoreProvider<Event extends any> {
 	) {
 		const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
 		const url = `${protocol}//${serverHost || window.location.host}/networks/` + networkId
+		// TODO retry on disconnect?
 		this.ws = new WebSocket(url)
 		this.message$ = new Observable<SharedStoreMessage>((subscriber) => {
 			const listener = (event: MessageEvent) => {

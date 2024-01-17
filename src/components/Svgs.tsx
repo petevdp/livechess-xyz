@@ -1,21 +1,40 @@
-import * as flip from 'flip-~/assets/icons/board.svg'
-import * as notMuted from 'not-~/assets/icons/not-muted.svg'
-import * as offerDraw from 'offer-~/assets/icons/draw.svg'
 import { Component, ComponentProps } from 'solid-js'
 
-import * as first from '~/assets/icons/first.svg'
-import * as github from '~/assets/icons/github.svg'
-import * as help from '~/assets/icons/help.svg'
-import * as info from '~/assets/icons/info.svg'
-import * as last from '~/assets/icons/last.svg'
-import * as muted from '~/assets/icons/muted.svg'
-import * as next from '~/assets/icons/next.svg'
-import * as prev from '~/assets/icons/prev.svg'
-import * as resign from '~/assets/icons/resign.svg'
-import * as settings from '~/assets/icons/settings.svg'
-import * as swap from '~/assets/icons/swap.svg'
+import _first from '~/assets/icons/first.svg'
+import _flip from '~/assets/icons/flip-board.svg'
+import _github from '~/assets/icons/github.svg'
+import _help from '~/assets/icons/help.svg'
+import _info from '~/assets/icons/info.svg'
+import _last from '~/assets/icons/last.svg'
+import _logo from '~/assets/icons/logo.svg'
+import _muted from '~/assets/icons/muted.svg'
+import _next from '~/assets/icons/next.svg'
+import _notMuted from '~/assets/icons/not-muted.svg'
+import _offerDraw from '~/assets/icons/offer-draw.svg'
+import _prev from '~/assets/icons/prev.svg'
+import _resign from '~/assets/icons/resign.svg'
+import _settings from '~/assets/icons/settings.svg'
+import _swap from '~/assets/icons/swap.svg'
 
 
-// this is not good for treeshaking/codesplitting, if we get like 50+ icons we should just export manually
-const _svgs = { first, flip, github, help, info, last, muted, next, notMuted, offerDraw, prev, resign, settings, swap }
-export const Svgs = _svgs as unknown as Record<keyof typeof _svgs, Component<ComponentProps<'svg'>>>
+type SvgType = Component<ComponentProps<'svg'>>
+
+function defaultSvg(Component: SvgType): SvgType {
+	return (props) => <Component fill="hsl(var(--foreground))" {...props} />
+}
+
+export const FirstSvg = defaultSvg(_first as unknown as SvgType)
+export const FlipSvg = defaultSvg(_flip as unknown as SvgType)
+export const GithubSvg = defaultSvg(_github as unknown as SvgType)
+export const HelpSvg = defaultSvg(_help as unknown as SvgType)
+export const InfoSvg = defaultSvg(_info as unknown as SvgType)
+export const LastSvg = defaultSvg(_last as unknown as SvgType)
+export const MutedSvg = defaultSvg(_muted as unknown as SvgType)
+export const NextSvg = defaultSvg(_next as unknown as SvgType)
+export const NotMutedSvg = defaultSvg(_notMuted as unknown as SvgType)
+export const OfferDrawSvg = defaultSvg(_offerDraw as unknown as SvgType)
+export const PrevSvg = defaultSvg(_prev as unknown as SvgType)
+export const ResignSvg = defaultSvg(_resign as unknown as SvgType)
+export const SettingsSvg = defaultSvg(_settings as unknown as SvgType)
+export const SwapSvg = defaultSvg(_swap as unknown as SvgType)
+export const LogoSvg = defaultSvg(_logo as unknown as SvgType)

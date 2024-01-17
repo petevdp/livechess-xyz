@@ -5,7 +5,7 @@ import { concatMap, interval } from 'rxjs'
 import { Owner, createEffect, createMemo, createRoot, createSignal, getOwner, onCleanup, runWithOwner, untrack } from 'solid-js'
 import { unwrap } from 'solid-js/store'
 
-import { createIdSync } from '~/utils/ids.ts'
+import { createId } from '~/utils/ids.ts'
 import { DELETE, PUSH, SharedStore, SharedStoreProvider, StoreMutation, initSharedStore, newNetwork } from '~/utils/sharedStore.ts'
 
 import { PLAYER_TIMEOUT, SERVER_HOST } from '../config.ts'
@@ -499,7 +499,7 @@ export class Room {
 						[this.leftPlayer!.id]: this.leftPlayer!.id === this.rollbackState.gameParticipants.white.id ? 'white' : 'black',
 						[this.rightPlayer.id]: this.rightPlayer.id === this.rollbackState.gameParticipants.white.id ? 'white' : 'black',
 					})
-					const gameId = createIdSync(6)
+					const gameId = createId(6)
 					return {
 						events: [{ type: 'new-game', playerId: this.player.id }],
 						mutations: [

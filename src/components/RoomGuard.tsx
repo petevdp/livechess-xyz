@@ -61,7 +61,6 @@ export function RoomGuard() {
 		if ((!R.room() || R.room()!.roomId !== params.id) && P.playerId()) {
 			setConnectionStatus('connecting')
 			console.log('connecting to room', params.id)
-			// TODO need some sort of retry mechanism here
 			R.connectToRoom(params.id, P.playerId()!, initPlayer, owner, () => {
 				toast('connection aborted, please try again')
 				navigate('/')

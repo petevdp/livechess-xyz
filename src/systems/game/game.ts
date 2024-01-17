@@ -614,7 +614,7 @@ function useClock(move$: Observable<GL.Move>, gameConfig: GL.ParsedGameConfig, g
 }
 
 //TODO is promotion handled correctly?
-//TODO W don't handle disambiguation
+//TODO We don't handle disambiguation
 function getMoveHistoryAsNotation(state: GL.GameState) {
 	let moves: [string, string | null][] = []
 	for (let i = 0; i < Math.ceil(state.moveHistory.length / 2); i++) {

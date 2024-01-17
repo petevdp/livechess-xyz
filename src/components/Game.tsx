@@ -18,6 +18,7 @@ import {
 import toast from 'solid-toast'
 
 import { HelpCard } from '~/components/HelpCard.tsx'
+import { FirstSvg, FlipSvg, HelpSvg, LastSvg, NextSvg, OfferDrawSvg, PrevSvg, ResignSvg } from '~/components/Svgs.tsx'
 import { Dialog, DialogContent, DialogDescription, DialogHeader } from '~/components/ui/dialog.tsx'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '~/components/ui/hover-card.tsx'
 import { BOARD_COLORS } from '~/config.ts'
@@ -30,14 +31,11 @@ import * as P from '~/systems/player.ts'
 import * as R from '~/systems/room.ts'
 
 import styles from './Game.module.css'
-import { Svgs } from './Svgs.tsx'
 import { Button } from './ui/button.tsx'
 import * as Modal from './utils/Modal.tsx'
 
 
-//TODO provide some method to view the current game's config
 //TODO component duplicates on reload sometimes for some reason
-// TODO fix horizontal scrolling on large viewport
 
 export function Game(props: { gameId: string }) {
 	let game = new G.Game(props.gameId, R.room()!, R.room()!.rollbackState.gameConfig)
@@ -75,8 +73,7 @@ export function Game(props: { gameId: string }) {
 	}
 
 	const boardSize = () => {
-		let adjusted = Math.floor(boardSizeCss() * window.devicePixelRatio)
-		return adjusted
+		return Math.floor(boardSizeCss() * window.devicePixelRatio)
 	}
 
 	createEffect(() => {
@@ -130,7 +127,7 @@ export function Game(props: { gameId: string }) {
 	//#region render board
 	createEffect(async () => {
 		if (!Pieces.initialized()) return
-		// handle all reactivity here so we know renderBoard itself will run fast
+		// handle all reactivity here, so we know renderBoard itself will run fast
 		const args: RenderBoardArgs = {
 			squareSize: squareSize(),
 			boardFlipped: boardFlipped(),
@@ -150,7 +147,7 @@ export function Game(props: { gameId: string }) {
 	//#endregion
 
 	function getBoardView() {
-		// consolidating signals for boardview
+		// consolidating signals for board view
 		return {
 			board: game.currentBoardView.board,
 			lastMove: game.currentBoardView.lastMove,
@@ -183,7 +180,6 @@ export function Game(props: { gameId: string }) {
 	//#endregion
 
 	//#region render pieces
-	let i = 0
 	createEffect(() => {
 		const args: RenderPiecesArgs = {
 			squareSize: squareSize(),
@@ -197,14 +193,12 @@ export function Game(props: { gameId: string }) {
 		Pieces.pieceChangedEpoch()
 		scaleAndReset(args.context)
 		untrack(() => {
-			console.log(`rendering pieces ${i}`, args)
-			i++
 			renderPieces(args)
 		})
 	})
 	//#endregion
 
-	//#region render grabbed piece
+//#region render grabbed piece
 	createEffect(() => {
 		const args: RenderGrabbedPieceArgs = {
 			squareSize: squareSize(),
@@ -265,17 +259,18 @@ export function Game(props: { gameId: string }) {
 	}
 
 	function makeMove(move?: GL.SelectedMove) {
-		batch(async () => {
+		batch(() => {
 			const resPromise = game.tryMakeMove(move)
 			setActivePieceSquare(null)
 			setGrabbingPieceSquare(false)
 			setGrabbedMousePos(null)
-			const res = await resPromise
-			if (res.type === 'accepted') {
-				untrack(() => {
-					Audio.playSoundEffectForMove(res.move, true, true)
-				})
-			}
+			resPromise.then((res) => {
+				if (res.type === 'accepted') {
+					untrack(() => {
+						Audio.playSoundEffectForMove(res.move, true, true)
+					})
+				}
+			})
 		})
 	}
 
@@ -332,10 +327,9 @@ export function Game(props: { gameId: string }) {
 
 		grabbedPieceCanvas.addEventListener('mousedown', (e) => mouseDownListener(e.clientX, e.clientY))
 		grabbedPieceCanvas.addEventListener('touchstart', (e) => {
-			for (let touch of e.targetTouches) {
-				mouseDownListener(touch.clientX, touch.clientY)
-				break
-			}
+			if (e.targetTouches.length === 0) return
+			const touch = e.targetTouches[0]
+			mouseDownListener(touch.clientX, touch.clientY)
 		})
 
 		function mouseDownListener(clientX: number, clientY: number) {
@@ -368,7 +362,7 @@ export function Game(props: { gameId: string }) {
 
 				if (squareContainsPlayerPiece(mouseSquare)) {
 					batch(() => {
-						// we're not setting grabbedSquareMousePos here becase we don't want to visually move the piece until the mouse moves
+						// we're not setting grabbedSquareMousePos here because we don't want to visually move the piece until the mouse moves
 						setActivePieceSquare(mouseSquare)
 						setGrabbingPieceSquare(true)
 					})
@@ -381,10 +375,9 @@ export function Game(props: { gameId: string }) {
 
 		grabbedPieceCanvas.addEventListener('mouseup', (e) => mouseUpListener(e.clientX, e.clientY))
 		grabbedPieceCanvas.addEventListener('touchend', (e) => {
-			for (let touch of e.changedTouches) {
-				mouseUpListener(touch.clientX + touchOffsetX(), touch.clientY + touchOffsetY())
-				break
-			}
+			if (e.changedTouches.length === 0) return
+			const touch = e.changedTouches[0]
+			mouseUpListener(touch.clientX + touchOffsetX(), touch.clientY + touchOffsetY())
 		})
 
 		function mouseUpListener(clientX: number, clientY: number) {
@@ -459,7 +452,7 @@ export function Game(props: { gameId: string }) {
 								onclick={() => {
 									if (game.currentMoveAmbiguity?.type !== 'castle') return
 									game.setCurrentDisambiguation({ type: 'castle', castling: true })
-									game.tryMakeMove()
+									game.tryMakeMove().then()
 								}}
 							>
 								Yes
@@ -468,7 +461,7 @@ export function Game(props: { gameId: string }) {
 								onclick={() => {
 									if (game.currentMoveAmbiguity?.type !== 'castle') return
 									game.setCurrentDisambiguation({ type: 'castle', castling: false })
-									game.tryMakeMove()
+									game.tryMakeMove().then()
 								}}
 							>
 								No
@@ -605,12 +598,12 @@ export function Game(props: { gameId: string }) {
 				/>
 				<div class={`${styles.topLeftActions} flex items-start space-x-1`}>
 					<Button variant="ghost" size="icon" onclick={() => setBoardFlipped((f) => !f)} class="mb-1">
-						<Svgs.flip/>
+						<FlipSvg/>
 					</Button>
 					<Show when={game.gameConfig.variant !== 'regular'}>
 						<HelpCard variant={game.gameConfig.variant}>
 							<Button variant="ghost" size="icon" class="mb-1">
-								<Svgs.help fill="white"/>
+								<HelpSvg/>
 							</Button>
 						</HelpCard>
 					</Show>
@@ -760,11 +753,11 @@ function ActionsPanel(props: { class: string; placingDuck: boolean }) {
 								variant="ghost"
 								onclick={() => game.offerOrAcceptDraw()}
 							>
-								<Svgs.offerDraw/>
+								<OfferDrawSvg/>
 							</Button>
 							<Button disabled={!!game.drawIsOfferedBy} title="Resign" size="icon" variant="ghost"
 											onclick={() => game.resign()}>
-								<Svgs.resign/>
+								<ResignSvg/>
 							</Button>
 						</span>
 					</DrawHoverCard>
@@ -877,7 +870,6 @@ function CapturedPieces(props: {
 			<For each={sortedPieces()}>
 				{(piece) => {
 					const Piece = Pieces.getPieceSvg(piece)
-					console.log(Piece)
 					return <Piece class="w-[30px] h-[30px]" />
 				}}
 			</For>
@@ -899,7 +891,7 @@ function MoveNav() {
 	return (
 		<div class="flex justify-evenly">
 			<Button size="icon" variant="ghost" disabled={game.viewedMoveIndex() === -1} onClick={() => _setViewedMove(-1)}>
-				<Svgs.first/>
+				<FirstSvg/>
 			</Button>
 			<Button
 				class="text-blue-600"
@@ -908,7 +900,7 @@ function MoveNav() {
 				disabled={game.viewedMoveIndex() === -1}
 				onClick={() => _setViewedMove(game.viewedMoveIndex() - 1)}
 			>
-				<Svgs.prev/>
+				<PrevSvg/>
 			</Button>
 			<Button
 				disabled={game.viewedMoveIndex() === game.state.moveHistory.length - 1}
@@ -916,7 +908,7 @@ function MoveNav() {
 				size="icon"
 				onClick={() => _setViewedMove(game.viewedMoveIndex() + 1)}
 			>
-				<Svgs.next/>
+				<NextSvg/>
 			</Button>
 			<Button
 				variant="ghost"
@@ -924,7 +916,7 @@ function MoveNav() {
 				disabled={game.viewedMoveIndex() === game.state.moveHistory.length - 1}
 				onClick={() => _setViewedMove('live')}
 			>
-				<Svgs.last/>
+				<LastSvg/>
 			</Button>
 		</div>
 	)
@@ -1169,7 +1161,7 @@ function checkPastWarnThreshold(timeControl: GL.TimeControl, clock: number) {
 }
 
 //#region check if user is using touch screen
-// we're doing it this way so we can differentiate users that are using their touch screen
+// we're doing it this way, so we can differentiate users that are using their touch screen
 const [usingTouch, setUsingTouch] = createSignal(false)
 
 function touchListener() {

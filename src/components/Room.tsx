@@ -4,7 +4,7 @@ import toast from 'solid-toast'
 
 import { ScreenFittingContent } from '~/components/AppContainer.tsx'
 import { HelpCard } from '~/components/HelpCard.tsx'
-import { Svgs } from '~/components/Svgs.tsx'
+import { SwapSvg } from '~/components/Svgs.tsx'
 import { Button } from '~/components/ui/button.tsx'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '~/components/ui/card.tsx'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog'
@@ -27,7 +27,6 @@ export function Room() {
 
 	//#region toast basic room events
 	const sub = room.action$.subscribe((action) => {
-		console.log({ action })
 		switch (action.type) {
 			case 'player-connected':
 				if (action.player.id === P.playerId()) {
@@ -129,7 +128,7 @@ function GameConfigForm() {
 	const room = R.room()!
 	if (!room) throw new Error('room is not initialized')
 	const gameConfig = () => room!.rollbackState.gameConfig
-	const QuestionMark = () => <span class={`p-1 leading-[24px] text-md text-inherit text-primary underline cursor-pointer`}>?</span>
+	const QuestionMark = () => <span class={`p-1 leading-[24px] text-md text-primary underline cursor-pointer`}>?</span>
 	const helpCardLabel = (
 		<div class="flex justify-center items-center text-inherit">
 			<HelpCard variant={room.rollbackState.gameConfig.variant}>
@@ -312,7 +311,7 @@ function SwapButton(props: { initiatePieceSwap: () => void; alreadySwapping: boo
 				<Tooltip>
 					<TooltipTrigger>
 						<Button disabled={props.disabled} onclick={requestSwap} size="icon" variant="ghost">
-							<Svgs.swap/>
+							<SwapSvg/>
 						</Button>
 					</TooltipTrigger>
 					<TooltipContent>Ask to Swap Pieces</TooltipContent>

@@ -12,7 +12,6 @@ export function Home() {
 
 	async function createRoom() {
 		const res = await R.createRoom()
-		console.log({ res })
 		navigate(`/rooms/${res.networkId}`)
 	}
 

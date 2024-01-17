@@ -1,11 +1,22 @@
-import { FastifyBaseLogger } from 'fastify';
-import { BehaviorSubject, EMPTY, Observable, Subscription, concatMap, endWith, first, firstValueFrom, interval, mergeMap, share, switchMap } from 'rxjs';
-import * as ws from 'ws';
+import { FastifyBaseLogger } from 'fastify'
+import {
+	BehaviorSubject,
+	EMPTY,
+	Observable,
+	Subscription,
+	concatMap,
+	endWith,
+	first,
+	firstValueFrom,
+	interval,
+	mergeMap,
+	share,
+	switchMap,
+} from 'rxjs'
+import * as ws from 'ws'
 
-
-
-import { Base64String, ClientConfig, NewNetworkResponse, SharedStoreMessage, encodeContent } from '~/utils/sharedStore.ts';
-
+import { createId } from '~/utils/ids.ts'
+import { Base64String, ClientConfig, NewNetworkResponse, SharedStoreMessage, encodeContent } from '~/utils/sharedStore.ts'
 
 const networks = new Map<string, Network>()
 type Network = {
@@ -96,19 +107,6 @@ class Client {
 	destroy() {
 		this.sub.unsubscribe()
 	}
-}
-
-function createId(size: number) {
-	let result = ''
-	const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
-	const charactersLength = characters.length
-	let counter = 0
-	while (counter < size) {
-		// TODO use crypto.randomBytes instead
-		result += characters.charAt(Math.floor(Math.random() * charactersLength))
-		counter += 1
-	}
-	return result
 }
 
 function thirtySecondsFromNow() {

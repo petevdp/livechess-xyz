@@ -1,14 +1,14 @@
 import { A } from '@solidjs/router'
 import { ComponentProps, ParentProps, Show, splitProps } from 'solid-js'
 
+import { AboutDialog } from '~/components/AboutDialog.tsx'
 import { SettingsDialog } from '~/components/Settings.tsx'
 import { Button } from '~/components/ui/button.tsx'
 import { cn } from '~/lib/utils.ts'
 import * as P from '~/systems/player.ts'
 import * as R from '~/systems/room.ts'
 
-import styles from './AppContainer.module.css'
-import { Svgs } from './Svgs.tsx'
+import { LogoSvg, MutedSvg, NotMutedSvg } from './Svgs.tsx'
 import { ModalContainer } from './utils/Modal.tsx'
 
 
@@ -22,24 +22,22 @@ const scrollBarWidth = (() => {
 	return scrollbarWidth
 })()
 
-//TODO add settings button, and spectating display/controls
 export function AppContainer(props: ParentProps) {
-	// @ts-ignore
-	const logo = <Logo class={styles.logo} />
 	return (
 		<div class={`w-[calc(100%_-_${scrollBarWidth}px]`}>
-			<div class="flex w-full justify-between p-[0.25rem] pb-[.5rem]">
+			<nav class="flex w-full justify-between p-[0.25rem] pb-[.5rem]">
 				<A href="/" class="inline-flex p-1 h-10 w-10 items-center justify-center">
-					{logo}
+					<LogoSvg/>
 				</A>
 				<div class="flex items-center justify-end space-x-1 font-light">
 					<Button size="icon" variant="ghost" onclick={() => P.setSettings({muteAudio: !P.settings.muteAudio})}>
-						{P.settings.muteAudio ? <Svgs.muted/> : <Svgs.notMuted/>}
+						{P.settings.muteAudio ? <MutedSvg/> : <NotMutedSvg/>}
 					</Button>
 					<Show when={R.room() && !R.room()!.isPlayerParticipating}>Spectating</Show>
 					<SettingsDialog />
+					<AboutDialog/>
 				</div>
-			</div>
+			</nav>
 			<ModalContainer />
 			{props.children}
 		</div>

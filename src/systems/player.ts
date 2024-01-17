@@ -19,7 +19,7 @@ export type PlayerSettings = {
 	closeQrCodeDialogOnJoin: boolean
 }
 
-const [_playerId, setPlayerId] = makePersisted(createSignal(null as string | null), {
+export const [playerId] = makePersisted(createSignal(createId(6)), {
 	name: 'playerId:v2',
 	storage: localStorage,
 })
@@ -33,15 +33,7 @@ export const [settings, setSettings] = makePersisted(
 	{ name: 'settings', storage: localStorage }
 )
 
-export const playerId = _playerId
-
 export async function setupPlayer() {
-	(async () => {
-		if (!playerId()) {
-			setPlayerId(await createId(6))
-		}
-	})().then()
-
 	createEffect(() => {
 		const playerName = settings.name
 		if (!R.room()?.player || !playerName || playerName === R.room()!.player.name) return

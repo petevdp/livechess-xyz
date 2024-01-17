@@ -1,7 +1,5 @@
 import { describe, test } from 'vitest'
 
-import { storeToSignal } from './solid.ts'
-
 describe('solid utils', () => {
 	test('storeToSignal', () => {
 		// let dispose = () => {}
