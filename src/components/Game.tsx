@@ -18,7 +18,7 @@ import {
 import toast from 'solid-toast'
 
 import { HelpCard } from '~/components/HelpCard.tsx'
-import { FirstSvg, FlipSvg, HelpSvg, LastSvg, NextSvg, OfferDrawSvg, PrevSvg, ResignSvg } from '~/components/Svgs.tsx'
+import * as Svgs from '~/components/Svgs.tsx'
 import { Dialog, DialogContent, DialogDescription, DialogHeader } from '~/components/ui/dialog.tsx'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '~/components/ui/hover-card.tsx'
 import { BOARD_COLORS } from '~/config.ts'
@@ -54,14 +54,6 @@ export function Game(props: { gameId: string }) {
 		})
 	})
 
-	const layout: () => 'column' | 'row' = () => {
-		if (windowSize().width < windowSize().height) {
-			return 'row'
-		} else {
-			return 'column'
-		}
-	}
-
 	const boardSizeCss = (): number => {
 		if (windowSize().width < windowSize().height && windowSize().width > 700) {
 			return windowSize().width - 80
@@ -87,6 +79,7 @@ export function Game(props: { gameId: string }) {
 
 	const canvasProps = () => {
 		return {
+			class: 'object-contain',
 			style: { width: `${boardSizeCss()}px`, height: `${boardSizeCss()}px` },
 			width: boardSize(),
 			height: boardSize(),
@@ -122,9 +115,9 @@ export function Game(props: { gameId: string }) {
 		return game.getLegalMovesForSquare(_square)
 	})
 
-	//#region rendering
+	//#region canvas rendering
 
-	//#region render board
+	//#region board rendering updates
 	createEffect(async () => {
 		if (!Pieces.initialized()) return
 		// handle all reactivity here, so we know renderBoard itself will run fast
@@ -198,7 +191,7 @@ export function Game(props: { gameId: string }) {
 	})
 	//#endregion
 
-//#region render grabbed piece
+	//#region render grabbed piece
 	createEffect(() => {
 		const args: RenderGrabbedPieceArgs = {
 			squareSize: squareSize(),
@@ -586,7 +579,12 @@ export function Game(props: { gameId: string }) {
 
 	return (
 		<div class={styles.boardPageWrapper}>
-			<div class={styles.boardContainer}>
+			<div
+				class={cn(
+					styles.boardContainer,
+					'rounded-lg border bg-card p-2 text-card-foreground shadow-sm max-h-full max-w-[98vw] gap-[0.25rem]'
+				)}
+			>
 				<MoveHistory/>
 				<Player class={styles.topPlayer} player={game.topPlayer}/>
 				<Clock
@@ -598,28 +596,17 @@ export function Game(props: { gameId: string }) {
 				/>
 				<div class={`${styles.topLeftActions} flex items-start space-x-1`}>
 					<Button variant="ghost" size="icon" onclick={() => setBoardFlipped((f) => !f)} class="mb-1">
-						<FlipSvg/>
+						<Svgs.Flip/>
 					</Button>
 					<Show when={game.gameConfig.variant !== 'regular'}>
 						<HelpCard variant={game.gameConfig.variant}>
 							<Button variant="ghost" size="icon" class="mb-1">
-								<HelpSvg/>
+								<Svgs.Help/>
 							</Button>
 						</HelpCard>
 					</Show>
 				</div>
-				<CapturedPieces
-					size={boardSize() / 2}
-					layout={layout()}
-					pieces={game.capturedPieces(game.bottomPlayer.color)}
-					capturedBy={'top-player'}
-				/>
-				<CapturedPieces
-					size={boardSize() / 2}
-					layout={layout()}
-					pieces={game.capturedPieces(game.topPlayer.color)}
-					capturedBy={'bottom-player'}
-				/>
+				<CapturedPieces/>
 				<div class={styles.board}>
 					<span>{boardCanvas}</span>
 					<span class="absolute -translate-y-full">{highlightsCanvas}</span>
@@ -637,7 +624,7 @@ export function Game(props: { gameId: string }) {
 					timeControl={game.gameConfig.timeControl}
 					color={game.bottomPlayer.color}
 				/>
-				<div class={styles.moveNav}>
+				<div class={cn(styles.moveNav, 'self-center justify-self-center min-w-0 wc:self-start')}>
 					<MoveNav />
 				</div>
 			</div>
@@ -646,6 +633,7 @@ export function Game(props: { gameId: string }) {
 	)
 }
 
+//#region subcomponents
 function GameOutcomeDialog() {
 	const game = G.game()!
 	const [open, setOpen] = createSignal(false)
@@ -753,11 +741,11 @@ function ActionsPanel(props: { class: string; placingDuck: boolean }) {
 								variant="ghost"
 								onclick={() => game.offerOrAcceptDraw()}
 							>
-								<OfferDrawSvg/>
+								<Svgs.OfferDraw/>
 							</Button>
 							<Button disabled={!!game.drawIsOfferedBy} title="Resign" size="icon" variant="ghost"
 											onclick={() => game.resign()}>
-								<ResignSvg/>
+								<Svgs.Resign/>
 							</Button>
 						</span>
 					</DrawHoverCard>
@@ -800,18 +788,16 @@ function ActionsPanel(props: { class: string; placingDuck: boolean }) {
 
 function MoveHistory() {
 	const game = G.game()!
-	const _setViewedMove = setViewedMove(game)
 	const itemClass = 'grid grid-cols-[min-content_1fr_1fr] gap-1 text-xs items-center'
 	return (
-		<div
-			class={`${styles.moveHistoryContainer} grid grid-cols-2 sm:grid-cols-2 h-max max-h-full gap-x-4 gap-y-1 p-1 overflow-y-auto`}>
+		<div class={`${styles.moveHistoryContainer} grid grid-cols-2 h-max max-h-full gap-x-4 gap-y-1 p-1 overflow-y-auto`}>
 			<div class={itemClass}>
 				<span class="font-mono font-bold">00.</span>
 				<Button
 					class="p-[.25rem] font-light"
 					size="sm"
 					variant={game.viewedMoveIndex() === -1 ? 'secondary' : 'ghost'}
-					onClick={() => _setViewedMove(-1)}
+					onClick={() => game.setViewedMove(-1)}
 				>
 					Start
 				</Button>
@@ -827,7 +813,7 @@ function MoveHistory() {
 								class="p-[.25rem] font-light"
 								size="sm"
 								variant={viewingFirstMove() ? 'secondary' : 'ghost'}
-								onClick={() => _setViewedMove(index() * 2)}
+								onClick={() => game.setViewedMove(index() * 2)}
 							>
 								{move[0]}
 							</Button>{' '}
@@ -836,7 +822,7 @@ function MoveHistory() {
 									size="sm"
 									class="p-[.25rem] font-light"
 									variant={viewingSecondMove() ? 'secondary' : 'ghost'}
-									onClick={() => _setViewedMove(index() * 2 + 1)}
+									onClick={() => game.setViewedMove(index() * 2 + 1)}
 								>
 									{move[1]}
 								</Button>
@@ -849,13 +835,64 @@ function MoveHistory() {
 	)
 }
 
-function CapturedPieces(props: {
-	pieces: GL.ColoredPiece[]
-	capturedBy: 'bottom-player' | 'top-player'
-	size: number
-	layout: 'column' | 'row'
-}) {
+function MoveNav() {
+	const game = G.game()!
+	return (
+		<div class="flex justify-evenly">
+			<Button size="icon" variant="ghost" disabled={game.viewedMoveIndex() === -1}
+							onClick={() => game.setViewedMove(-1)}>
+				<Svgs.First/>
+			</Button>
+			<Button
+				class="text-blue-600"
+				variant="ghost"
+				size="icon"
+				disabled={game.viewedMoveIndex() === -1}
+				onClick={() => game.setViewedMove(game.viewedMoveIndex() - 1)}
+			>
+				<Svgs.Prev/>
+			</Button>
+			<Button
+				disabled={game.viewedMoveIndex() === game.state.moveHistory.length - 1}
+				variant="ghost"
+				size="icon"
+				onClick={() => game.setViewedMove(game.viewedMoveIndex() + 1)}
+			>
+				<Svgs.Next/>
+			</Button>
+			<Button
+				variant="ghost"
+				size="icon"
+				disabled={game.viewedMoveIndex() === game.state.moveHistory.length - 1}
+				onClick={() => game.setViewedMove('live')}
+			>
+				<Svgs.Last/>
+			</Button>
+		</div>
+	)
+}
+
+//#region captured pieces
+export function CapturedPieces() {
+	const game = G.game()!
+	return (
+		<div
+			class={cn(
+				styles.capturedPiecesContainer,
+				'flex flex-col wc:flex-row justify-between space-y-1 wc:space-y-0 wc:space-x-1'
+			)}
+		>
+			<CapturedPiecesForColor pieces={game.capturedPieces(game.bottomPlayer.color)} capturedBy={'top-player'}/>
+			<CapturedPiecesForColor pieces={game.capturedPieces(game.topPlayer.color)} capturedBy={'bottom-player'}/>
+		</div>
+	)
+
+}
+
+function CapturedPiecesForColor(props: { pieces: GL.ColoredPiece[]; capturedBy: 'bottom-player' | 'top-player' }) {
 	const hierarchy = ['pawn', 'knight', 'bishop', 'rook', 'queen', 'king']
+	const capturedByStyles = () =>
+		props.capturedBy === 'bottom-player' ? 'flex-col-reverse wc:flex-row-reverse' : 'flex-col wc:flex-row'
 
 	const sortedPieces = () =>
 		[...props.pieces].sort((a, b) => {
@@ -866,61 +903,22 @@ function CapturedPieces(props: {
 		})
 
 	return (
-		<div class={`${styles.capturedPieces} ${styles[props.capturedBy]}`}>
+		<div class={cn(`rounded flex flex-grow min-w-[30px] min-h-[30px] flex-wrap bg-gray-500`, capturedByStyles())}>
 			<For each={sortedPieces()}>
 				{(piece) => {
 					const Piece = Pieces.getPieceSvg(piece)
-					return <Piece class="w-[30px] h-[30px]" />
+					return <Piece class="max-w-[30px] max-h-[30px]"/>
 				}}
 			</For>
 		</div>
 	)
 }
 
-const setViewedMove = (game: G.Game) => (move: number | 'live') => {
-	if (move === 'live') {
-		game.setViewedMove(game.state.moveHistory.length - 1)
-	} else if (move >= -1 && move < game.state.moveHistory.length) {
-		game.setViewedMove(move)
-	}
-}
+//#endregion
 
-function MoveNav() {
-	const game = G.game()!
-	const _setViewedMove = setViewedMove(game)
-	return (
-		<div class="flex justify-evenly">
-			<Button size="icon" variant="ghost" disabled={game.viewedMoveIndex() === -1} onClick={() => _setViewedMove(-1)}>
-				<FirstSvg/>
-			</Button>
-			<Button
-				class="text-blue-600"
-				variant="ghost"
-				size="icon"
-				disabled={game.viewedMoveIndex() === -1}
-				onClick={() => _setViewedMove(game.viewedMoveIndex() - 1)}
-			>
-				<PrevSvg/>
-			</Button>
-			<Button
-				disabled={game.viewedMoveIndex() === game.state.moveHistory.length - 1}
-				variant="ghost"
-				size="icon"
-				onClick={() => _setViewedMove(game.viewedMoveIndex() + 1)}
-			>
-				<NextSvg/>
-			</Button>
-			<Button
-				variant="ghost"
-				size="icon"
-				disabled={game.viewedMoveIndex() === game.state.moveHistory.length - 1}
-				onClick={() => _setViewedMove('live')}
-			>
-				<LastSvg/>
-			</Button>
-		</div>
-	)
-}
+//#endregion
+
+//#region canvas rendering
 
 type RenderBoardArgs = {
 	context: CanvasRenderingContext2D
@@ -929,7 +927,6 @@ type RenderBoardArgs = {
 	boardFlipped: boolean
 	visibleSquares: Set<string>
 }
-
 function renderBoard(args: RenderBoardArgs) {
 	const ctx = args.context
 	// fill in light squares as background
@@ -975,7 +972,6 @@ type RenderPiecesArgs = {
 	grabbedMousePos: { x: number; y: number } | null
 	activePieceSquare: string | null
 }
-
 function renderPieces(args: RenderPiecesArgs) {
 	const ctx = args.context
 	for (let [square, piece] of Object.entries(args.boardView.board.pieces)) {
@@ -1007,7 +1003,6 @@ type RenderHighlightsArgs = {
 	hoveredSquare: string | null
 	activePieceSquare: string | null
 }
-
 function renderHighlights(args: RenderHighlightsArgs) {
 	const ctx = args.context
 	//#region draw last move highlight
@@ -1088,7 +1083,6 @@ type RenderGrabbedPieceArgs = {
 	currentMousePos: { x: number; y: number } | null
 	touchScreen: boolean
 }
-
 function renderGrabbedPiece(args: RenderGrabbedPieceArgs) {
 	const ctx = args.context
 
@@ -1106,6 +1100,9 @@ function renderGrabbedPiece(args: RenderGrabbedPieceArgs) {
 	}
 }
 
+//#endregion
+
+//#region helpers
 function showGameOutcome(outcome: GL.GameOutcome): [string, string] {
 	const game = G.game()!
 	const winner = outcome.winner ? game.getColorPlayer(outcome.winner) : null
@@ -1159,6 +1156,8 @@ function checkPastWarnThreshold(timeControl: GL.TimeControl, clock: number) {
 			return clock < 1000 * 60 * 2
 	}
 }
+
+//#endregion helpers
 
 //#region check if user is using touch screen
 // we're doing it this way, so we can differentiate users that are using their touch screen

@@ -1,25 +1,17 @@
 .boardPageWrapper {
-	height: calc(100% - 72px);
+	min-height: 100%;
 	display: grid;
 	place-items: center;
 }
 
 .boardContainer {
-	@apply rounded-lg border bg-card p-2 text-card-foreground shadow-sm;
-
 	display: grid;
 	grid-template-columns: max-content 1fr max-content 1fr max-content;
 	grid-template-rows: max-content 1fr 1fr max-content;
-	gap: 0.25rem;
-	height: max-content;
-	max-height: 100%;
-	width: max-content;
-	max-width: 98vw;
-
 	grid-template-areas:
 		'top-left-actions .                   opponent clock-opponent .'
-		'move-history     board               board    board          captured-player'
-		'move-history     board               board    board          captured-opponent'
+		'move-history     board               board    board          captured-pieces'
+		'move-history     board               board    board          captured-pieces'
 		'move-nav         bottom-left-actions player   clock-player   .';
 }
 
@@ -28,11 +20,11 @@
 		grid-template-columns: 1fr max-content max-content 1fr;
 		grid-template-rows: repeat(5, auto);
 		grid-template-areas:
-			'top-left-actions    opponent        opponent          clock-opponent'
-			'board               board           board             board'
-			'bottom-left-actions player          player            clock-player'
-			'captured-player     captured-player captured-opponent captured-opponent'
-			'move-history        move-history    move-history      move-nav';
+			'top-left-actions    opponent        opponent        clock-opponent'
+			'board               board           board           board'
+			'bottom-left-actions player          player          clock-player'
+			'captured-pieces     captured-pieces captured-pieces captured-pieces'
+			'move-history        move-history    move-history    move-nav';
 	}
 
 	@media screen and (max-width: 700px) {
@@ -40,12 +32,12 @@
 			grid-template-columns: 1fr max-content max-content 1fr;
 			grid-template-rows: min-content auto min-content repeat(3, auto);
 			grid-template-areas:
-				'top-left-actions    opponent        opponent          clock-opponent'
-				'board               board           board             board'
-				'bottom-left-actions player          player            clock-player'
-				'captured-player     captured-player captured-opponent captured-opponent'
-				'move-nav            move-nav        move-nav          move-nav'
-				'move-history        move-history    move-history      move-history';
+				'top-left-actions    opponent        opponent        clock-opponent'
+				'board               board           board           board'
+				'bottom-left-actions player          player          clock-player'
+				'captured-pieces     captured-pieces captured-pieces captured-pieces'
+				'move-nav            move-nav        move-nav        move-nav'
+				'move-history        move-history    move-history    move-history';
 		}
 	}
 }
@@ -63,21 +55,8 @@
 	grid-area: top-left-actions;
 }
 
-.bottomRightActions {
-	grid-area: bottom-right-actions;
-}
-
 .moveNav {
 	grid-area: move-nav;
-	align-self: center;
-	justify-self: center;
-	width: 100%;
-}
-
-@media screen and (max-aspect-ratio: 1/1) {
-	.moveNav {
-		@apply self-start;
-	}
 }
 
 .bottomPlayer {
@@ -96,102 +75,10 @@
 	grid-area: clock-opponent;
 }
 
-.actionsPanel {
-	@apply flex justify-end space-x-1 text-sm;
-}
-
-canvas {
-	object-fit: contain;
-}
-
 .moveHistoryContainer {
 	grid-area: move-history;
 }
 
-@media screen and (max-aspect-ratio: 1/1) {
-	.moveHistoryContainer {
-		@apply flex h-full w-full flex-row;
-	}
-}
-
-/* move history */
-
-.moveHistory {
-	@apply flex h-full w-full flex-col;
-	align-items: flex-end;
-}
-
-.moveHistoryEntry {
-	@apply flex h-min flex-row items-center whitespace-nowrap p-[.10rem] text-xs;
-}
-
-.moveHistoryEntry div {
-	@apply flex h-min w-20 flex-row justify-evenly whitespace-nowrap rounded p-[.25rem] pl-0;
-}
-
-.capturedPieces {
-	@apply rounded;
-	display: flex;
-	min-width: 30px;
-	flex-wrap: wrap;
-	height: 100%;
-	background-color: hsl(var(--secondary));
-}
-
-.capturedPieces.bottom-player {
-	grid-area: captured-player;
-	flex-direction: column;
-}
-
-.capturedPieces.top-player {
-	grid-area: captured-opponent;
-	flex-direction: column-reverse;
-}
-
-.capturedPiece {
-	width: 30px;
-	height: 30px;
-}
-
-@media screen and (max-aspect-ratio: 1/1) {
-	.capturedPieces {
-		width: auto;
-		min-height: 30px;
-		min-width: unset;
-	}
-
-	.capturedPieces.bottom-player {
-		@apply flex-row;
-	}
-
-	.capturedPieces.top-player {
-		@apply flex-row-reverse;
-	}
-
-	.capturedPiece {
-		width: 1.5em;
-		height: 1.5em;
-	}
-
-	.moveHistory {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, 105px);
-	}
-
-	@media screen and (max-width: 700px) {
-	}
-
-	.startEntry {
-		/*grid-column: 1 / 100;*/
-	}
-
-	.moveHistoryEntry {
-	}
-
-	.moveHistoryEntry > div {
-	}
-
-	.singleMove > div {
-		@apply flex justify-start;
-	}
+.capturedPiecesContainer {
+	grid-area: captured-pieces;
 }

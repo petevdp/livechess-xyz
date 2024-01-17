@@ -44,7 +44,7 @@ export type MoveAmbiguity =
 	  }
 
 export class Game {
-	setViewedMove: (move: number | 'live') => void
+	private _setViewedMove: (move: number | 'live') => void
 	viewedMoveIndex: Accessor<number>
 	drawEvent$: Observable<DrawEvent>
 	currentBoardView: BoardView
@@ -446,6 +446,14 @@ export class Game {
 			}
 		})
 		return { type: 'accepted', move: await until(() => acceptedMove()) }
+	}
+
+	setViewedMove(move: number | 'live') {
+		if (move === 'live') {
+			this._setViewedMove(this.state.moveHistory.length - 1)
+		} else if (move >= -1 && move < this.state.moveHistory.length) {
+			this._setViewedMove(move)
+		}
 	}
 
 	//#region draw actions

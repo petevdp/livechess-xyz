@@ -1,6 +1,6 @@
 import { createEffect, createSignal } from 'solid-js'
 
-import { SettingsSvg } from '~/components/Svgs.tsx'
+import * as Svgs from '~/components/Svgs.tsx'
 import { Button } from '~/components/ui/button.tsx'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog.tsx'
 import { Input } from '~/components/ui/input.tsx'
@@ -42,7 +42,7 @@ export function SettingsDialog() {
 		>
 			<DialogTrigger>
 				<Button ref={triggerButtonRef!} size="icon" variant="ghost">
-					<SettingsSvg/>
+					<Svgs.Settings/>
 				</Button>
 			</DialogTrigger>
 			<DialogContent

@@ -4,7 +4,7 @@ import toast from 'solid-toast'
 
 import { ScreenFittingContent } from '~/components/AppContainer.tsx'
 import { HelpCard } from '~/components/HelpCard.tsx'
-import { SwapSvg } from '~/components/Svgs.tsx'
+import * as Svgs from '~/components/Svgs.tsx'
 import { Button } from '~/components/ui/button.tsx'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '~/components/ui/card.tsx'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog'
@@ -311,7 +311,7 @@ function SwapButton(props: { initiatePieceSwap: () => void; alreadySwapping: boo
 				<Tooltip>
 					<TooltipTrigger>
 						<Button disabled={props.disabled} onclick={requestSwap} size="icon" variant="ghost">
-							<SwapSvg/>
+							<Svgs.Swap/>
 						</Button>
 					</TooltipTrigger>
 					<TooltipContent>Ask to Swap Pieces</TooltipContent>

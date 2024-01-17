@@ -1,4 +1,4 @@
-import { GithubSvg, InfoSvg } from '~/components/Svgs.tsx'
+import * as Svgs from '~/components/Svgs.tsx'
 import { Button } from '~/components/ui/button.tsx'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog.tsx'
 
@@ -7,7 +7,7 @@ export function AboutDialog() {
 		<Dialog>
 			<DialogTrigger>
 				<Button size="icon" variant="ghost">
-					<InfoSvg />
+					<Svgs.Info />
 				</Button>
 			</DialogTrigger>
 			<DialogContent>
@@ -15,7 +15,7 @@ export function AboutDialog() {
 					<DialogTitle>About</DialogTitle>
 					<DialogDescription>
 						<a>
-							<GithubSvg />
+							<Svgs.Github />
 						</a>
 					</DialogDescription>
 				</DialogHeader>

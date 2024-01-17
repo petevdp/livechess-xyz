@@ -8,7 +8,7 @@ import { cn } from '~/lib/utils.ts'
 import * as P from '~/systems/player.ts'
 import * as R from '~/systems/room.ts'
 
-import { LogoSvg, MutedSvg, NotMutedSvg } from './Svgs.tsx'
+import * as Svgs from './Svgs.tsx'
 import { ModalContainer } from './utils/Modal.tsx'
 
 
@@ -27,11 +27,11 @@ export function AppContainer(props: ParentProps) {
 		<div class={`w-[calc(100%_-_${scrollBarWidth}px]`}>
 			<nav class="flex w-full justify-between p-[0.25rem] pb-[.5rem]">
 				<A href="/" class="inline-flex p-1 h-10 w-10 items-center justify-center">
-					<LogoSvg/>
+					<Svgs.Logo/>
 				</A>
 				<div class="flex items-center justify-end space-x-1 font-light">
 					<Button size="icon" variant="ghost" onclick={() => P.setSettings({muteAudio: !P.settings.muteAudio})}>
-						{P.settings.muteAudio ? <MutedSvg/> : <NotMutedSvg/>}
+						{P.settings.muteAudio ? <Svgs.Muted/> : <Svgs.NotMuted/>}
 					</Button>
 					<Show when={R.room() && !R.room()!.isPlayerParticipating}>Spectating</Show>
 					<SettingsDialog />
@@ -39,7 +39,7 @@ export function AppContainer(props: ParentProps) {
 				</div>
 			</nav>
 			<ModalContainer />
-			{props.children}
+			<div>{props.children}</div>
 		</div>
 	)
 }
