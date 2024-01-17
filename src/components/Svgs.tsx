@@ -1,50 +1,21 @@
-// export function ResignSvg() {
-// 	return (
-// 		<svg fill="white" xmlns="http://www.w3.org/2000/svg" height="16" width="14" viewBox="0 0 448 512">
-// 			<path d="M64 32C64 14.3 49.7 0 32 0S0 14.3 0 32V64 368 480c0 17.7 14.3 32 32 32s32-14.3 32-32V352l64.3-16.1c41.1-10.3 84.6-5.5 122.5 13.4c44.2 22.1 95.5 24.8 141.7 7.4l34.7-13c12.5-4.7 20.8-16.6 20.8-30V66.1c0-23-24.2-38-44.8-27.7l-9.6 4.8c-46.3 23.2-100.8 23.2-147.1 0c-35.1-17.6-75.4-22-113.5-12.5L64 48V32z" />
-// 		</svg>
-// 	)
-// }
-//
-// export function FlipSvg() {
-// 	return (
-// 		<svg xmlns="http://www.w3.org/2000/svg" height="16" width="16" fill="white" viewBox="0 0 512 512">
-// 			<path d="M256 96c38.4 0 73.7 13.5 101.3 36.1l-32.6 32.6c-4.6 4.6-5.9 11.5-3.5 17.4s8.3 9.9 14.8 9.9H448c8.8 0 16-7.2 16-16V64c0-6.5-3.9-12.3-9.9-14.8s-12.9-1.1-17.4 3.5l-34 34C363.4 52.6 312.1 32 256 32c-10.9 0-21.5 .8-32 2.3V99.2c10.3-2.1 21-3.2 32-3.2zM132.1 154.7l32.6 32.6c4.6 4.6 11.5 5.9 17.4 3.5s9.9-8.3 9.9-14.8V64c0-8.8-7.2-16-16-16H64c-6.5 0-12.3 3.9-14.8 9.9s-1.1 12.9 3.5 17.4l34 34C52.6 148.6 32 199.9 32 256c0 10.9 .8 21.5 2.3 32H99.2c-2.1-10.3-3.2-21-3.2-32c0-38.4 13.5-73.7 36.1-101.3zM477.7 224H412.8c2.1 10.3 3.2 21 3.2 32c0 38.4-13.5 73.7-36.1 101.3l-32.6-32.6c-4.6-4.6-11.5-5.9-17.4-3.5s-9.9 8.3-9.9 14.8V448c0 8.8 7.2 16 16 16H448c6.5 0 12.3-3.9 14.8-9.9s1.1-12.9-3.5-17.4l-34-34C459.4 363.4 480 312.1 480 256c0-10.9-.8-21.5-2.3-32zM256 416c-38.4 0-73.7-13.5-101.3-36.1l32.6-32.6c4.6-4.6 5.9-11.5 3.5-17.4s-8.3-9.9-14.8-9.9H64c-8.8 0-16 7.2-16 16l0 112c0 6.5 3.9 12.3 9.9 14.8s12.9 1.1 17.4-3.5l34-34C148.6 459.4 199.9 480 256 480c10.9 0 21.5-.8 32-2.3V412.8c-10.3 2.1-21 3.2-32 3.2z" />
-// 		</svg>
-// 	)
-// }
-//
-// export function NextStepSvg() {
-// 	return (
-// 		<svg fill="rgb(212 212 212 / var(--tw-text-opacity))" xmlns="http://www.w3.org/2000/svg" height="16" width="10" viewBox="0 0 320 512">
-// 			<path d="M52.5 440.6c-9.5 7.9-22.8 9.7-34.1 4.4S0 428.4 0 416V96C0 83.6 7.2 72.3 18.4 67s24.5-3.6 34.1 4.4l192 160L256 241V96c0-17.7 14.3-32 32-32s32 14.3 32 32V416c0 17.7-14.3 32-32 32s-32-14.3-32-32V271l-11.5 9.6-192 160z" />
-// 		</svg>
-// 	)
-// }
-//
-// const svgFill = 'rgb(212 212 212 / var(--tw-text-opacity))'
-//
-// export function PrevStepSvg() {
-// 	return (
-// 		<svg fill={svgFill} xmlns="http://www.w3.org/2000/svg" height="16" width="10" viewBox="0 0 320 512">
-// 			<path d="M267.5 440.6c9.5 7.9 22.8 9.7 34.1 4.4s18.4-16.6 18.4-29V96c0-12.4-7.2-23.7-18.4-29s-24.5-3.6-34.1 4.4l-192 160L64 241V96c0-17.7-14.3-32-32-32S0 78.3 0 96V416c0 17.7 14.3 32 32 32s32-14.3 32-32V271l11.5 9.6 192 160z" />
-// 		</svg>
-// 	)
-// }
-//
-// export function LastStepSvg() {
-// 	return (
-// 		<svg fill={svgFill} xmlns="http://www.w3.org/2000/svg" height="16" width="16" viewBox="0 0 512 512">
-// 			<path d="M52.5 440.6c-9.5 7.9-22.8 9.7-34.1 4.4S0 428.4 0 416V96C0 83.6 7.2 72.3 18.4 67s24.5-3.6 34.1 4.4L224 214.3V256v41.7L52.5 440.6zM256 352V256 128 96c0-12.4 7.2-23.7 18.4-29s24.5-3.6 34.1 4.4l192 160c7.3 6.1 11.5 15.1 11.5 24.6s-4.2 18.5-11.5 24.6l-192 160c-9.5 7.9-22.8 9.7-34.1 4.4s-18.4-16.6-18.4-29V352z" />
-// 		</svg>
-// 	)
-// }
-//
-// export function FirstStepSvg() {
-// 	return (
-// 		<svg fill={svgFill} xmlns="http://www.w3.org/2000/svg" height="16" width="16" viewBox="0 0 512 512">
-// 			<path d="M459.5 440.6c9.5 7.9 22.8 9.7 34.1 4.4s18.4-16.6 18.4-29V96c0-12.4-7.2-23.7-18.4-29s-24.5-3.6-34.1 4.4L288 214.3V256v41.7L459.5 440.6zM256 352V256 128 96c0-12.4-7.2-23.7-18.4-29s-24.5-3.6-34.1 4.4l-192 160C4.2 237.5 0 246.5 0 256s4.2 18.5 11.5 24.6l192 160c9.5 7.9 22.8 9.7 34.1 4.4s18.4-16.6 18.4-29V352z" />
-// 		</svg>
-// 	)
-// }
-//
+import * as flip from 'flip-~/assets/icons/board.svg'
+import * as notMuted from 'not-~/assets/icons/not-muted.svg'
+import * as offerDraw from 'offer-~/assets/icons/draw.svg'
+import { Component, ComponentProps } from 'solid-js'
+
+import * as first from '~/assets/icons/first.svg'
+import * as github from '~/assets/icons/github.svg'
+import * as help from '~/assets/icons/help.svg'
+import * as info from '~/assets/icons/info.svg'
+import * as last from '~/assets/icons/last.svg'
+import * as muted from '~/assets/icons/muted.svg'
+import * as next from '~/assets/icons/next.svg'
+import * as prev from '~/assets/icons/prev.svg'
+import * as resign from '~/assets/icons/resign.svg'
+import * as settings from '~/assets/icons/settings.svg'
+import * as swap from '~/assets/icons/swap.svg'
+
+
+// this is not good for treeshaking/codesplitting, if we get like 50+ icons we should just export manually
+const _svgs = { first, flip, github, help, info, last, muted, next, notMuted, offerDraw, prev, resign, settings, swap }
+export const Svgs = _svgs as unknown as Record<keyof typeof _svgs, Component<ComponentProps<'svg'>>>

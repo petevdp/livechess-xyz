@@ -2,11 +2,9 @@ import QRCode from 'qrcode'
 import { Match, ParentProps, Show, Switch, createResource, createSignal, onCleanup } from 'solid-js'
 import toast from 'solid-toast'
 
-import SwapSvg from '~/assets/icons/swap.svg'
-import BlackKingSvg from '~/assets/pieces/bKing.svg'
-import WhiteKingSvg from '~/assets/pieces/wKing.svg'
 import { ScreenFittingContent } from '~/components/AppContainer.tsx'
 import { HelpCard } from '~/components/HelpCard.tsx'
+import { Svgs } from '~/components/Svgs.tsx'
 import { Button } from '~/components/ui/button.tsx'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '~/components/ui/card.tsx'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog'
@@ -16,6 +14,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip
 import { Choice, MultiChoiceButton } from '~/components/utils/MultiChoiceButton.tsx'
 import * as Audio from '~/systems/audio.ts'
 import * as GL from '~/systems/game/gameLogic.ts'
+import { getPieceSvg } from '~/systems/piece.tsx'
 import * as P from '~/systems/player.ts'
 import * as R from '~/systems/room.ts'
 
@@ -290,6 +289,9 @@ function PlayerAwareness() {
 	)
 }
 
+const WhiteKingSvg = getPieceSvg({ type: 'king', color: 'white' })
+const BlackKingSvg = getPieceSvg({ type: 'king', color: 'black' })
+
 function PlayerColorDisplay(props: { color: GL.Color }) {
 	return (
 		<div class="ml-auto mr-auto flex w-[5rem] items-center justify-center rounded">
@@ -310,7 +312,7 @@ function SwapButton(props: { initiatePieceSwap: () => void; alreadySwapping: boo
 				<Tooltip>
 					<TooltipTrigger>
 						<Button disabled={props.disabled} onclick={requestSwap} size="icon" variant="ghost">
-							<SwapSvg />
+							<Svgs.swap/>
 						</Button>
 					</TooltipTrigger>
 					<TooltipContent>Ask to Swap Pieces</TooltipContent>

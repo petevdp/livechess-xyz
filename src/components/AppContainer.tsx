@@ -1,9 +1,6 @@
 import { A } from '@solidjs/router'
 import { ComponentProps, ParentProps, Show, splitProps } from 'solid-js'
 
-import MutedSvg from '~/assets/icons/muted.svg'
-import NotMutedSvg from '~/assets/icons/not-muted.svg'
-import Logo from '~/assets/logo.svg'
 import { SettingsDialog } from '~/components/Settings.tsx'
 import { Button } from '~/components/ui/button.tsx'
 import { cn } from '~/lib/utils.ts'
@@ -11,6 +8,7 @@ import * as P from '~/systems/player.ts'
 import * as R from '~/systems/room.ts'
 
 import styles from './AppContainer.module.css'
+import { Svgs } from './Svgs.tsx'
 import { ModalContainer } from './utils/Modal.tsx'
 
 
@@ -36,7 +34,7 @@ export function AppContainer(props: ParentProps) {
 				</A>
 				<div class="flex items-center justify-end space-x-1 font-light">
 					<Button size="icon" variant="ghost" onclick={() => P.setSettings({muteAudio: !P.settings.muteAudio})}>
-						{P.settings.muteAudio ? <MutedSvg/> : <NotMutedSvg/>}
+						{P.settings.muteAudio ? <Svgs.muted/> : <Svgs.notMuted/>}
 					</Button>
 					<Show when={R.room() && !R.room()!.isPlayerParticipating}>Spectating</Show>
 					<SettingsDialog />

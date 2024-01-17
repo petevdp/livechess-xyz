@@ -1,14 +1,10 @@
-import { useNavigate } from '@solidjs/router';
+import { useNavigate } from '@solidjs/router'
 
+import { Button } from '~/components/ui/button.tsx'
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '~/components/ui/card.tsx'
+import * as R from '~/systems/room.ts'
 
-
-import { Button } from '~/components/ui/button.tsx';
-import { Card, CardContent, CardHeader } from '~/components/ui/card.tsx';
-import * as R from '~/systems/room.ts';
-
-
-
-import { AppContainer, ScreenFittingContent } from './AppContainer.tsx';
+import { AppContainer, ScreenFittingContent } from './AppContainer.tsx'
 
 
 export function Home() {
@@ -24,15 +20,20 @@ export function Home() {
 		<AppContainer>
 			<ScreenFittingContent class="grid place-items-center">
 				<Card class="h-min w-80">
-					<CardHeader>Welcome to LiveChess!</CardHeader>
+					<CardHeader>
+						<CardTitle>Welcome to LiveChess!</CardTitle>
+					</CardHeader>
 					<CardContent>
-						<p>Click below to host a new game, or copy the link from your opponent into your browser to join theirs.</p>
-						<div class="flex justify-center">
+						<p>Click below to host a new game, or copy the link from your opponent into your browser to join their
+							game.</p>
+					</CardContent>
+					<CardFooter>
+						<div class="flex justify-center w-full">
 							<Button variant="default" onclick={createRoom}>
 								Play
 							</Button>
 						</div>
-					</CardContent>
+					</CardFooter>
 				</Card>
 			</ScreenFittingContent>
 		</AppContainer>

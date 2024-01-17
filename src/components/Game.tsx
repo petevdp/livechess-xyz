@@ -17,14 +17,6 @@ import {
 } from 'solid-js'
 import toast from 'solid-toast'
 
-import FirstSvg from '~/assets/icons/first.svg'
-import FlipBoardSvg from '~/assets/icons/flip-board.svg'
-import HelpSvg from '~/assets/icons/help.svg'
-import LastSvg from '~/assets/icons/last.svg'
-import NextSvg from '~/assets/icons/next.svg'
-import OfferDrawSvg from '~/assets/icons/offer-draw.svg'
-import PrevSvg from '~/assets/icons/prev.svg'
-import ResignSvg from '~/assets/icons/resign.svg'
 import { HelpCard } from '~/components/HelpCard.tsx'
 import { Dialog, DialogContent, DialogDescription, DialogHeader } from '~/components/ui/dialog.tsx'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '~/components/ui/hover-card.tsx'
@@ -38,6 +30,7 @@ import * as P from '~/systems/player.ts'
 import * as R from '~/systems/room.ts'
 
 import styles from './Game.module.css'
+import { Svgs } from './Svgs.tsx'
 import { Button } from './ui/button.tsx'
 import * as Modal from './utils/Modal.tsx'
 
@@ -311,12 +304,11 @@ export function Game(props: { gameId: string }) {
 		const touchOffsetY = () => (P.settings.touchOffsetDirection !== 'none' ? -Math.abs(touchOffsetX()) : 0)
 		grabbedPieceCanvas.addEventListener('mousemove', (e) => moveListener(e.clientX, e.clientY))
 		grabbedPieceCanvas.addEventListener('touchmove', (e) => {
-			for (let touch of e.targetTouches) {
-				const touchingPiece = moveListener(touch.clientX + touchOffsetX(), touch.clientY + touchOffsetY())
-				if (touchingPiece) {
-					e.preventDefault()
-				}
-				break
+			if (e.targetTouches.length === 0) return
+			const touch = e.targetTouches[0]
+			const touchingPiece = moveListener(touch.clientX + touchOffsetX(), touch.clientY + touchOffsetY())
+			if (touchingPiece) {
+				e.preventDefault()
 			}
 		})
 
@@ -613,12 +605,12 @@ export function Game(props: { gameId: string }) {
 				/>
 				<div class={`${styles.topLeftActions} flex items-start space-x-1`}>
 					<Button variant="ghost" size="icon" onclick={() => setBoardFlipped((f) => !f)} class="mb-1">
-						<FlipBoardSvg />
+						<Svgs.flip/>
 					</Button>
 					<Show when={game.gameConfig.variant !== 'regular'}>
 						<HelpCard variant={game.gameConfig.variant}>
 							<Button variant="ghost" size="icon" class="mb-1">
-								<HelpSvg fill="white"/>
+								<Svgs.help fill="white"/>
 							</Button>
 						</HelpCard>
 					</Show>
@@ -768,11 +760,11 @@ function ActionsPanel(props: { class: string; placingDuck: boolean }) {
 								variant="ghost"
 								onclick={() => game.offerOrAcceptDraw()}
 							>
-								<OfferDrawSvg/>
+								<Svgs.offerDraw/>
 							</Button>
 							<Button disabled={!!game.drawIsOfferedBy} title="Resign" size="icon" variant="ghost"
 											onclick={() => game.resign()}>
-								<ResignSvg/>
+								<Svgs.resign/>
 							</Button>
 						</span>
 					</DrawHoverCard>
@@ -907,7 +899,7 @@ function MoveNav() {
 	return (
 		<div class="flex justify-evenly">
 			<Button size="icon" variant="ghost" disabled={game.viewedMoveIndex() === -1} onClick={() => _setViewedMove(-1)}>
-				<FirstSvg />
+				<Svgs.first/>
 			</Button>
 			<Button
 				class="text-blue-600"
@@ -916,7 +908,7 @@ function MoveNav() {
 				disabled={game.viewedMoveIndex() === -1}
 				onClick={() => _setViewedMove(game.viewedMoveIndex() - 1)}
 			>
-				<PrevSvg />
+				<Svgs.prev/>
 			</Button>
 			<Button
 				disabled={game.viewedMoveIndex() === game.state.moveHistory.length - 1}
@@ -924,7 +916,7 @@ function MoveNav() {
 				size="icon"
 				onClick={() => _setViewedMove(game.viewedMoveIndex() + 1)}
 			>
-				<NextSvg />
+				<Svgs.next/>
 			</Button>
 			<Button
 				variant="ghost"
@@ -932,7 +924,7 @@ function MoveNav() {
 				disabled={game.viewedMoveIndex() === game.state.moveHistory.length - 1}
 				onClick={() => _setViewedMove('live')}
 			>
-				<LastSvg />
+				<Svgs.last/>
 			</Button>
 		</div>
 	)

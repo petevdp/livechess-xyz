@@ -1,6 +1,6 @@
 import { createEffect, createSignal } from 'solid-js'
 
-import SettingsSvg from '~/assets/icons/settings.svg'
+import { Svgs } from '~/components/Svgs.tsx'
 import { Button } from '~/components/ui/button.tsx'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog.tsx'
 import { Input } from '~/components/ui/input.tsx'
@@ -42,7 +42,7 @@ export function SettingsDialog() {
 		>
 			<DialogTrigger>
 				<Button ref={triggerButtonRef!} size="icon" variant="ghost">
-					<SettingsSvg />
+					<Svgs.info/>
 				</Button>
 			</DialogTrigger>
 			<DialogContent
@@ -57,9 +57,7 @@ export function SettingsDialog() {
 					</DialogHeader>
 					<div class="grid gap-4 py-4">
 						<div class="flex w-full items-center justify-between space-x-2">
-							<Label for="nickname">
-								Nickname
-							</Label>
+							<Label for="nickname">Nickname</Label>
 							<Input
 								required={true}
 								pattern={'[a-zA-Z0-9 ]+'}
@@ -73,11 +71,13 @@ export function SettingsDialog() {
 							<Label class="text-right">Touch Offset Direction</Label>
 							<MultiChoiceButton
 								listClass="flex"
-								choices={[
-									{label: 'Left', id: 'left'},
-									{label: 'None', id: 'none'},
-									{label: 'Right', id: 'right'},
-								] satisfies Choice<P.PlayerSettings['touchOffsetDirection']>[]}
+								choices={
+									[
+										{label: 'Left', id: 'left'},
+										{label: 'None', id: 'none'},
+										{label: 'Right', id: 'right'},
+									] satisfies Choice<P.PlayerSettings['touchOffsetDirection']>[]
+								}
 								selected={P.settings.touchOffsetDirection}
 								onChange={(id) => P.setSettings({touchOffsetDirection: id})}
 							/>
