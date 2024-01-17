@@ -295,8 +295,17 @@ export function Game(props: { gameId: string }) {
 			return String.fromCharCode('a'.charCodeAt(0) + col) + (8 - row)
 		}
 
-		const touchOffsetX = () => (P.settings.touchOffsetDirection === 'left' ? -20 : 20)
-		const touchOffsetY = () => -Math.abs(touchOffsetX())
+		const touchOffsetX = () => {
+			switch (P.settings.touchOffsetDirection) {
+				case 'left':
+					return -20
+				case 'right':
+					return 20
+				case 'none':
+					return 0
+			}
+		}
+		const touchOffsetY = () => (P.settings.touchOffsetDirection !== 'none' ? -Math.abs(touchOffsetX()) : 0)
 		grabbedPieceCanvas.addEventListener('mousemove', (e) => moveListener(e.clientX, e.clientY))
 		grabbedPieceCanvas.addEventListener('touchmove', (e) => {
 			for (let touch of e.targetTouches) {

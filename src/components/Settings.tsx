@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { Input } from '~/components/ui/input.tsx'
 import { Label } from '~/components/ui/label.tsx'
 import { Switch } from '~/components/ui/switch.tsx'
-import { MultiChoiceButton } from '~/components/utils/MultiChoiceButton.tsx'
+import { Choice, MultiChoiceButton } from '~/components/utils/MultiChoiceButton.tsx'
 import * as P from '~/systems/player.ts'
 
 
@@ -75,8 +75,9 @@ export function SettingsDialog() {
 								listClass="flex"
 								choices={[
 									{label: 'Left', id: 'left'},
+									{label: 'None', id: 'none'},
 									{label: 'Right', id: 'right'},
-								]}
+								] satisfies Choice<P.PlayerSettings['touchOffsetDirection']>[]}
 								selected={P.settings.touchOffsetDirection}
 								onChange={(id) => P.setSettings({touchOffsetDirection: id})}
 							/>

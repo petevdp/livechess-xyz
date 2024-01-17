@@ -15,7 +15,7 @@ export type Player = {
 export type PlayerSettings = {
 	name: string | null
 	muteAudio: boolean
-	touchOffsetDirection: 'left' | 'right'
+	touchOffsetDirection: 'left' | 'right' | 'none'
 	closeQrCodeDialogOnJoin: boolean
 }
 
@@ -27,7 +27,7 @@ export const [settings, setSettings] = makePersisted(
 	createStore<PlayerSettings>({
 		name: null,
 		muteAudio: false,
-		touchOffsetDirection: 'left',
+		touchOffsetDirection: 'none',
 		closeQrCodeDialogOnJoin: true,
 	}),
 	{ name: 'settings', storage: localStorage }
