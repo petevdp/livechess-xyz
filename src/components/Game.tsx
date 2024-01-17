@@ -189,6 +189,7 @@ export function Game(props: { gameId: string }) {
 	//#endregion
 
 	//#region render pieces
+	let i = 0
 	createEffect(() => {
 		const args: RenderPiecesArgs = {
 			squareSize: squareSize(),
@@ -202,6 +203,8 @@ export function Game(props: { gameId: string }) {
 		Pieces.pieceChangedEpoch()
 		scaleAndReset(args.context)
 		untrack(() => {
+			console.log(`rendering pieces ${i}`, args)
+			i++
 			renderPieces(args)
 		})
 	})
@@ -336,38 +339,40 @@ export function Game(props: { gameId: string }) {
 			const rect = grabbedPieceCanvas.getBoundingClientRect()
 			const [x, y] = [clientX - rect.left, clientY - rect.top]
 			const mouseSquare = getSquareFromDisplayCoords(x, y)
-			if (game.placingDuck()) {
-				game.currentDuckPlacement = mouseSquare
-				makeMove()
-				return
-			}
+			batch(() => {
+				if (game.placingDuck()) {
+					game.currentDuckPlacement = mouseSquare
+					makeMove()
+					return
+				}
 
-			if (activePieceSquare()) {
-				if (isLegalForActive(mouseSquare)) {
-					makeMove({ from: activePieceSquare()!, to: mouseSquare })
+				if (activePieceSquare()) {
+					if (isLegalForActive(mouseSquare)) {
+						makeMove({ from: activePieceSquare()!, to: mouseSquare })
+						return
+					}
+
+					if (squareContainsPlayerPiece(mouseSquare)) {
+						setActivePieceSquare(mouseSquare)
+						setGrabbingPieceSquare(true)
+						return
+					}
+
+					setActivePieceSquare(null)
 					return
 				}
 
 				if (squareContainsPlayerPiece(mouseSquare)) {
-					setActivePieceSquare(mouseSquare)
-					setGrabbingPieceSquare(true)
+					batch(() => {
+						// we're not setting grabbedSquareMousePos here becase we don't want to visually move the piece until the mouse moves
+						setActivePieceSquare(mouseSquare)
+						setGrabbingPieceSquare(true)
+					})
 					return
+				} else {
+					setActivePieceSquare(null)
 				}
-
-				setActivePieceSquare(null)
-				return
-			}
-
-			if (squareContainsPlayerPiece(mouseSquare)) {
-				batch(() => {
-					// we're not setting grabbedSquareMousePos here becase we don't want to visually move the piece until the mouse moves
-					setActivePieceSquare(mouseSquare)
-					setGrabbingPieceSquare(true)
-				})
-				return
-			} else {
-				setActivePieceSquare(null)
-			}
+			})
 		}
 
 		grabbedPieceCanvas.addEventListener('mouseup', (e) => mouseUpListener(e.clientX, e.clientY))
@@ -384,14 +389,16 @@ export function Game(props: { gameId: string }) {
 			const square = getSquareFromDisplayCoords(clientX - rect.left, clientY - rect.top)
 			const _activePiece = activePieceSquare()
 
-			if (_activePiece && _activePiece !== square) {
-				if (grabbingPieceSquare() && isLegalForActive(square)) {
-					makeMove({ from: _activePiece!, to: square })
-					setActivePieceSquare(null)
+			batch(() => {
+				if (_activePiece && _activePiece !== square) {
+					if (grabbingPieceSquare() && isLegalForActive(square)) {
+						makeMove({ from: _activePiece!, to: square })
+						setActivePieceSquare(null)
+					}
 				}
-			}
-			setGrabbingPieceSquare(false)
-			setGrabbedMousePos(null)
+				setGrabbingPieceSquare(false)
+				setGrabbedMousePos(null)
+			})
 		}
 	})
 
@@ -420,20 +427,23 @@ export function Game(props: { gameId: string }) {
 				<Match when={game.currentMoveAmbiguity?.type === 'promotion'}>
 					<div class="flex w-[180px] flex-row justify-between space-x-1">
 						<For each={GL.PROMOTION_PIECES}>
-							{(pp) => (
-								<Button
-									classList={{ 'bg-neutral-200': game.bottomPlayer.color !== 'white' }}
-									variant={game.bottomPlayer.color === 'white' ? 'ghost' : 'default'}
-									size="icon"
-									onclick={() => {
-										if (game.currentMoveAmbiguity?.type !== 'promotion') return
-										game.setCurrentDisambiguation({ type: 'promotion', piece: pp as GL.PromotionPiece })
-										makeMove()
-									}}
-								>
-									<img alt={pp} src={Pieces.getPieceSrc({ type: pp, color: game.bottomPlayer.color })} />
-								</Button>
-							)}
+							{(pp) => {
+								const Piece = Pieces.getPieceSvg({ type: pp, color: game.bottomPlayer.color })
+								return (
+									<Button
+										classList={{ 'bg-neutral-200': game.bottomPlayer.color !== 'white' }}
+										variant={game.bottomPlayer.color === 'white' ? 'ghost' : 'default'}
+										size="icon"
+										onclick={() => {
+											if (game.currentMoveAmbiguity?.type !== 'promotion') return
+											game.setCurrentDisambiguation({ type: 'promotion', piece: pp as GL.PromotionPiece })
+											makeMove()
+										}}
+									>
+										<Piece />
+									</Button>
+								)
+							}}
 						</For>
 					</div>
 				</Match>
@@ -863,13 +873,24 @@ function CapturedPieces(props: {
 	size: number
 	layout: 'column' | 'row'
 }) {
+	const hierarchy = ['pawn', 'knight', 'bishop', 'rook', 'queen', 'king']
+
+	const sortedPieces = () =>
+		[...props.pieces].sort((a, b) => {
+			const aIndex = hierarchy.indexOf(a.type)
+			const bIndex = hierarchy.indexOf(b.type)
+			if (aIndex === -1 || bIndex === -1) return 0
+			return bIndex - aIndex
+		})
+
 	return (
 		<div class={`${styles.capturedPieces} ${styles[props.capturedBy]}`}>
-			<For each={props.pieces}>
-				{(piece) => (
-					<img class={styles.capturedPiece} src={Pieces.getPieceSrc(piece)} alt={piece.type}
-							 title={`${piece.color} ${piece.type}`}/>
-				)}
+			<For each={sortedPieces()}>
+				{(piece) => {
+					const Piece = Pieces.getPieceSvg(piece)
+					console.log(Piece)
+					return <Piece class="w-[30px] h-[30px]" />
+				}}
 			</For>
 		</div>
 	)

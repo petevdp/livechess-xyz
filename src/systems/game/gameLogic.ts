@@ -822,7 +822,7 @@ function kingMoves(start: Coords, board: Board, startingBoard: Board, moveHistor
 				from: start,
 				to: newKingSquare,
 				piece: 'king',
-				castle: direction.x === 1 ? 'king' : 'queen',
+				castle: direction === 'a' ? 'queen' : 'king',
 			})
 		)
 	}

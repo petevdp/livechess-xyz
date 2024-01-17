@@ -74,18 +74,17 @@ export class Game {
 
 		//#region currentMove input state
 		;[this.currentMove, this.setCurrentMove] = createSignal(null as null | GL.SelectedMove)
-		;[this.currentDisambiguation, this.setCurrentDisambiguation] = createSignal(null as null | MoveDisambiguation)[this.boardWithCurrentMove, this.setBoardWithCurrentMove] = createSignal(null as null | GL.Board)
+		;[this.boardWithCurrentMove, this.setBoardWithCurrentMove] = createSignal(null as null | GL.Board)
+		;[this.currentDisambiguation, this.setCurrentDisambiguation] = createSignal(null as null | MoveDisambiguation)
 		;[this.placingDuck, this.setPlacingDuck] = createSignal(false)
 		//#endregion
 
 		// sometimes there are multiple candidate moves for a given currentMove, e.g. promotions or fischer random castling edgecases
-		this._candidateMovesForSelected = createMemo(() => {
-			console.log('getting candidates moves for selected')
+		this._candidateMovesForSelected = () => {
 			const currentMove = this.currentMove()
 			if (!currentMove) return []
 			return this.getLegalMovesForSquare(currentMove.from).filter((move) => GL.notationFromCoords(move.to) === currentMove!.to)
-		})
-		this._candidateMovesForSelected = () => []
+		}
 
 		//#region view history
 		const [currentMove, setViewedMove] = createSignal<'live' | number>('live')
@@ -267,7 +266,6 @@ export class Game {
 	}
 
 	get currentMoveAmbiguity(): MoveAmbiguity | null {
-		console.log('current move ambiguity')
 		const currentMove = this.currentMove()
 		if (!currentMove || this.currentDisambiguation()) return null
 		const candidateMoves = this.candidateMovesFromSelected
@@ -392,7 +390,6 @@ export class Game {
 		}
 
 		const disambiguation = this.currentDisambiguation()
-		console.log({ disambiguation, currentMove, currentDuckPlacement: this.currentDuckPlacement })
 		this.setCurrentDisambiguation(null)
 		let expectedMoveIndex = this.state.moveHistory.length
 		const currentDuckPlacement = this.currentDuckPlacement
@@ -402,7 +399,6 @@ export class Game {
 		this.setBoardWithCurrentMove(null)
 		let [acceptedMove, setAcceptedMove] = createSignal(null as null | GL.Move)
 		this.room.sharedStore.setStoreWithRetries(() => {
-			console.log('trying currentMove for real')
 			const state = unwrap(this.state)
 			if (this.viewedMoveIndex() !== state.moveHistory.length - 1 || this.outcome) return
 			// check that we're still on the same currentMove
@@ -449,7 +445,6 @@ export class Game {
 				],
 			}
 		})
-		console.log('waiting for currentMove to be accepted')
 		return { type: 'accepted', move: await until(() => acceptedMove()) }
 	}
 

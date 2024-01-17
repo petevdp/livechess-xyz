@@ -1,5 +1,5 @@
 import { until } from '@solid-primitives/promise'
-import { createEffect, createSignal } from 'solid-js'
+import { Component, ComponentProps, createEffect, createSignal } from 'solid-js'
 
 import bbishop from '~/assets/pieces/bBishop.svg'
 import bking from '~/assets/pieces/bKing.svg'
@@ -18,7 +18,7 @@ import wrook from '~/assets/pieces/wRook.svg'
 import * as GL from './game/gameLogic.ts'
 
 
-const pieces = {
+const pieceSvgs = {
 	wqueen,
 	wbishop,
 	wking,
@@ -32,7 +32,7 @@ const pieces = {
 	bpawn,
 	brook,
 	duck,
-}
+} as const
 
 export const pieceCache = new Map<string, HTMLImageElement>()
 
@@ -42,8 +42,8 @@ export const [squareSize, setSquareSize] = createSignal(32)
 export const [pieceChangedEpoch, setPiecedChangedEpoch] = createSignal(0)
 export const initialized = () => pieceCache.size > 0
 
-function loadPiece(key: keyof typeof pieces, squareSize: number) {
-	const Svg = pieces[key]
+function loadPiece(key: keyof typeof pieceSvgs, squareSize: number) {
+	const Svg = pieceSvgs[key]
 	//@ts-ignore
 	const svg = (<Svg class="chess-piece" width={squareSize} height={squareSize} />) as HTMLElement
 	const xml = new XMLSerializer().serializeToString(svg)
@@ -54,9 +54,9 @@ function loadPiece(key: keyof typeof pieces, squareSize: number) {
 export function initPieceSystem() {
 	createEffect(() => {
 		let promises: Promise<void>[] = []
-		for (const key in pieces) {
+		for (const key in pieceSvgs) {
 			promises.push(
-				loadPiece(key as keyof typeof pieces, squareSize()).then((img) => {
+				loadPiece(key as keyof typeof pieceSvgs, squareSize()).then((img) => {
 					pieceCache.set(key, img)
 				})
 			)
@@ -72,11 +72,11 @@ export function initPieceSystem() {
 function getPieceKey(piece: GL.ColoredPiece) {
 	if (piece.type === 'duck') return 'duck'
 	const colorPrefix = piece.color === 'white' ? 'w' : 'b'
-	return `${colorPrefix}${piece.type}`
+	return `${colorPrefix}${piece.type}` as keyof typeof pieceSvgs
 }
 
 export function getPieceSrc(piece: GL.ColoredPiece) {
-	return `/pieces/${getPieceKey(piece)}.svg`
+	return pieceSvgs[getPieceKey(piece)]
 }
 
 export async function getPiece(piece: GL.ColoredPiece, size?: number) {
@@ -86,7 +86,7 @@ export async function getPiece(piece: GL.ColoredPiece, size?: number) {
 		return pieceCache.get(key)!
 	}
 
-	return await loadPiece(key as keyof typeof pieces, size)
+	return await loadPiece(key as keyof typeof pieceSvgs, size)
 }
 
 export function getCachedPiece(piece: GL.ColoredPiece) {
@@ -103,4 +103,8 @@ export function loadImage(src: string, size: number) {
 			resolve(img)
 		}
 	})
+}
+
+export function getPieceSvg(piece: GL.ColoredPiece) {
+	return pieceSvgs[getPieceKey(piece)] as unknown as Component<ComponentProps<'svg'>>
 }

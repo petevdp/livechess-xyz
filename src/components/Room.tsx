@@ -11,6 +11,7 @@ import { Button } from '~/components/ui/button.tsx'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '~/components/ui/card.tsx'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '~/components/ui/hover-card.tsx'
+import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip.tsx'
 import { Choice, MultiChoiceButton } from '~/components/utils/MultiChoiceButton.tsx'
 import * as Audio from '~/systems/audio.ts'
@@ -129,17 +130,50 @@ function GameConfigForm() {
 	const room = R.room()!
 	if (!room) throw new Error('room is not initialized')
 	const gameConfig = () => room!.rollbackState.gameConfig
+	const QuestionMark = () => <span class={`p-1 leading-[24px] text-md text-inherit text-primary underline cursor-pointer`}>?</span>
 	const helpCardLabel = (
-		<label class="flex justify-center items-center text-inherit">
-			Variant{' '}
-			<Show when={room.rollbackState.gameConfig.variant !== 'regular'}>
-				<HelpCard variant={room.rollbackState.gameConfig.variant}>
-					<Button variant="link" class="p-1 leading-[24px] text-md text-inherit text-primary underline">
-						?
-					</Button>
-				</HelpCard>
-			</Show>
-		</label>
+		<div class="flex justify-center items-center text-inherit">
+			<HelpCard variant={room.rollbackState.gameConfig.variant}>
+				<label>
+					Variant <QuestionMark />
+				</label>
+			</HelpCard>
+		</div>
+	)
+
+	const timeControlLabel = (
+		<div class="flex justify-center items-center text-inherit">
+			<Popover>
+				<PopoverTrigger>
+					<label>
+						Time Control <QuestionMark />
+					</label>
+				</PopoverTrigger>
+				<PopoverContent>
+					<div class="flex flex-col space-y-1">
+						<span>Each player gets the set amount of time at the start of the game.</span>
+						<span>When you run out of time, you lose.</span>
+					</div>
+				</PopoverContent>
+			</Popover>
+		</div>
+	)
+
+	const incrementLabel = (
+		<div class="flex justify-center items-center text-inherit">
+			<Popover>
+				<PopoverTrigger>
+					<label>
+						Increment <QuestionMark />
+					</label>
+				</PopoverTrigger>
+				<PopoverContent>
+					<div class="flex flex-col space-y-1">
+						<span>Each time you make a move, you gain the set amount of time.</span>
+					</div>
+				</PopoverContent>
+			</Popover>
+		</div>
 	)
 
 	return (
@@ -153,7 +187,7 @@ function GameConfigForm() {
 				disabled={!room.isPlayerParticipating || room.leftPlayer?.isReadyForGame}
 			/>
 			<MultiChoiceButton
-				label="Time Control"
+				label={timeControlLabel}
 				listClass="grid grid-rows-1 grid-cols-3 md:grid-cols-5 w-full tex-sm space-x-0 gap-1"
 				choices={GL.TIME_CONTROLS.map((tc) => ({ label: tc, id: tc }) satisfies Choice<GL.TimeControl>)}
 				selected={gameConfig().timeControl}
@@ -161,7 +195,7 @@ function GameConfigForm() {
 				disabled={!room.isPlayerParticipating || room.leftPlayer?.isReadyForGame}
 			/>
 			<MultiChoiceButton
-				label="Increment"
+				label={incrementLabel}
 				listClass="grid  grid-cols-4 text-sm"
 				choices={GL.INCREMENTS.map((i) => ({ label: `${i}s`, id: i }) satisfies Choice<GL.Increment>)}
 				selected={gameConfig().increment}

@@ -85,6 +85,18 @@ function FischerRandom() {
 	)
 }
 
+function RegularChess() {
+	return (
+		<article>
+			<p>Standard FIDE chess rules.</p>
+			<p>
+				For more information about other variants, selec one and click the <span class="text-primary underline">'?'</span> button again to
+				learn more about it.
+			</p>
+		</article>
+	)
+}
+
 export function HelpCard(props: { variant: GL.Variant } & ParentProps) {
 	return (
 		<Dialog>
@@ -99,6 +111,9 @@ export function HelpCard(props: { variant: GL.Variant } & ParentProps) {
 					</Match>
 					<Match when={props.variant === 'fischer-random'}>
 						<FischerRandom />
+					</Match>
+					<Match when={props.variant === 'regular'}>
+						<RegularChess/>
 					</Match>
 				</Switch>
 			</DialogContent>
