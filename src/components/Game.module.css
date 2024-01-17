@@ -106,11 +106,6 @@ canvas {
 
 .moveHistoryContainer {
 	grid-area: move-history;
-	display: flex;
-	width: min-content;
-	flex-direction: column;
-	align-items: flex-start;
-	overflow-y: auto;
 }
 
 @media screen and (max-aspect-ratio: 1/1) {

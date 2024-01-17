@@ -599,9 +599,7 @@ export function Game(props: { gameId: string }) {
 	return (
 		<div class={styles.boardPageWrapper}>
 			<div class={styles.boardContainer}>
-				<div class={styles.moveHistoryContainer}>
-					<MoveHistory />
-				</div>
+				<MoveHistory/>
 				<Player class={styles.topPlayer} player={game.topPlayer}/>
 				<Clock
 					class={styles.clockTopPlayer}
@@ -815,60 +813,48 @@ function ActionsPanel(props: { class: string; placingDuck: boolean }) {
 function MoveHistory() {
 	const game = G.game()!
 	const _setViewedMove = setViewedMove(game)
+	const itemClass = 'grid grid-cols-[min-content_1fr_1fr] gap-1 text-xs items-center'
 	return (
-		<div class={styles.moveHistory}>
-			<div class={styles.moveHistoryEntry}>
-				<pre class="mr-1">
-					<code> 0.</code>
-				</pre>
-				<div>
-					<Button size="sm" variant={game.viewedMoveIndex() === -1 ? 'secondary' : 'ghost'} onClick={() => _setViewedMove(-1)}>
-						Start
-					</Button>
-				</div>
+		<div
+			class={`${styles.moveHistoryContainer} grid grid-cols-2 sm:grid-cols-2 h-max max-h-full gap-x-4 gap-y-1 p-1 overflow-y-auto`}
+		>
+			<div class={itemClass}>
+				<span class="font-mono font-bold">00.</span>
+				<Button
+					class="p-[.25rem] font-light"
+					size="sm"
+					variant={game.viewedMoveIndex() === -1 ? 'secondary' : 'ghost'}
+					onClick={() => _setViewedMove(-1)}
+				>
+					Start
+				</Button>
 			</div>
 			<For each={game.moveHistoryAsNotation}>
 				{(move, index) => {
 					const viewingFirstMove = () => game.viewedMoveIndex() === index() * 2
 					const viewingSecondMove = () => game.viewedMoveIndex() === index() * 2 + 1
 					return (
-						<>
-							<div
-								classList={{
-									[styles.moveHistoryEntry]: true,
-									[styles.singleMove]: index() + 1 === game.moveHistoryAsNotation.length && game.state.moveHistory.length % 2 === 1,
-								}}
+						<div class={itemClass}>
+							<span class="font-mono font-bold">{(index() + 1).toString().padStart(2, '0')}.</span>
+							<Button
+								class="p-[.25rem] font-light"
+								size="sm"
+								variant={viewingFirstMove() ? 'secondary' : 'ghost'}
+								onClick={() => _setViewedMove(index() * 2)}
 							>
-								<pre class="mr-1">
-									<code>{(index() + 1).toString().padStart(2, ' ')}.</code>
-								</pre>
-								<div>
-									<Button
-										class="p-[.25rem"
-										classList={{
-											'font-light': !viewingFirstMove(),
-										}}
-										size="sm"
-										variant={viewingFirstMove() ? 'secondary' : 'ghost'}
-										onClick={() => _setViewedMove(index() * 2)}
-									>
-										{move[0]}
-									</Button>{' '}
-									<Show when={move[1]}>
-										<Button
-											size="sm"
-											classList={{
-												'font-light': viewingSecondMove(),
-											}}
-											variant={viewingSecondMove() ? 'secondary' : 'ghost'}
-											onClick={() => _setViewedMove(index() * 2 + 1)}
-										>
-											{move[1]}
-										</Button>
-									</Show>
-								</div>
-							</div>
-						</>
+								{move[0]}
+							</Button>{' '}
+							<Show when={move[1]}>
+								<Button
+									size="sm"
+									class="p-[.25rem] font-light"
+									variant={viewingSecondMove() ? 'secondary' : 'ghost'}
+									onClick={() => _setViewedMove(index() * 2 + 1)}
+								>
+									{move[1]}
+								</Button>
+							</Show>
+						</div>
 					)
 				}}
 			</For>
