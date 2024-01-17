@@ -1,4 +1,5 @@
 import { isEqual } from 'lodash'
+import { filter, first, from as rxFrom, skip } from 'rxjs'
 import {
 	For,
 	Match,
@@ -8,8 +9,8 @@ import {
 	batch,
 	createEffect,
 	createMemo,
-	createReaction,
 	createSignal,
+	observable,
 	onCleanup,
 	onMount,
 	untrack,
@@ -278,7 +279,9 @@ export function Game(props: { gameId: string }) {
 			setGrabbedMousePos(null)
 			const res = await resPromise
 			if (res.type === 'accepted') {
-				Audio.playSoundEffectForMove(res.move, true, true)
+				untrack(() => {
+					Audio.playSoundEffectForMove(res.move, true, true)
+				})
 			}
 		})
 	}
@@ -529,32 +532,30 @@ export function Game(props: { gameId: string }) {
 	//#endregion
 
 	//#region warn with sound effect on low time
-	let initAudio = false
-	// this code is horrific, please fix it
-	createEffect(() => {
-		if (!initAudio) {
-			initAudio = true
-			return
-		}
-		const move = game.currentBoardView.lastMove
-		if (!move) return
-	})
-	const warnReaction = createReaction(() => {
-		Audio.playSound('lowTime')
-	})
+	{
+		const sub = rxFrom(
+			observable(
+				() =>
+					[
+						checkPastWarnThreshold(game.gameConfig.timeControl, game.clock[game.bottomPlayer.color]),
+						game.isClientPlayerParticipating,
+					] as const
+			)
+		)
+			.pipe(
+				skip(1),
+				filter(([pastWarnThreshold, isPlayerParticipating]) => pastWarnThreshold && isPlayerParticipating),
+				first()
+			)
+			.subscribe(() => {
+				Audio.playSound('lowTime')
+			})
 
-	const [pastWarnThreshold, setPastWarnThreshold] = createSignal(false)
-	let initWarn = false
-	createEffect(() => {
-		if (!initWarn) {
-			initWarn = true
-			return
-		}
-		if (game.isClientPlayerParticipating && checkPastWarnThreshold(game.gameConfig.timeControl, game.clock[game.bottomPlayer.color])) {
-			setPastWarnThreshold(true)
-		}
-	})
-	warnReaction(pastWarnThreshold)
+		onCleanup(() => {
+			sub.unsubscribe()
+		})
+	}
+
 	//#endregion
 
 	//#region sound effects for incoming moves
@@ -563,7 +564,9 @@ export function Game(props: { gameId: string }) {
 		if (game.currentBoardView.lastMove) {
 			const isVisible =
 				game.gameConfig.variant !== 'fog-of-war' || game.currentBoardView.visibleSquares.has(game.currentBoardView.lastMove.to)
-			Audio.playSoundEffectForMove(game.currentBoardView.lastMove, false, isVisible)
+			untrack(() => {
+				Audio.playSoundEffectForMove(game.currentBoardView.lastMove!, false, isVisible)
+			})
 		}
 	})
 	//#endregion
@@ -816,8 +819,7 @@ function MoveHistory() {
 	const itemClass = 'grid grid-cols-[min-content_1fr_1fr] gap-1 text-xs items-center'
 	return (
 		<div
-			class={`${styles.moveHistoryContainer} grid grid-cols-2 sm:grid-cols-2 h-max max-h-full gap-x-4 gap-y-1 p-1 overflow-y-auto`}
-		>
+			class={`${styles.moveHistoryContainer} grid grid-cols-2 sm:grid-cols-2 h-max max-h-full gap-x-4 gap-y-1 p-1 overflow-y-auto`}>
 			<div class={itemClass}>
 				<span class="font-mono font-bold">00.</span>
 				<Button
