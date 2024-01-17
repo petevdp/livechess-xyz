@@ -14,8 +14,7 @@ import * as GL from './game/gameLogic.ts'
 import * as P from './player.ts'
 
 
-// TODO normalize language from "color swap" to "pieces swap"
-
+//#region types
 export type RoomMember = P.Player & {
 	disconnectedAt?: number
 }
@@ -61,8 +60,7 @@ export type RoomState = {
 type ClientOwnedState = {
 	playerId: string
 }
-
-export const [room, setRoom] = createSignal<Room | null>(null)
+//#endregion
 
 let disposePrevious = () => {}
 
@@ -202,18 +200,23 @@ export class Room {
 		public provider: SharedStoreProvider<RoomEvent>,
 		public player: RoomMember
 	) {
-		//#region track player events
+		this.setupPlayerEventTracking()
+	}
+
+	//#region members(players + spectators)
+
+	setupPlayerEventTracking() {
 		let prevConnected: RoomMember[] = []
 		const connectedPlayers = createMemo(() => {
 			trackDeep(this.sharedStore.clientControlledStates)
 			let playerIds: string[] = Object.values(this.sharedStore.clientControlledStates).map((s) => s.playerId)
-			console.log('changing connected players', playerIds)
 			const currConnected = this.members.filter((p) => playerIds.includes(p.id) && p.name)
 			// return same object so equality check passes
 			if (isEqual(playerIds, prevConnected)) return prevConnected
 			return currConnected
 		})
 
+		//#region track reconnects and disconnects
 		const previouslyConnected = new Set<string>()
 		createEffect(() => {
 			const _connectedPlayers = unwrap(connectedPlayers())
@@ -283,27 +286,13 @@ export class Room {
 				}
 			}
 		})
-
 		//#endregion
 	}
 
-	//#region helpers
-	get isPlayerParticipating() {
-		return this.player.id === this.leftPlayer?.id
+	// the implementation here could potentially lead to bugs in multiple client per user scenarios where player details change on one client but not another. need to do something more clever for that
+	get members() {
+		return this.sharedStore.rollbackStore.members
 	}
-
-	get roomId() {
-		return this.provider.networkId
-	}
-
-	get rollbackState() {
-		return this.sharedStore.rollbackStore
-	}
-
-	get state() {
-		return this.sharedStore.lockstepStore
-	}
-
 	get participants(): GameParticipant[] {
 		return this.members
 			.map((player): GameParticipant[] => {
@@ -320,17 +309,14 @@ export class Room {
 			.flat()
 	}
 
+	get isPlayerParticipating() {
+		return this.player.id === this.leftPlayer?.id
+	}
 	get spectators() {
 		return this.members.filter((p) => Object.values(this.rollbackState.gameParticipants).some((gp) => gp.id === p.id))
 	}
-
 	get rightPlayer() {
 		return this.participants.find((p) => p.id !== this.player.id) || null
-	}
-
-	// the implementation here could potentially lead to bugs in multiple client per user scenarios where player details change on one client but not another. need to do something more clever for that
-	get members() {
-		return this.sharedStore.rollbackStore.members
 	}
 
 	get leftPlayer() {
@@ -344,24 +330,6 @@ export class Room {
 		return this.members.filter((p) => !p.disconnectedAt || Date.now() - p.disconnectedAt < PLAYER_TIMEOUT)
 	}
 
-	get action$() {
-		return this.sharedStore.event$.pipe(
-			concatMap((a) => {
-				let player = this.members.find((p) => p.id === a.playerId)!
-				if (!player) {
-					console.warn('unknown player id in action', a)
-					return []
-				}
-				return [
-					{
-						type: a.type as RoomEvent['type'],
-						player: unwrap(player),
-					},
-				]
-			})
-		)
-	}
-
 	playerColor(playerId: string) {
 		if (!playerId) throw new Error('playerId is missing')
 		if (this.rollbackState.gameParticipants.white?.id === playerId) return 'white'
@@ -369,14 +337,7 @@ export class Room {
 		return null
 	}
 
-	//#endregion
-
-	//#region actions
-	setGameConfig(config: Partial<GL.GameConfig>) {
-		this.sharedStore.setStore({ path: ['gameConfig'], value: config })
-	}
-
-	async setPlayerName(name: string) {
+	async setCurrentPlayerName(name: string) {
 		this.sharedStore.setStoreWithRetries((state) => {
 			let _name = name
 			// name already set
@@ -397,20 +358,43 @@ export class Room {
 		})
 	}
 
-	configureNewGame() {
-		this.sharedStore.setStoreWithRetries(() => {
-			if (!this.rightPlayer || !this.rollbackState.activeGameId) return
-			return [
-				...this.getPieceSwapMutation(),
-				{ path: ['status'], value: 'pregame' },
-				{
-					path: ['activeGameId'],
-					value: undefined,
-				},
-			]
-		})
+	//#endregion
+
+	//#region helpers
+
+	get roomId() {
+		return this.provider.networkId
 	}
 
+	get rollbackState() {
+		return this.sharedStore.rollbackStore
+	}
+
+	get state() {
+		return this.sharedStore.lockstepStore
+	}
+
+	//#endregion
+
+	get action$() {
+		return this.sharedStore.event$.pipe(
+			concatMap((a) => {
+				let player = this.members.find((p) => p.id === a.playerId)!
+				if (!player) {
+					console.warn('unknown player id in action', a)
+					return []
+				}
+				return [
+					{
+						type: a.type as RoomEvent['type'],
+						player: unwrap(player),
+					},
+				]
+			})
+		)
+	}
+
+	//#region piece swapping
 	initiateOrAgreePieceSwap() {
 		this.sharedStore.setStoreWithRetries(() => {
 			if (this.state.status !== 'pregame' || !this.isPlayerParticipating) return
@@ -489,6 +473,12 @@ export class Room {
 		})
 	}
 
+	//#endregion
+
+	//#region game start
+	setGameConfig(config: Partial<GL.GameConfig>) {
+		this.sharedStore.setStore({ path: ['gameConfig'], value: config })
+	}
 	toggleReady() {
 		if (!this.isPlayerParticipating) return
 		if (!this.leftPlayer!.isReadyForGame) {
@@ -538,5 +528,20 @@ export class Room {
 		}
 	}
 
+	configureNewGame() {
+		this.sharedStore.setStoreWithRetries(() => {
+			if (!this.rightPlayer || !this.rollbackState.activeGameId) return
+			return [
+				...this.getPieceSwapMutation(),
+				{ path: ['status'], value: 'pregame' },
+				{
+					path: ['activeGameId'],
+					value: undefined,
+				},
+			]
+		})
+	}
 	//#endregion
 }
+
+export const [room, setRoom] = createSignal<Room | null>(null)

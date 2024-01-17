@@ -39,6 +39,6 @@ export async function setupPlayer() {
 	createEffect(() => {
 		const playerName = settings.name
 		if (!R.room()?.player || !playerName || playerName === R.room()!.player.name) return
-		R.room()!.setPlayerName(playerName!)
+		R.room()!.setCurrentPlayerName(playerName!)
 	})
 }
