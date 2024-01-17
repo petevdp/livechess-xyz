@@ -1,8 +1,4 @@
 // get a url safe random id with 64 bits of entropy per character
-if (typeof crypto === 'undefined') {
-	const {Crypto} = await import('@peculiar/webcrypto')
-	globalThis.crypto = new Crypto()
-}
 
 export function createId(size: number) {
 	let result = ''
