@@ -1,12 +1,13 @@
 import { until } from '@solid-primitives/promise'
 import { isEqual } from 'lodash'
-import { Observable, ReplaySubject, combineLatest, concatMap, distinctUntilChanged, from as rxFrom } from 'rxjs'
+import { EMPTY, Observable, ReplaySubject, combineLatest, concatMap, distinctUntilChanged, from as rxFrom } from 'rxjs'
 import { map } from 'rxjs/operators'
 import { Accessor, createEffect, createMemo, createSignal, from, getOwner, observable, onCleanup } from 'solid-js'
 import { unwrap } from 'solid-js/store'
 
 import { PUSH } from '~/utils/sharedStore.ts'
 import { storeToSignal, trackAndUnwrap } from '~/utils/solid.ts'
+import { unit } from '~/utils/unit.ts'
 
 import * as P from '../player.ts'
 import * as R from '../room.ts'
@@ -14,8 +15,8 @@ import * as GL from './gameLogic.ts'
 import { MoveDisambiguation } from './gameLogic.ts'
 
 
+//#region types
 export type PlayerWithColor = P.Player & { color: GL.Color }
-
 export type BoardView = {
 	board: GL.Board
 	inCheck: boolean
@@ -43,26 +44,13 @@ export type MoveAmbiguity =
 			options: GL.CandidateMove[]
 	  }
 
-export class Game {
-	private _setViewedMove: (move: number | 'live') => void
-	viewedMoveIndex: Accessor<number>
-	drawEvent$: Observable<DrawEvent>
-	currentBoardView: BoardView
-	gameConfig: GL.GameConfig
-	stateSignal: Accessor<GL.GameState>
+//#endregion
 
-	private getMoveHistoryAsNotation: Accessor<[string, string | null][]>
-	// object returned will be mutated as updates come in
-	currentMove: Accessor<GL.SelectedMove | null>
-	setCurrentMove: (move: GL.SelectedMove | null) => void
-	currentDisambiguation: Accessor<null | MoveDisambiguation>
-	setCurrentDisambiguation: (disambiguation: null | MoveDisambiguation) => void
-	placingDuck: Accessor<false>
-	setPlacingDuck: (placing: boolean) => void
-	currentDuckPlacement: string | null = null
-	boardWithCurrentMove: Accessor<null | GL.Board>
-	setBoardWithCurrentMove: (board: null | GL.Board) => void
-	private _candidateMovesForSelected: Accessor<any[] | GL.CandidateMove[]>
+/**
+ * Interprets and updates the state of a single game
+ */
+export class Game {
+	gameConfig: GL.GameConfig
 
 	constructor(
 		public gameId: string,
@@ -72,197 +60,37 @@ export class Game {
 		if (!getOwner()) throw new Error('Game constructor must be called in reactive context')
 		this.gameConfig = JSON.parse(JSON.stringify(gameConfig)) as GL.GameConfig
 
-		//#region currentMove input state
+		this.setupStateSignal()
+		this.setupBoardView()
+		this.setupOutcomeAndClocks()
+		this.setupDrawEvents()
+		this.setupMoveSelectionAndValidation()
+	}
+
+	//#region move selection, validation and updates
+
+	currentMove = unit as unknown as Accessor<GL.SelectedMove | null>
+	setCurrentMove = unit as (move: GL.SelectedMove | null) => void
+	setCurrentDisambiguation = unit as (disambiguation: null | MoveDisambiguation) => void
+	placingDuck = unit as unknown as Accessor<false>
+	setPlacingDuck = unit as (placing: boolean) => void
+	currentDuckPlacement: string | null = null
+	private currentDisambiguation = unit as unknown as Accessor<null | MoveDisambiguation>
+	private boardWithCurrentMove = unit as unknown as Accessor<null | GL.Board>
+	setBoardWithCurrentMove = unit as (board: null | GL.Board) => void
+	private _candidateMovesForSelected = unit as unknown as Accessor<any[] | GL.CandidateMove[]>
+
+	setupMoveSelectionAndValidation() {
 		;[this.currentMove, this.setCurrentMove] = createSignal(null as null | GL.SelectedMove)
 		;[this.boardWithCurrentMove, this.setBoardWithCurrentMove] = createSignal(null as null | GL.Board)
 		;[this.currentDisambiguation, this.setCurrentDisambiguation] = createSignal(null as null | MoveDisambiguation)
 		;[this.placingDuck, this.setPlacingDuck] = createSignal(false)
-		//#endregion
 
-		// sometimes there are multiple candidate moves for a given currentMove, e.g. promotions or fischer random castling edgecases
 		this._candidateMovesForSelected = () => {
 			const currentMove = this.currentMove()
 			if (!currentMove) return []
 			return this.getLegalMovesForSquare(currentMove.from).filter((move) => GL.notationFromCoords(move.to) === currentMove!.to)
 		}
-
-		//#region view history
-		const [currentMove, setViewedMove] = createSignal<'live' | number>('live')
-		this.viewedMoveIndex = () => (currentMove() === 'live' ? this.state.moveHistory.length - 1 : (currentMove() as number))
-		this.setViewedMove = setViewedMove
-		//#endregion
-
-		//#region viewedBoard view
-		const lastMove = () => this.state.moveHistory[this.viewedMoveIndex()] || null
-
-		// boards are only so we don't need to deeply track this
-		const viewedBoard = () => {
-			if (this.boardWithCurrentMove() && this.viewingLiveBoard) {
-				return this.boardWithCurrentMove()!
-			} else {
-				return trackAndUnwrap(this.state.boardHistory[this.viewedMoveIndex() + 1].board)
-			}
-		}
-
-		this.stateSignal = storeToSignal(this.state)
-
-		const inCheck = createMemo(() => GL.inCheck(viewedBoard(), this.state.boardHistory[0].board))
-		const visibleSquares = createMemo(() => {
-			if (this.gameConfig.variant === 'fog-of-war') {
-				return GL.getVisibleSquares(this.stateSignal(), this.bottomPlayer.color)
-			}
-			// just avoid computing this when not needed
-			return new Set()
-		})
-
-		this.currentBoardView = {
-			get board() {
-				return viewedBoard()
-			},
-			get visibleSquares() {
-				return visibleSquares()
-			},
-			get inCheck() {
-				return inCheck()
-			},
-			get lastMove() {
-				return lastMove()
-			},
-		} as BoardView
-
-		this.getMoveHistoryAsNotation = createMemo(() => getMoveHistoryAsNotation(this.stateSignal()))
-
-		//#endregion
-
-		//#region outcome and clock
-		const move$ = observeMoves(this.state)
-		this.getClocks = useClock(move$, this.parsedGameConfig, () => !!this.outcome)
-
-		const gameOutcome$ = rxFrom(observable(() => GL.getGameOutcome(this.stateSignal(), this.parsedGameConfig)))
-		type Timeouts = {
-			white: boolean
-			black: boolean
-		}
-
-		const timeout$ = rxFrom(observable(this.getClocks)).pipe(
-			map(
-				(clocks) =>
-					({
-						white: clocks.white <= 0,
-						black: clocks.black <= 0,
-					}) as Timeouts
-			),
-			distinctUntilChanged(isEqual)
-		)
-
-		const outcome$ = combineLatest([gameOutcome$, timeout$]).pipe(
-			map(([outcome, timeouts]): GL.GameOutcome | undefined => {
-				if (timeouts.white) return { winner: 'black', reason: 'flagged' }
-				if (timeouts.black) return { winner: 'white', reason: 'flagged' }
-				return outcome || undefined
-			})
-		)
-		this.getOutcome = from(outcome$)
-		//#endregion
-
-		//#region handle draw offer events
-		this.drawEvent$ = this.room.action$.pipe(
-			concatMap((action): DrawEvent[] => {
-				const participant = this.room.participants.find((p) => p.id === action.player.id)
-				if (!DRAW_EVENTS.includes(action.type as DrawEventType) || !participant) return []
-				return [
-					{
-						type: action.type as DrawEventType,
-						participant: participant,
-					},
-				]
-			})
-		)
-		//#endregion
-
-		//#region reset view when currentMove history changes
-		let prevMoveCount = this.state.moveHistory.length
-		createEffect(() => {
-			if (this.state.moveHistory.length !== prevMoveCount) {
-				this.setViewedMove('live')
-			}
-			prevMoveCount = this.state.moveHistory.length
-		})
-		//#endregion
-	}
-
-	get outcome() {
-		return this.getOutcome()
-	}
-
-	get viewingLiveBoard() {
-		return this.viewedMoveIndex() === this.state.moveHistory.length - 1
-	}
-
-	getColorPlayer(color: GL.Color) {
-		return this.players.find((p) => p.color === color)!
-	}
-
-	get state() {
-		return this.room.rollbackState.gameStates[this.gameId]
-	}
-
-	get moveHistoryAsNotation() {
-		return this.getMoveHistoryAsNotation()
-	}
-
-	get parsedGameConfig() {
-		return GL.parseGameConfig(this.gameConfig)
-	}
-
-	get drawIsOfferedBy() {
-		return GL.getDrawIsOfferedBy(this.state)
-	}
-
-	get players() {
-		return this.room.members.map((p) => ({
-			...p,
-			color: this.getPlayerColor(p.id),
-		}))
-	}
-
-	get isClientPlayerParticipating() {
-		return Object.keys(this.state.players).includes(this.room.player.id)
-	}
-
-	// either the client player or white if the client player is spectating
-	get bottomPlayer() {
-		if (this.isClientPlayerParticipating) return this.players.find((p) => p.id === this.room.player.id)!
-		return this.players.find((p) => p.color === 'white')!
-	}
-
-	get topPlayer() {
-		if (this.isClientPlayerParticipating) return this.players.find((p) => p.id !== this.room.player.id)!
-		return this.players.find((p) => p.color === 'black')!
-	}
-
-	get clock() {
-		return this.getClocks()
-	}
-
-	get board() {
-		return this.state.boardHistory[this.state.boardHistory.length - 1].board
-	}
-
-	private get lockstepState() {
-		return this.room.state.gameStates[this.gameId]
-	}
-
-	isPlayerTurn(color: GL.Color) {
-		return GL.isPlayerTurn(this.board, color)
-	}
-
-	private get gameStatePath(): string[] {
-		return ['gameStates', this.gameId]
-	}
-
-	get candidateMovesFromSelected() {
-		return this._candidateMovesForSelected()
 	}
 
 	get currentMoveAmbiguity(): MoveAmbiguity | null {
@@ -286,6 +114,10 @@ export class Game {
 		}
 	}
 
+	get candidateMovesFromSelected() {
+		return this._candidateMovesForSelected()
+	}
+
 	getLegalMovesForSquare(startingSquare: string) {
 		if (!this.board.pieces[startingSquare]) return []
 		return GL.getLegalMoves(
@@ -293,49 +125,6 @@ export class Game {
 			this.stateSignal(),
 			GL.VARIANTS_ALLOWING_SELF_CHECKS.includes(this.gameConfig.variant)
 		)
-	}
-
-	capturedPieces(color: GL.Color) {
-		function getPieceCounts(pieces: GL.Piece[]) {
-			const counts = {} as Record<GL.Piece, number>
-
-			for (let piece of pieces) {
-				counts[piece] = (counts[piece] || 0) + 1
-			}
-
-			return counts
-		}
-
-		const pieceCounts = getPieceCounts(
-			Object.values(this.state.boardHistory[0].board.pieces)
-				.filter((p) => p.color === color)
-				.map((p) => p.type)
-		)
-		const currentPieceCounts = getPieceCounts(
-			Object.values(this.board.pieces)
-				.filter((p) => p.color === color)
-				.map((p) => p.type)
-		)
-
-		for (let [key, count] of Object.entries(currentPieceCounts)) {
-			//@ts-ignore
-			pieceCounts[key] -= count
-		}
-
-		const capturedPieces: GL.ColoredPiece[] = []
-
-		for (let [key, count] of Object.entries(pieceCounts)) {
-			for (let i = 0; i < count; i++) {
-				//@ts-ignore
-				capturedPieces.push({ type: key, color })
-			}
-		}
-
-		return capturedPieces
-	}
-
-	getPlayerColor(playerId: string) {
-		return this.state.players[playerId]
 	}
 
 	async tryMakeMove(move?: GL.SelectedMove): Promise<MakeMoveResult> {
@@ -448,6 +237,72 @@ export class Game {
 		return { type: 'accepted', move: await until(() => acceptedMove()) }
 	}
 
+	//#endregion
+
+	//#region board view and history
+	currentBoardView = {} as BoardView
+	private _setViewedMove = unit as unknown as (move: number | 'live') => void
+	viewedMoveIndex = unit as unknown as Accessor<number>
+	private getMoveHistoryAsNotation = unit as Accessor<[string, string | null][]>
+
+	get moveHistoryAsNotation() {
+		return this.getMoveHistoryAsNotation()
+	}
+
+	setupBoardView() {
+		const [currentMove, setViewedMove] = createSignal<'live' | number>('live')
+		this.viewedMoveIndex = () => (currentMove() === 'live' ? this.state.moveHistory.length - 1 : (currentMove() as number))
+		this._setViewedMove = setViewedMove
+		const lastMove = () => this.state.moveHistory[this.viewedMoveIndex()] || null
+
+		// boards are only so we don't need to deeply track this
+		const viewedBoard = () => {
+			if (this.boardWithCurrentMove() && this.viewingLiveBoard) {
+				return this.boardWithCurrentMove()!
+			} else {
+				return trackAndUnwrap(this.state.boardHistory[this.viewedMoveIndex() + 1].board)
+			}
+		}
+
+		const inCheck = createMemo(() => GL.inCheck(viewedBoard(), this.state.boardHistory[0].board))
+		const visibleSquares = createMemo(() => {
+			if (this.gameConfig.variant === 'fog-of-war') {
+				return GL.getVisibleSquares(this.stateSignal(), this.bottomPlayer.color)
+			}
+			// just avoid computing this when not needed
+			return new Set()
+		})
+
+		this.currentBoardView = {
+			get board() {
+				return viewedBoard()
+			},
+			get visibleSquares() {
+				return visibleSquares()
+			},
+			get inCheck() {
+				return inCheck()
+			},
+			get lastMove() {
+				return lastMove()
+			},
+		} as BoardView
+
+		this.getMoveHistoryAsNotation = createMemo(() => getMoveHistoryAsNotation(this.stateSignal()))
+
+		let prevMoveCount = this.state.moveHistory.length
+		createEffect(() => {
+			if (this.state.moveHistory.length !== prevMoveCount) {
+				this.setViewedMove('live')
+			}
+			prevMoveCount = this.state.moveHistory.length
+		})
+	}
+
+	get viewingLiveBoard() {
+		return this.viewedMoveIndex() === this.state.moveHistory.length - 1
+	}
+
 	setViewedMove(move: number | 'live') {
 		if (move === 'live') {
 			this._setViewedMove(this.state.moveHistory.length - 1)
@@ -456,7 +311,112 @@ export class Game {
 		}
 	}
 
-	//#region draw actions
+	capturedPieces(color: GL.Color) {
+		function getPieceCounts(pieces: GL.Piece[]) {
+			const counts = {} as Record<GL.Piece, number>
+
+			for (let piece of pieces) {
+				counts[piece] = (counts[piece] || 0) + 1
+			}
+
+			return counts
+		}
+
+		const pieceCounts = getPieceCounts(
+			Object.values(this.state.boardHistory[0].board.pieces)
+				.filter((p) => p.color === color)
+				.map((p) => p.type)
+		)
+		const currentPieceCounts = getPieceCounts(
+			Object.values(this.board.pieces)
+				.filter((p) => p.color === color)
+				.map((p) => p.type)
+		)
+
+		for (let [key, count] of Object.entries(currentPieceCounts)) {
+			//@ts-ignore
+			pieceCounts[key] -= count
+		}
+
+		const capturedPieces: GL.ColoredPiece[] = []
+
+		for (let [key, count] of Object.entries(pieceCounts)) {
+			for (let i = 0; i < count; i++) {
+				//@ts-ignore
+				capturedPieces.push({ type: key, color })
+			}
+		}
+
+		return capturedPieces
+	}
+
+	//#endregion
+
+	//#region clocks and outcome
+	private getOutcome: Accessor<GL.GameOutcome | undefined> = () => undefined
+
+	private getClocks = () => ({ white: 0, black: 0 })
+
+	setupOutcomeAndClocks() {
+		const move$ = observeMoves(this.state)
+		this.getClocks = useClock(move$, this.parsedGameConfig, () => !!this.outcome)
+
+		const gameOutcome$ = rxFrom(observable(() => GL.getGameOutcome(this.stateSignal(), this.parsedGameConfig)))
+		type Timeouts = {
+			white: boolean
+			black: boolean
+		}
+
+		const timeout$ = rxFrom(observable(this.getClocks)).pipe(
+			map(
+				(clocks) =>
+					({
+						white: clocks.white <= 0,
+						black: clocks.black <= 0,
+					}) as Timeouts
+			),
+			distinctUntilChanged(isEqual)
+		)
+
+		const outcome$ = combineLatest([gameOutcome$, timeout$]).pipe(
+			map(([outcome, timeouts]): GL.GameOutcome | undefined => {
+				if (timeouts.white) return { winner: 'black', reason: 'flagged' }
+				if (timeouts.black) return { winner: 'white', reason: 'flagged' }
+				return outcome || undefined
+			})
+		)
+		this.getOutcome = from(outcome$)
+	}
+
+	get clock() {
+		return this.getClocks()
+	}
+
+	get outcome() {
+		return this.getOutcome()
+	}
+
+	//#endregion
+
+	//#region draws and resignation
+
+	drawEvent$ = EMPTY as Observable<DrawEvent>
+
+	setupDrawEvents() {
+		this.drawEvent$ = this.room.action$.pipe(
+			concatMap((action): DrawEvent[] => {
+				const participant = this.room.participants.find((p) => p.id === action.player.id)
+				if (!DRAW_EVENTS.includes(action.type as DrawEventType) || !participant) return []
+				return [
+					{
+						type: action.type as DrawEventType,
+						participant: participant,
+					},
+				]
+			})
+		)
+	}
+
 	offerOrAcceptDraw() {
 		if (!this.isClientPlayerParticipating) return
 		const moveOffered = this.state.moveHistory.length
@@ -524,8 +484,6 @@ export class Game {
 		})
 	}
 
-	//#endregion
-
 	resign() {
 		if (!this.isClientPlayerParticipating) return
 		this.room.sharedStore.setStoreWithRetries(() => {
@@ -539,12 +497,70 @@ export class Game {
 		})
 	}
 
-	private getOutcome: Accessor<GL.GameOutcome | undefined> = () => undefined
+	get drawIsOfferedBy() {
+		return GL.getDrawIsOfferedBy(this.state)
+	}
 
-	// will be reassigned
-	private getClocks = () => ({ white: 0, black: 0 })
+	//#endregion
+
+	//#region generic helpers
+
+	get state() {
+		return this.room.rollbackState.gameStates[this.gameId]
+	}
+
+	stateSignal = unit as unknown as Accessor<GL.GameState>
+
+	setupStateSignal() {
+		this.stateSignal = storeToSignal(this.state)
+	}
+
+	get parsedGameConfig() {
+		return GL.parseGameConfig(this.gameConfig)
+	}
+
+	get players() {
+		return this.room.members.map((p) => ({
+			...p,
+			color: this.state.players[p.id],
+		}))
+	}
+
+	get isClientPlayerParticipating() {
+		return Object.keys(this.state.players).includes(this.room.player.id)
+	}
+
+	// either the client player or white if the client player is spectating
+	get bottomPlayer() {
+		if (this.isClientPlayerParticipating) return this.players.find((p) => p.id === this.room.player.id)!
+		return this.players.find((p) => p.color === 'white')!
+	}
+
+	get topPlayer() {
+		if (this.isClientPlayerParticipating) return this.players.find((p) => p.id !== this.room.player.id)!
+		return this.players.find((p) => p.color === 'black')!
+	}
+
+	get board() {
+		return this.state.boardHistory[this.state.boardHistory.length - 1].board
+	}
+
+	private get lockstepState() {
+		return this.room.state.gameStates[this.gameId]
+	}
+
+	private get gameStatePath(): string[] {
+		return ['gameStates', this.gameId]
+	}
+
+	isPlayerTurn(color: GL.Color) {
+		return GL.isPlayerTurn(this.board, color)
+	}
+
+	//#endregion
 }
 
+//#region helpers
 function observeMoves(gameState: GL.GameState) {
 	const subject = new ReplaySubject<GL.Move>()
 	let lastObserved = -1
@@ -636,5 +652,7 @@ function getMoveHistoryAsNotation(state: GL.GameState) {
 	}
 	return moves
 }
+
+//#endregion
 
 export const [game, setGame] = createSignal<Game | null>(null)

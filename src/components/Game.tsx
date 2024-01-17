@@ -1105,7 +1105,7 @@ function renderGrabbedPiece(args: RenderGrabbedPieceArgs) {
 //#region helpers
 function showGameOutcome(outcome: GL.GameOutcome): [string, string] {
 	const game = G.game()!
-	const winner = outcome.winner ? game.getColorPlayer(outcome.winner) : null
+	const winner = outcome.winner ? game.players.find((p) => p.color === outcome.winner)! : null
 	const winnerTitle = `${winner?.name} (${winner?.color})`
 	switch (outcome.reason) {
 		case 'checkmate':
