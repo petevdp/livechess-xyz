@@ -1,3 +1,4 @@
+import { useColorMode } from '@kobalte/core'
 import { isEqual } from 'lodash'
 import { filter, first, from as rxFrom, skip } from 'rxjs'
 import {
@@ -17,12 +18,13 @@ import {
 } from 'solid-js'
 import toast from 'solid-toast'
 
-import { HelpCard } from '~/components/HelpCard.tsx'
 import * as Svgs from '~/components/Svgs.tsx'
+import { VariantInfoDialog } from '~/components/VariantInfoDialog.tsx'
 import { Dialog, DialogContent, DialogDescription, DialogHeader } from '~/components/ui/dialog.tsx'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '~/components/ui/hover-card.tsx'
 import { BOARD_COLORS } from '~/config.ts'
 import { cn } from '~/lib/utils.ts'
+import * as Agent from '~/systems/agent.ts'
 import * as Audio from '~/systems/audio.ts'
 import * as G from '~/systems/game/game.ts'
 import * as GL from '~/systems/game/gameLogic.ts'
@@ -198,10 +200,10 @@ export function Game(props: { gameId: string }) {
 			boardView: getBoardView(),
 			grabbedMousePos: grabbedMousePos(),
 			activePieceSquare: activePieceSquare(),
-			currentMousePos: usingTouch() ? null : currentMousePos(),
+			currentMousePos: Agent.usingTouch() ? null : currentMousePos(),
 			context: grabbedPieceCanvas.getContext('2d')!,
 			placingDuck: game.placingDuck(),
-			touchScreen: usingTouch(),
+			touchScreen: Agent.usingTouch(),
 		}
 		Pieces.pieceChangedEpoch()
 
@@ -599,11 +601,11 @@ export function Game(props: { gameId: string }) {
 						<Svgs.Flip/>
 					</Button>
 					<Show when={game.gameConfig.variant !== 'regular'}>
-						<HelpCard variant={game.gameConfig.variant}>
+						<VariantInfoDialog variant={game.gameConfig.variant}>
 							<Button variant="ghost" size="icon" class="mb-1">
 								<Svgs.Help/>
 							</Button>
-						</HelpCard>
+						</VariantInfoDialog>
 					</Show>
 				</div>
 				<CapturedPieces/>
@@ -664,9 +666,26 @@ function GameOutcomeDialog() {
 
 function Player(props: { player: G.PlayerWithColor; class: string }) {
 	const game = G.game()!
+	const { colorMode } = useColorMode()
+	const isPlayerTurn = () => game.isPlayerTurn(props.player.color)
+	const font = () => {
+		if (isPlayerTurn() && colorMode() === 'light') {
+			return 'text-neutral-900'
+		}
+		if (isPlayerTurn() && colorMode() === 'dark') {
+			return 'text-neutral-100'
+		}
+		if (!isPlayerTurn() && colorMode() === 'light') {
+			return 'text-neutral-500'
+		}
+		if (!isPlayerTurn() && colorMode() === 'dark') {
+			return 'text-neutral-400'
+		}
+	}
 	const title = (
 		<>
-			{props.player.name} <i class="text-neutral-400">({props.player.color})</i>
+			<span class={font()}>{props.player.name}</span>
+			<i class={`${font()} font-light`}>({props.player.color})</i>
 		</>
 	)
 	return (
@@ -675,7 +694,7 @@ function Player(props: { player: G.PlayerWithColor; class: string }) {
 				<HoverCard placement="bottom" open={game.placingDuck()}>
 					<HoverCardTrigger>{title}</HoverCardTrigger>
 					<HoverCardContent class="bg-destructive p-1 w-max text-sm flex space-x-2 items-center justify-between">
-						<span class="text-balance">{`${usingTouch() ? 'Tap' : 'Click'} square to place duck`}</span>
+						<span class="text-balance">{`${Agent.usingTouch() ? 'Tap' : 'Click'} square to place duck`}</span>
 						<Button
 							class="text-xs whitespace-nowrap bg-black"
 							variant="secondary"
@@ -711,9 +730,6 @@ function Clock(props: { clock: number; class: string; ticking: boolean; timeCont
 
 	return (
 		<div class={cn('flex items-center justify-end space-x-3 text-xl', props.class)}>
-			<Show when={props.ticking}>
-				<div class="hidden font-light md:block">{props.color} to move</div>
-			</Show>
 			<span
 				class="mt-[0.4em] font-mono"
 				classList={{
@@ -796,7 +812,7 @@ function MoveHistory() {
 				<Button
 					class="p-[.25rem] font-light"
 					size="sm"
-					variant={game.viewedMoveIndex() === -1 ? 'secondary' : 'ghost'}
+					variant={game.viewedMoveIndex() === -1 ? 'default' : 'ghost'}
 					onClick={() => game.setViewedMove(-1)}
 				>
 					Start
@@ -812,7 +828,7 @@ function MoveHistory() {
 							<Button
 								class="p-[.25rem] font-light"
 								size="sm"
-								variant={viewingFirstMove() ? 'secondary' : 'ghost'}
+								variant={viewingFirstMove() ? 'default' : 'ghost'}
 								onClick={() => game.setViewedMove(index() * 2)}
 							>
 								{move[0]}
@@ -821,7 +837,7 @@ function MoveHistory() {
 								<Button
 									size="sm"
 									class="p-[.25rem] font-light"
-									variant={viewingSecondMove() ? 'secondary' : 'ghost'}
+									variant={viewingSecondMove() ? 'default' : 'ghost'}
 									onClick={() => game.setViewedMove(index() * 2 + 1)}
 								>
 									{move[1]}
@@ -877,22 +893,16 @@ export function CapturedPieces() {
 	const game = G.game()!
 	return (
 		<div
-			class={cn(
-				styles.capturedPiecesContainer,
-				'flex flex-col wc:flex-row justify-between space-y-1 wc:space-y-0 wc:space-x-1'
-			)}
-		>
+			class={cn(styles.capturedPiecesContainer, 'flex flex-col wc:flex-row justify-between space-y-1 wc:space-y-0 wc:space-x-1')}>
 			<CapturedPiecesForColor pieces={game.capturedPieces(game.bottomPlayer.color)} capturedBy={'top-player'}/>
 			<CapturedPiecesForColor pieces={game.capturedPieces(game.topPlayer.color)} capturedBy={'bottom-player'}/>
 		</div>
 	)
-
 }
 
 function CapturedPiecesForColor(props: { pieces: GL.ColoredPiece[]; capturedBy: 'bottom-player' | 'top-player' }) {
 	const hierarchy = ['pawn', 'knight', 'bishop', 'rook', 'queen', 'king']
-	const capturedByStyles = () =>
-		props.capturedBy === 'bottom-player' ? 'flex-col-reverse wc:flex-row-reverse' : 'flex-col wc:flex-row'
+	const capturedByStyles = () => (props.capturedBy === 'bottom-player' ? 'flex-col-reverse wc:flex-row-reverse' : 'flex-col wc:flex-row')
 
 	const sortedPieces = () =>
 		[...props.pieces].sort((a, b) => {
@@ -903,7 +913,7 @@ function CapturedPiecesForColor(props: { pieces: GL.ColoredPiece[]; capturedBy: 
 		})
 
 	return (
-		<div class={cn(`rounded flex flex-grow min-w-[30px] min-h-[30px] flex-wrap bg-gray-500`, capturedByStyles())}>
+		<div class={cn(`rounded flex flex-grow min-w-[30px] min-h-[30px] flex-wrap bg-gray-400`, capturedByStyles())}>
 			<For each={sortedPieces()}>
 				{(piece) => {
 					const Piece = Pieces.getPieceSvg(piece)
@@ -927,6 +937,7 @@ type RenderBoardArgs = {
 	boardFlipped: boolean
 	visibleSquares: Set<string>
 }
+
 function renderBoard(args: RenderBoardArgs) {
 	const ctx = args.context
 	// fill in light squares as background
@@ -972,6 +983,7 @@ type RenderPiecesArgs = {
 	grabbedMousePos: { x: number; y: number } | null
 	activePieceSquare: string | null
 }
+
 function renderPieces(args: RenderPiecesArgs) {
 	const ctx = args.context
 	for (let [square, piece] of Object.entries(args.boardView.board.pieces)) {
@@ -1003,6 +1015,7 @@ type RenderHighlightsArgs = {
 	hoveredSquare: string | null
 	activePieceSquare: string | null
 }
+
 function renderHighlights(args: RenderHighlightsArgs) {
 	const ctx = args.context
 	//#region draw last move highlight
@@ -1083,6 +1096,7 @@ type RenderGrabbedPieceArgs = {
 	currentMousePos: { x: number; y: number } | null
 	touchScreen: boolean
 }
+
 function renderGrabbedPiece(args: RenderGrabbedPieceArgs) {
 	const ctx = args.context
 
@@ -1160,14 +1174,5 @@ function checkPastWarnThreshold(timeControl: GL.TimeControl, clock: number) {
 //#endregion helpers
 
 //#region check if user is using touch screen
-// we're doing it this way, so we can differentiate users that are using their touch screen
-const [usingTouch, setUsingTouch] = createSignal(false)
-
-function touchListener() {
-	setUsingTouch(true)
-	document.removeEventListener('touchstart', touchListener)
-}
-
-document.addEventListener('touchstart', touchListener)
 
 //#endregion

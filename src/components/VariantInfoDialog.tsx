@@ -40,10 +40,14 @@ function FogOfWar() {
 			</DialogHeader>
 			<p>
 				Each player views a different version of the board, on which they can only see their own pieces, and the squares where these pieces
-				can legally move, as well as any opponent pieces on those squares (which must therefore be capturable). It is indicated to the
-				player which squares are hidden, so a hidden square can never be confused with a visible empty square. As an example, it is always
-				clear when an enemy piece is directly in front of a pawn, because that square will be hidden (as capturing it is not a legal move
-				for the pawn to make).
+				can legally move, as well as any opponent pieces on those squares (which must therefore be capturable). Hidden
+				squares are indicated
+				with a slightly darker shade.
+			</p>
+			<p>
+				As an example, it is always clear when an enemy piece is directly in front of a pawn, because that square will
+				be hidden (as
+				capturing it is not a legal move for the pawn to make).
 			</p>
 			<p>
 				The goal of this chess variant is not to checkmate the king, but to capture it. A player is not told if their king is in check.
@@ -64,22 +68,19 @@ function FischerRandom() {
 			<DialogHeader>
 				<DialogTitle>Fisher Random Chess</DialogTitle>
 				<DialogDescription>
-					Excerpt from <a href="https://en.wikipedia.org/wiki/Fischer_random_chess">https://en.wikipedia.org/wiki/Fischer_random_chess</a>
+					Excerpt adapted from{' '}
+					<a
+						href="https://en.wikipedia.org/wiki/Fischer_random_chess">https://en.wikipedia.org/wiki/Fischer_random_chess</a>
 				</DialogDescription>
 			</DialogHeader>
 			<p>
-				Fischer random chess, also known as Chess960 ('chess nine-sixty'), is a variation of the game of chess invented by the former world
-				chess champion Bobby Fischer.
-			</p>
-			<p>
-				Fischer random chess employs the same board and pieces as classical chess, but the starting position of the pieces on the players'
-				home ranks is randomized, following certain rules. The random setup makes gaining an advantage through the memorization of openings
-				impracticable; players instead must rely more on their skill and creativity over the board.
+				Fischer random chess, also known as Chess960 ('chess nine-sixty'), is like standard chess but with randomized
+				starting positions.
 			</p>
 			<p>
 				As in classical chess, each player may castle once per game, moving both the king and a rook in a single move; however, the castling
 				rules were reinterpreted in Fischer random chess to support the different possible initial positions of king and rook. After
-				castling, the final positions of king and rook are exactly the same as in classical chess
+				castling, the final positions of king and rook are exactly the same as in classical chess.
 			</p>
 		</article>
 	)
@@ -97,7 +98,7 @@ function RegularChess() {
 	)
 }
 
-export function HelpCard(props: { variant: GL.Variant } & ParentProps) {
+export function VariantInfoDialog(props: { variant: GL.Variant } & ParentProps) {
 	return (
 		<Dialog>
 			<DialogTrigger>{props.children}</DialogTrigger>
@@ -113,7 +114,7 @@ export function HelpCard(props: { variant: GL.Variant } & ParentProps) {
 						<FischerRandom />
 					</Match>
 					<Match when={props.variant === 'regular'}>
-						<RegularChess/>
+						<RegularChess />
 					</Match>
 				</Switch>
 			</DialogContent>

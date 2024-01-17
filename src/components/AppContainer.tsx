@@ -1,9 +1,11 @@
+import { As, useColorMode } from '@kobalte/core'
 import { A } from '@solidjs/router'
 import { ComponentProps, ParentProps, Show, splitProps } from 'solid-js'
 
 import { AboutDialog } from '~/components/AboutDialog.tsx'
 import { SettingsDialog } from '~/components/Settings.tsx'
 import { Button } from '~/components/ui/button.tsx'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '~/components/ui/dropdown-menu.tsx'
 import { cn } from '~/lib/utils.ts'
 import * as P from '~/systems/player.ts'
 import * as R from '~/systems/room.ts'
@@ -27,20 +29,51 @@ export function AppContainer(props: ParentProps) {
 		<div class={`w-[calc(100%_-_${scrollBarWidth}px]`}>
 			<nav class="flex w-full justify-between p-[0.25rem] pb-[.5rem]">
 				<A href="/" class="inline-flex p-1 h-10 w-10 items-center justify-center">
-					<Svgs.Logo/>
+					<Svgs.Logo />
 				</A>
 				<div class="flex items-center justify-end space-x-1 font-light">
-					<Button size="icon" variant="ghost" onclick={() => P.setSettings({muteAudio: !P.settings.muteAudio})}>
-						{P.settings.muteAudio ? <Svgs.Muted/> : <Svgs.NotMuted/>}
-					</Button>
 					<Show when={R.room() && !R.room()!.isPlayerParticipating}>Spectating</Show>
+					<Button size="icon" variant="ghost" onclick={() => P.setSettings({ muteAudio: !P.settings.muteAudio })}>
+						{P.settings.muteAudio ? <Svgs.Muted /> : <Svgs.NotMuted />}
+					</Button>
+					<ThemeToggle />
 					<SettingsDialog />
-					<AboutDialog/>
+					<AboutDialog />
 				</div>
 			</nav>
 			<ModalContainer />
 			<div>{props.children}</div>
 		</div>
+	)
+}
+
+export function ThemeToggle() {
+	const { setColorMode } = useColorMode()
+
+	return (
+		<DropdownMenu>
+			<DropdownMenuTrigger asChild>
+				<As component={Button} variant="ghost" size="icon">
+					<Svgs.Sun width={16} height={16} class=" dark:invisible dark:w-0" />
+					<Svgs.Moon width={16} height={16} class="invisible w-0 dark:visible dark:w-auto" />
+					<span class="sr-only">Toggle theme</span>
+				</As>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent>
+				<DropdownMenuItem onSelect={() => setColorMode('light')}>
+					<Svgs.Sun class="mr-2 h-4 w-4" />
+					<span>Light</span>
+				</DropdownMenuItem>
+				<DropdownMenuItem onSelect={() => setColorMode('dark')}>
+					<Svgs.Moon class="mr-2 h-4 w-4" />
+					<span>Dark</span>
+				</DropdownMenuItem>
+				<DropdownMenuItem onSelect={() => setColorMode('system')}>
+					<Svgs.Laptop class="mr-2 h-4 w-4" />
+					<span>System</span>
+				</DropdownMenuItem>
+			</DropdownMenuContent>
+		</DropdownMenu>
 	)
 }
 

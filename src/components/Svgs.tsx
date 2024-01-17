@@ -5,8 +5,10 @@ import _flip from '~/assets/icons/flip-board.svg'
 import _github from '~/assets/icons/github.svg'
 import _help from '~/assets/icons/help.svg'
 import _info from '~/assets/icons/info.svg'
+import _laptop from '~/assets/icons/laptop.svg'
 import _last from '~/assets/icons/last.svg'
 import _logo from '~/assets/icons/logo.svg'
+import _moon from '~/assets/icons/moon.svg'
 import _muted from '~/assets/icons/muted.svg'
 import _next from '~/assets/icons/next.svg'
 import _notMuted from '~/assets/icons/not-muted.svg'
@@ -14,6 +16,7 @@ import _offerDraw from '~/assets/icons/offer-draw.svg'
 import _prev from '~/assets/icons/prev.svg'
 import _resign from '~/assets/icons/resign.svg'
 import _settings from '~/assets/icons/settings.svg'
+import _sun from '~/assets/icons/sun.svg'
 import _swap from '~/assets/icons/swap.svg'
 
 type SvgType = Component<ComponentProps<'svg'>>
@@ -37,3 +40,7 @@ export const Resign = defaultSvg(_resign as unknown as SvgType)
 export const Settings = defaultSvg(_settings as unknown as SvgType)
 export const Swap = defaultSvg(_swap as unknown as SvgType)
 export const Logo = defaultSvg(_logo as unknown as SvgType)
+
+export const Sun = defaultSvg(_sun as unknown as SvgType)
+export const Moon = defaultSvg(_moon as unknown as SvgType)
+export const Laptop = defaultSvg(_laptop as unknown as SvgType)

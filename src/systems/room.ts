@@ -221,7 +221,6 @@ export class Room {
 		createEffect(() => {
 			const _connectedPlayers = unwrap(connectedPlayers())
 			untrack(() => {
-				console.log('connected players changed', _connectedPlayers)
 				for (let player of this.members) {
 					const isConnected = _connectedPlayers.some((p) => p.id === player.id)
 					if (!previouslyConnected.has(player.id) && isConnected) {

@@ -3,8 +3,8 @@ import { Match, ParentProps, Show, Switch, createResource, createSignal, onClean
 import toast from 'solid-toast'
 
 import { ScreenFittingContent } from '~/components/AppContainer.tsx'
-import { HelpCard } from '~/components/HelpCard.tsx'
 import * as Svgs from '~/components/Svgs.tsx'
+import { VariantInfoDialog } from '~/components/VariantInfoDialog.tsx'
 import { Button } from '~/components/ui/button.tsx'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '~/components/ui/card.tsx'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog'
@@ -131,11 +131,11 @@ function GameConfigForm() {
 	const QuestionMark = () => <span class={`p-1 leading-[24px] text-md text-primary underline cursor-pointer`}>?</span>
 	const helpCardLabel = (
 		<div class="flex justify-center items-center text-inherit">
-			<HelpCard variant={room.rollbackState.gameConfig.variant}>
+			<VariantInfoDialog variant={room.rollbackState.gameConfig.variant}>
 				<label>
 					Variant <QuestionMark />
 				</label>
-			</HelpCard>
+			</VariantInfoDialog>
 		</div>
 	)
 
