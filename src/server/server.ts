@@ -17,7 +17,6 @@ if (typeof crypto === 'undefined') {
 	})
 }
 
-
 //TODO improve organization of this file
 
 if (!fs.existsSync('./logs')) {
@@ -97,6 +96,11 @@ server.register(async function () {
 })
 //#endregion
 
+// for keep-alive on render server
+server.get('/ping', () => {
+	return 'pong\n'
+})
+
 server.post('/networks', () => {
 	return SSS.createNetwork()
 })
@@ -105,6 +109,7 @@ server.get('/rooms/:networkId', (_, res) => {
 	// serve index.html
 	return res.sendFile('index.html')
 })
+
 //
 
 SSS.setupSharedStoreSystem(server.log)

@@ -2,7 +2,6 @@ import { useNavigate } from '@solidjs/router'
 
 import { Button } from '~/components/ui/button.tsx'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '~/components/ui/card.tsx'
-import * as Agent from '~/systems/agent.ts'
 import * as R from '~/systems/room.ts'
 
 import { AppContainer, ScreenFittingContent } from './AppContainer.tsx'
@@ -24,7 +23,7 @@ export function Home() {
 						<CardTitle>Welcome to <a href="/" class="text-primary underline">livechess.xyz</a>!</CardTitle>
 					</CardHeader>
 					<CardContent>
-						<p>{Agent.usingTouch() ? 'Tap' : 'Click'} below to host a new game.</p>
+						<p>Play chess with your friends.</p>
 					</CardContent>
 					<CardFooter>
 						<Button variant="default" onclick={createRoom}>

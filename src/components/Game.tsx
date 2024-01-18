@@ -46,6 +46,8 @@ export function Game(props: { gameId: string }) {
 	//#region calc board sizes
 	// let BOARD_SIZE = 600
 	// let SQUARE_SIZE = BOARD_SIZE / 8
+	let boardRef = null as unknown as HTMLDivElement
+
 	const [windowSize, setWindowSize] = createSignal({
 		width: window.innerWidth,
 		height: window.innerHeight,
@@ -582,12 +584,13 @@ export function Game(props: { gameId: string }) {
 	return (
 		<div class={styles.boardPageWrapper}>
 			<div
-				class={cn(
-					styles.boardContainer,
-					'rounded-lg border bg-card p-2 text-card-foreground shadow-sm max-h-full max-w-[98vw] gap-[0.25rem]'
-				)}
+				ref={boardRef}
+				class={cn(styles.boardContainer, 'rounded-lg border bg-card p-2 text-card-foreground shadow-sm max-w-max max-h-full gap-[0.25rem]')}
 			>
-				<MoveHistory/>
+				<Show when={game.gameConfig.variant !== 'fog-of-war'}
+							fallback={<div class={styles.moveHistoryContainer}></div>}>
+					<MoveHistory/>
+				</Show>
 				<Player class={styles.topPlayer} player={game.topPlayer}/>
 				<Clock
 					class={styles.clockTopPlayer}
@@ -860,7 +863,6 @@ function MoveNav() {
 				<Svgs.First/>
 			</Button>
 			<Button
-				class="text-blue-600"
 				variant="ghost"
 				size="icon"
 				disabled={game.viewedMoveIndex() === -1}
