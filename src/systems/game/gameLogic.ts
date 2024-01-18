@@ -490,7 +490,7 @@ export function getLegalMoves(piecePositions: Coords[], game: GameState, allowSe
 		if (piece.color !== getBoard(game).toMove) {
 			continue
 		}
-		candidateMoves = [...candidateMoves, ...getMovesFromCoords(start, getBoard(game), game.moveHistory, game.boardHistory[0].board, piece)]
+		candidateMoves = [...candidateMoves, ...getMovesFromCoords(start, getBoard(game), game.moveHistory, game.boardHistory[0].board, piece, allowSelfChecks)]
 	}
 
 	if (!allowSelfChecks) {
@@ -510,7 +510,8 @@ function getMovesFromCoords(
 	history: MoveHistory,
 	startingPosition: Board,
 	piece: ColoredPiece | null = null,
-	checkCastling: boolean = true
+	checkCastling: boolean = true,
+	allowSelfChecks: boolean = false
 ) {
 	const _piece = piece ?? board.pieces[notationFromCoords(coords)]
 	if (_piece.color !== board.toMove) {
@@ -528,7 +529,7 @@ function getMovesFromCoords(
 		case 'queen':
 			return [...rookMoves(coords, board), ...bishopMoves(coords, board)]
 		case 'king':
-			return kingMoves(coords, board, startingPosition, history, checkCastling)
+			return kingMoves(coords, board, startingPosition, history, checkCastling, allowSelfChecks)
 		case 'duck':
 			throw new Error('quack?')
 		default:
@@ -714,7 +715,7 @@ function findBackRankRooks(board: Board, color: Color) {
 }
 
 // why do we need starting board?
-function kingMoves(start: Coords, board: Board, startingBoard: Board, moveHistory: MoveHistory, checkCastling: boolean) {
+function kingMoves(start: Coords, board: Board, startingBoard: Board, moveHistory: MoveHistory, checkCastling: boolean, allowSelfChecks: boolean) {
 	let moves: Coords[] = []
 	const directions = [
 		[1, 0],
@@ -785,7 +786,7 @@ function kingMoves(start: Coords, board: Board, startingBoard: Board, moveHistor
 				// we can move through the rook
 				if (
 					(board.pieces[notationFromCoords(square)] && !isEqual(square, rook) && !isEqual(square, start)) ||
-					squareAttacked(square, board, startingBoard)
+					(!allowSelfChecks && squareAttacked(square, board, startingBoard))
 				) {
 					valid = false
 					break
@@ -894,7 +895,7 @@ function squareAttacked(square: Coords, board: Board, startingPosition: Board) {
 			color: board.toMove,
 			type: simulatedPieceType,
 		} as ColoredPiece
-		const simulatedMoves = getMovesFromCoords(square, board, [], startingPosition, simulatedPiece, false)
+		const simulatedMoves = getMovesFromCoords(square, board, [], startingPosition, simulatedPiece, false, true)
 		for (let move of simulatedMoves) {
 			const attackingPiece = board.pieces[notationFromCoords(move.to)]
 			if (attackingPiece && attackingPiece.type === simulatedPieceType) {
