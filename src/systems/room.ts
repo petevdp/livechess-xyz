@@ -125,10 +125,16 @@ export async function connectToRoom(
 		//#endregion
 		instanceOwner = getOwner()!
 
+		const sub = interval(10000).subscribe(() => {
+			// make sure render's server doesn't spin down while we're in the middle of a game
+			fetch('/ping')
+		})
+
 		disposePrevious = () => {
 			window.removeEventListener('beforeunload', unloadListener)
 			setRoom(null)
 			_dispose()
+			sub.unsubscribe()
 		}
 	})
 
@@ -292,6 +298,7 @@ export class Room {
 	get members() {
 		return this.sharedStore.rollbackStore.members
 	}
+
 	get participants(): GameParticipant[] {
 		return this.members
 			.map((player): GameParticipant[] => {
@@ -311,9 +318,11 @@ export class Room {
 	get isPlayerParticipating() {
 		return this.player.id === this.leftPlayer?.id
 	}
+
 	get spectators() {
 		return this.members.filter((p) => Object.values(this.rollbackState.gameParticipants).some((gp) => gp.id === p.id))
 	}
+
 	get rightPlayer() {
 		return this.participants.find((p) => p.id !== this.player.id) || null
 	}
@@ -478,6 +487,7 @@ export class Room {
 	setGameConfig(config: Partial<GL.GameConfig>) {
 		this.sharedStore.setStore({ path: ['gameConfig'], value: config })
 	}
+
 	toggleReady() {
 		if (!this.isPlayerParticipating) return
 		if (!this.leftPlayer!.isReadyForGame) {
@@ -540,6 +550,7 @@ export class Room {
 			]
 		})
 	}
+
 	//#endregion
 }
 
