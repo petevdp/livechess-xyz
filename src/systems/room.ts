@@ -384,17 +384,17 @@ export class Room {
 
 	//#endregion
 
-	get action$() {
+	get event$() {
 		return this.sharedStore.event$.pipe(
-			concatMap((a) => {
-				let player = this.members.find((p) => p.id === a.playerId)!
+			concatMap((event) => {
+				let player = this.members.find((p) => p.id === event.playerId)!
 				if (!player) {
-					console.warn('unknown player id in action', a)
+					console.warn('unknown player id in action', event)
 					return []
 				}
 				return [
 					{
-						type: a.type as RoomEvent['type'],
+						...event,
 						player: unwrap(player),
 					},
 				]

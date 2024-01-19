@@ -541,64 +541,71 @@ export function Game(props: { gameId: string }) {
 	//#endregion
 
 	//#region sound effects for incoming moves
-	createEffect(() => {
-		if (game.viewingLiveBoard && game.isClientPlayerParticipating && game.board.toMove !== game.bottomPlayer.color) return
-		if (game.currentBoardView.lastMove) {
-			const isVisible =
-				game.gameConfig.variant !== 'fog-of-war' || game.currentBoardView.visibleSquares.has(game.currentBoardView.lastMove.to)
-			untrack(() => {
-				Audio.playSoundEffectForMove(game.currentBoardView.lastMove!, false, isVisible)
-			})
-		}
-	})
+	{
+		const sub = game.moveEvent$.subscribe(async (event) => {
+			if (game.viewingLiveBoard && game.isClientPlayerParticipating) return
+			const moveIsFromOpponent = event.moveIndex % 2 === (game.bottomPlayer.color === 'white' ? 1 : 0)
+			if (moveIsFromOpponent) {
+				const move = game.state.moveHistory[event.moveIndex]
+				const isVisible = game.gameConfig.variant !== 'fog-of-war' || game.currentBoardView.visibleSquares.has(move.to)
+				Audio.playSoundEffectForMove(move, false, isVisible)
+			}
+		})
+
+		onCleanup(() => {
+			sub.unsubscribe()
+		})
+	}
 	//#endregion
 
 	//#region game outcome sound effects
 	{
-		let init = false
-		createEffect(() => {
-			if (!game.outcome || !game.isClientPlayerParticipating) {
-				if (!init) {
-					init = true
-				}
-				return
-			}
-
-			if (game.outcome.winner === game.bottomPlayer.color) {
-				if (!init) {
-					init = true
-					return
-				}
+		const sub = game.outcome$.subscribe((event) => {
+			if (!event) return
+			if (event.winner === game.bottomPlayer.color) {
 				Audio.playSound('winner')
 			} else {
-				if (!init) {
-					init = true
-					return
-				}
 				Audio.playSound('loser')
 			}
 		})
+		onCleanup(() => {
+			sub.unsubscribe()
+		})
 	}
 	//#endregion
+
+	//#region handle move navigation
+	function handleMoveNavigation(moveIndex: number | 'live') {
+		if (game.gameConfig.variant === 'fog-of-war') throw new Error('move history navigation not supported for fog of war games')
+		const move = game.state.moveHistory[moveIndex === 'live' ? game.state.moveHistory.length - 1 : moveIndex]
+		Audio.playSoundEffectForMove(move, false, true)
+		game.setViewedMove(moveIndex)
+	}
+
+	const moveNavProps = () => {
+		return {
+			isLive: game.viewingLiveBoard,
+			viewedMoveIndex: game.viewedMoveIndex(),
+			setViewedMoveIndex: handleMoveNavigation,
+		}
+	}
+
+	//#endregion
+	const hideHistory = () => game.gameConfig.variant === 'fog-of-war'
 
 	return (
 		<div class={styles.boardPageWrapper}>
 			<div
 				ref={boardRef}
-				class={cn(styles.boardContainer, 'rounded-lg border bg-card p-2 text-card-foreground shadow-sm max-w-max max-h-full gap-[0.25rem]')}
+				class={cn(
+					styles.boardContainer,
+					'rounded-lg border bg-card p-2 text-card-foreground shadow-sm max-w-max max-h-full gap-[0.25rem]',
+					hideHistory() ? styles.hideHistory : styles.showHistory
+				)}
 			>
-				<Show when={game.gameConfig.variant !== 'fog-of-war'}
-							fallback={<div class={styles.moveHistoryContainer}></div>}>
-					<MoveHistory/>
+				<Show when={!hideHistory()}>
+					<MoveHistory {...moveNavProps()} />
 				</Show>
-				<Player class={styles.topPlayer} player={game.topPlayer}/>
-				<Clock
-					class={styles.clockTopPlayer}
-					clock={game.clock[game.topPlayer.color]}
-					ticking={game.isPlayerTurn(game.topPlayer.color) && game.clock[game.topPlayer.color] > 0}
-					timeControl={game.gameConfig.timeControl}
-					color={game.topPlayer.color}
-				/>
 				<div class={`${styles.topLeftActions} flex items-start space-x-1`}>
 					<Button variant="ghost" size="icon" onclick={() => setBoardFlipped((f) => !f)} class="mb-1">
 						<Svgs.Flip/>
@@ -611,6 +618,14 @@ export function Game(props: { gameId: string }) {
 						</VariantInfoDialog>
 					</Show>
 				</div>
+				<Player class={styles.topPlayer} player={game.topPlayer}/>
+				<Clock
+					class={styles.clockTopPlayer}
+					clock={game.clock[game.topPlayer.color]}
+					ticking={game.isPlayerTurn(game.topPlayer.color) && game.clock[game.topPlayer.color] > 0}
+					timeControl={game.gameConfig.timeControl}
+					color={game.topPlayer.color}
+				/>
 				<CapturedPieces/>
 				<div class={styles.board}>
 					<span>{boardCanvas}</span>
@@ -629,9 +644,11 @@ export function Game(props: { gameId: string }) {
 					timeControl={game.gameConfig.timeControl}
 					color={game.bottomPlayer.color}
 				/>
-				<div class={cn(styles.moveNav, 'self-center justify-self-center min-w-0 wc:self-start')}>
-					<MoveNav />
-				</div>
+				<Show when={!hideHistory()}>
+					<div class={cn(styles.moveNav, 'self-center justify-self-center min-w-0 wc:self-start')}>
+						<MoveNav {...moveNavProps()} />
+					</div>
+				</Show>
 			</div>
 			<GameOutcomeDialog />
 		</div>
@@ -696,10 +713,12 @@ function Player(props: { player: G.PlayerWithColor; class: string }) {
 			<Show when={game.bottomPlayer.color === props.player.color} fallback={title}>
 				<HoverCard placement="bottom" open={game.placingDuck()}>
 					<HoverCardTrigger>{title}</HoverCardTrigger>
-					<HoverCardContent class="bg-destructive p-1 w-max text-sm flex space-x-2 items-center justify-between">
-						<span class="text-balance">{`${Agent.usingTouch() ? 'Tap' : 'Click'} square to place duck`}</span>
+					<HoverCardContent
+						class="bg-destructive border-destructive p-1 w-max text-sm flex space-x-2 items-center justify-between">
+						<span
+							class="text-balance text-destructive-foreground">{`${Agent.usingTouch() ? 'Tap' : 'Click'} square to place duck`}</span>
 						<Button
-							class="text-xs whitespace-nowrap bg-black"
+							class="text-xs text-destructive-foreground whitespace-nowrap bg-black"
 							variant="secondary"
 							size="sm"
 							onclick={() => {
@@ -760,11 +779,10 @@ function ActionsPanel(props: { class: string; placingDuck: boolean }) {
 								variant="ghost"
 								onclick={() => game.offerOrAcceptDraw()}
 							>
-								<Svgs.OfferDraw/>
+								<Svgs.OfferDraw />
 							</Button>
-							<Button disabled={!!game.drawIsOfferedBy} title="Resign" size="icon" variant="ghost"
-											onclick={() => game.resign()}>
-								<Svgs.Resign/>
+							<Button disabled={!!game.drawIsOfferedBy} title="Resign" size="icon" variant="ghost" onclick={() => game.resign()}>
+								<Svgs.Resign />
 							</Button>
 						</span>
 					</DrawHoverCard>
@@ -805,9 +823,9 @@ function ActionsPanel(props: { class: string; placingDuck: boolean }) {
 	}
 }
 
-function MoveHistory() {
-	const game = G.game()!
+function MoveHistory(props: MoveNavProps) {
 	const itemClass = 'grid grid-cols-[min-content_1fr_1fr] gap-1 text-xs items-center'
+	const game = G.game()!
 	return (
 		<div class={`${styles.moveHistoryContainer} grid grid-cols-2 h-max max-h-full gap-x-4 gap-y-1 p-1 overflow-y-auto`}>
 			<div class={itemClass}>
@@ -815,16 +833,16 @@ function MoveHistory() {
 				<Button
 					class="p-[.25rem] font-light"
 					size="sm"
-					variant={game.viewedMoveIndex() === -1 ? 'default' : 'ghost'}
-					onClick={() => game.setViewedMove(-1)}
+					variant={props.viewedMoveIndex === -1 ? 'default' : 'ghost'}
+					onClick={() => props.setViewedMoveIndex(-1)}
 				>
 					Start
 				</Button>
 			</div>
 			<For each={game.moveHistoryAsNotation}>
 				{(move, index) => {
-					const viewingFirstMove = () => game.viewedMoveIndex() === index() * 2
-					const viewingSecondMove = () => game.viewedMoveIndex() === index() * 2 + 1
+					const viewingFirstMove = () => props.viewedMoveIndex === index() * 2
+					const viewingSecondMove = () => props.viewedMoveIndex === index() * 2 + 1
 					return (
 						<div class={itemClass}>
 							<span class="font-mono font-bold">{(index() + 1).toString().padStart(2, '0')}.</span>
@@ -832,7 +850,7 @@ function MoveHistory() {
 								class="p-[.25rem] font-light"
 								size="sm"
 								variant={viewingFirstMove() ? 'default' : 'ghost'}
-								onClick={() => game.setViewedMove(index() * 2)}
+								onClick={() => props.setViewedMoveIndex(index() * 2)}
 							>
 								{move[0]}
 							</Button>{' '}
@@ -841,7 +859,7 @@ function MoveHistory() {
 									size="sm"
 									class="p-[.25rem] font-light"
 									variant={viewingSecondMove() ? 'default' : 'ghost'}
-									onClick={() => game.setViewedMove(index() * 2 + 1)}
+									onClick={() => props.setViewedMoveIndex(index() * 2 + 1)}
 								>
 									{move[1]}
 								</Button>
@@ -854,37 +872,31 @@ function MoveHistory() {
 	)
 }
 
-function MoveNav() {
-	const game = G.game()!
+type MoveNavProps = {
+	isLive: boolean
+	viewedMoveIndex: number
+	setViewedMoveIndex: (moveIndex: number | 'live') => void
+}
+
+function MoveNav(props: MoveNavProps) {
 	return (
 		<div class="flex justify-evenly">
-			<Button size="icon" variant="ghost" disabled={game.viewedMoveIndex() === -1}
-							onClick={() => game.setViewedMove(-1)}>
-				<Svgs.First/>
+			<Button size="icon" variant="ghost" disabled={props.viewedMoveIndex === -1} onClick={() => props.setViewedMoveIndex(-1)}>
+				<Svgs.First />
 			</Button>
 			<Button
 				variant="ghost"
 				size="icon"
-				disabled={game.viewedMoveIndex() === -1}
-				onClick={() => game.setViewedMove(game.viewedMoveIndex() - 1)}
+				disabled={props.viewedMoveIndex === -1}
+				onClick={() => props.setViewedMoveIndex(props.viewedMoveIndex - 1)}
 			>
-				<Svgs.Prev/>
+				<Svgs.Prev />
 			</Button>
-			<Button
-				disabled={game.viewedMoveIndex() === game.state.moveHistory.length - 1}
-				variant="ghost"
-				size="icon"
-				onClick={() => game.setViewedMove(game.viewedMoveIndex() + 1)}
-			>
-				<Svgs.Next/>
+			<Button disabled={props.isLive} variant="ghost" size="icon" onClick={() => props.setViewedMoveIndex(props.viewedMoveIndex + 1)}>
+				<Svgs.Next />
 			</Button>
-			<Button
-				variant="ghost"
-				size="icon"
-				disabled={game.viewedMoveIndex() === game.state.moveHistory.length - 1}
-				onClick={() => game.setViewedMove('live')}
-			>
-				<Svgs.Last/>
+			<Button variant="ghost" size="icon" disabled={props.isLive} onClick={() => props.setViewedMoveIndex('live')}>
+				<Svgs.Last />
 			</Button>
 		</div>
 	)

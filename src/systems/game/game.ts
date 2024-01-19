@@ -1,6 +1,6 @@
 import { until } from '@solid-primitives/promise'
 import { isEqual } from 'lodash'
-import { EMPTY, Observable, ReplaySubject, combineLatest, concatMap, distinctUntilChanged, from as rxFrom } from 'rxjs'
+import { Observable, ReplaySubject, combineLatest, concatMap, distinctUntilChanged, from as rxFrom, skip } from 'rxjs'
 import { map } from 'rxjs/operators'
 import { Accessor, createEffect, createMemo, createSignal, from, getOwner, observable, onCleanup } from 'solid-js'
 import { unwrap } from 'solid-js/store'
@@ -26,6 +26,7 @@ export type BoardView = {
 const DRAW_EVENTS = ['draw-offered', 'draw-accepted', 'draw-declined', 'draw-canceled'] as const
 export type DrawEventType = (typeof DRAW_EVENTS)[number]
 export type DrawEvent = { type: DrawEventType; participant: R.GameParticipant }
+export type MoveEvent = { type: 'make-move'; participant: R.GameParticipant; moveIndex: number }
 
 export type MakeMoveResult =
 	| { type: 'invalid' }
@@ -118,6 +119,10 @@ export class Game {
 		return this._candidateMovesForSelected()
 	}
 
+	get move$() {
+		return this.drawEvent$
+	}
+
 	getLegalMovesForSquare(startingSquare: string) {
 		if (!this.board.pieces[startingSquare]) return []
 		return GL.getLegalMoves(
@@ -169,7 +174,7 @@ export class Game {
 			if (!GL.kingCaptured(result.board)) {
 				this.setPlacingDuck(true)
 				this.setBoardWithCurrentMove(result.board)
-				let prevDuckPlacement = Object.keys(result.board.pieces).find((square) => result.board.pieces[square]!.type === 'duck')
+				let prevDuckPlacement = Object.keys(this.board.pieces).find((square) => this.board.pieces[square]!.type === 'duck')
 				if (prevDuckPlacement) {
 					// render previous duck while we're placing the new one, so it's clear that the duck can't be placed in the same spot twice
 					result.board.pieces[prevDuckPlacement] = GL.DUCK
@@ -303,6 +308,22 @@ export class Game {
 		return this.viewedMoveIndex() === this.state.moveHistory.length - 1
 	}
 
+	get moveEvent$() {
+		return this.room.event$.pipe(
+			concatMap((event): MoveEvent[] => {
+				const participant = this.room.participants.find((p) => p.id === event.player.id)
+				if (event.type !== 'make-move' || !participant) return []
+				return [
+					{
+						type: 'make-move',
+						participant: participant,
+						moveIndex: event.moveIndex,
+					},
+				]
+			})
+		)
+	}
+
 	setViewedMove(move: number | 'live') {
 		if (move === 'live') {
 			this._setViewedMove(this.state.moveHistory.length - 1)
@@ -396,14 +417,16 @@ export class Game {
 		return this.getOutcome()
 	}
 
+	get outcome$() {
+		return rxFrom(observable(() => this.outcome)).pipe(skip(1))
+	}
+
 	//#endregion
 
 	//#region draws and resignation
 
-	drawEvent$ = EMPTY as Observable<DrawEvent>
-
-	setupDrawEvents() {
-		this.drawEvent$ = this.room.action$.pipe(
+	get drawEvent$() {
+		return this.room.event$.pipe(
 			concatMap((action): DrawEvent[] => {
 				const participant = this.room.participants.find((p) => p.id === action.player.id)
 				if (!DRAW_EVENTS.includes(action.type as DrawEventType) || !participant) return []
@@ -416,6 +439,8 @@ export class Game {
 			})
 		)
 	}
+
+	setupDrawEvents() {}
 
 	offerOrAcceptDraw() {
 		if (!this.isClientPlayerParticipating) return

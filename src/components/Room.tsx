@@ -26,7 +26,7 @@ export function Room() {
 	if (!room) throw new Error('room is not initialized')
 
 	//#region toast basic room events
-	const sub = room.action$.subscribe((action) => {
+	const sub = room.event$.subscribe((action) => {
 		switch (action.type) {
 			case 'player-connected':
 				if (action.player.id === P.playerId()) {
@@ -107,7 +107,7 @@ function QrCodeDialog() {
 	const [dataUrl] = createResource(() => QRCode.toDataURL(window.location.href, { scale: 12 }))
 	let btn: HTMLButtonElement | null = null
 	const [open, setOpen] = createSignal(false)
-	room.action$.subscribe((action) => {
+	room.event$.subscribe((action) => {
 		if (action.type === 'player-connected' && open()) btn?.click()
 	})
 
@@ -211,7 +211,7 @@ function PlayerAwareness() {
 	const leftPlayerColor: () => GL.Color = () => room.leftPlayer?.color || 'white'
 	const rightPlayerColor: () => GL.Color = () => GL.oppositeColor(leftPlayerColor())
 
-	const sub = room.action$.subscribe((action) => {
+	const sub = room.event$.subscribe((action) => {
 		switch (action.type) {
 			case 'agree-piece-swap':
 				if (action.player.id === room.leftPlayer?.id) {

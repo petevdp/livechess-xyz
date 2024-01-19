@@ -47,9 +47,6 @@ export function SettingsDialog() {
 			</DialogTrigger>
 			<DialogContent
 				class="sm:max-w-[425px]"
-				onEscapeKeyDown={() => {
-					console.log('requesting submit')
-				}}
 			>
 				<form onSubmit={onSubmit}>
 					<DialogHeader>

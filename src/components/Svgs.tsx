@@ -6,7 +6,7 @@ import {
 	TbBrandGithub,
 	TbDeviceLaptop,
 	TbFlagFilled,
-	TbHelpSmall,
+	TbHelpCircleFilled,
 	TbInfoCircleFilled,
 	TbPlayerSkipBackFilled,
 	TbPlayerSkipForwardFilled,
@@ -28,7 +28,7 @@ export const First = defaultIcon(TbPlayerSkipBackFilled)
 export const Last = defaultIcon(TbPlayerSkipForwardFilled)
 export const Flip = defaultIcon(FiRefreshCw)
 export const Github = defaultIcon(TbBrandGithub)
-export const Help = defaultIcon(TbHelpSmall)
+export const Help = defaultIcon(TbHelpCircleFilled)
 export const Info = defaultIcon(TbInfoCircleFilled)
 export const Muted = defaultIcon(TbVolumeOff)
 export const NotMuted = defaultIcon(TbVolume)
