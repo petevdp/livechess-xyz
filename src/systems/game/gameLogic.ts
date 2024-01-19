@@ -306,7 +306,7 @@ function moveToCandidateMove(move: Move): CandidateMove {
 //#region game status
 
 export function checkmated(game: GameState) {
-	return inCheck(getBoard(game), game.boardHistory[0].board) && noMoves(game)
+	return inCheck(getBoard(game)) && noMoves(game)
 }
 
 export function kingCaptured(board: Board) {
@@ -315,7 +315,7 @@ export function kingCaptured(board: Board) {
 }
 
 function stalemated(game: GameState) {
-	return !inCheck(getBoard(game), game.boardHistory[0].board) && noMoves(game)
+	return !inCheck(getBoard(game)) && noMoves(game)
 }
 
 function threefoldRepetition(game: GameState) {
@@ -406,7 +406,7 @@ export function validateAndPlayMove(
 	const isCapture = !!getBoard(game).pieces[to]
 	//@ts-ignore
 	let [newBoard ] = applyMoveToBoard(candidate, getBoard(game))
-	const move = candidateMoveToMove(candidate, undefined, isCapture, inCheck(newBoard, game.boardHistory[0].board), duck)
+	const move = candidateMoveToMove(candidate, undefined, isCapture, inCheck(newBoard), duck)
 	if (duck) {
 		if (!validateDuckPlacement(duck, newBoard)) {
 			return
@@ -495,7 +495,7 @@ export function getLegalMoves(piecePositions: Coords[], game: GameState, allowSe
 		if (piece.color !== getBoard(game).toMove) {
 			continue
 		}
-		candidateMoves = [...candidateMoves, ...getMovesFromCoords(start, getBoard(game), game.moveHistory, game.boardHistory[0].board, piece, allowSelfChecks)]
+		candidateMoves = [...candidateMoves, ...getMovesFromCoords(start, getBoard(game), game.moveHistory,  piece, true, allowSelfChecks)]
 	}
 
 	findMoveAmbiguitiesInPlace(candidateMoves)
@@ -504,7 +504,7 @@ export function getLegalMoves(piecePositions: Coords[], game: GameState, allowSe
 		candidateMoves = candidateMoves.filter((move) => {
 			const [newBoard] = applyMoveToBoard(move, getBoard(game))
 			newBoard.toMove = getBoard(game).toMove
-			return !inCheck(newBoard, game.boardHistory[0].board)
+			return !inCheck(newBoard)
 		})
 	}
 
@@ -515,7 +515,6 @@ function getMovesFromCoords(
 	coords: Coords,
 	board: Board,
 	history: MoveHistory,
-	startingPosition: Board,
 	piece: ColoredPiece | null = null,
 	checkCastling: boolean = true,
 	allowSelfChecks: boolean = false
@@ -536,7 +535,7 @@ function getMovesFromCoords(
 		case 'queen':
 			return [...rookMoves(coords, board), ...bishopMoves(coords, board)]
 		case 'king':
-			return kingMoves(coords, board, startingPosition, history, checkCastling, allowSelfChecks)
+			return kingMoves(coords, board, history, checkCastling, allowSelfChecks)
 		case 'duck':
 			throw new Error('quack?')
 		default:
@@ -761,8 +760,7 @@ function findBackRankRooks(board: Board, color: Color) {
 	return {rookLeft, rookRight}
 }
 
-// why do we need starting board?
-function kingMoves(start: Coords, board: Board, startingBoard: Board, moveHistory: MoveHistory, checkCastling: boolean, allowSelfChecks: boolean) {
+function kingMoves(start: Coords, board: Board, moveHistory: MoveHistory, checkCastling: boolean, allowSelfChecks: boolean) {
 	let moves: Coords[] = []
 	const directions = [
 		[1, 0],
@@ -790,25 +788,20 @@ function kingMoves(start: Coords, board: Board, startingBoard: Board, moveHistor
 
 	if (!checkCastling) return candidateMoves
 	const rank = board.toMove === 'white' ? 0 : 7
-	//#region find starting rooksj
-	// we need to look up the rook positions here because of fischer random chess, where the rooks can be in different places
-	const {rookLeft, rookRight} = findBackRankRooks(startingBoard, board.toMove)
-	if (!rookLeft || !rookRight) {
-		console.warn({startingBoard})
-		throw new Error('invalid starting board')
-	}
-	//#endregion
+
+	// we need to look up the rook positions here to account for fischer random
+	const {rookLeft, rookRight} = findBackRankRooks(board, board.toMove)
 
 	const eligibleRooks = [] as Coords[]
 	if (squarePartOfMove(start, moveHistory)) {
 		return candidateMoves
 	}
 	const sideDirections: ('a' | 'h')[] = []
-	if (!squarePartOfMove(rookLeft, moveHistory)) {
+	if (rookLeft && !squarePartOfMove(rookLeft, moveHistory)) {
 		eligibleRooks.push(rookLeft)
 		sideDirections.push('a')
 	}
-	if (!squarePartOfMove(rookRight, moveHistory)) {
+	if (rookRight && !squarePartOfMove(rookRight, moveHistory)) {
 		eligibleRooks.push(rookRight)
 		sideDirections.push('h')
 	}
@@ -833,7 +826,7 @@ function kingMoves(start: Coords, board: Board, startingBoard: Board, moveHistor
 				// we can move through the rook
 				if (
 					(board.pieces[notationFromCoords(square)] && !isEqual(square, rook) && !isEqual(square, start)) ||
-					(!allowSelfChecks && squareAttacked(square, board, startingBoard))
+					(!allowSelfChecks && squareAttacked(square, board))
 				) {
 					valid = false
 					break
@@ -923,13 +916,13 @@ function findPiece(piece: ColoredPiece, board: Board) {
 	})
 }
 
-export function inCheck(board: Board, startingPosition: Board) {
+export function inCheck(board: Board) {
 	const king = findPiece({color: board.toMove, type: 'king'}, board)
 	if (!king) return false
-	return squareAttacked(coordsFromNotation(king), board, startingPosition)
+	return squareAttacked(coordsFromNotation(king), board)
 }
 
-function squareAttacked(square: Coords, board: Board, startingPosition: Board) {
+function squareAttacked(square: Coords, board: Board) {
 	const opponentPieces = [
 		...new Set(
 			Object.values(board.pieces)
@@ -942,7 +935,7 @@ function squareAttacked(square: Coords, board: Board, startingPosition: Board) {
 			color: board.toMove,
 			type: simulatedPieceType,
 		} as ColoredPiece
-		const simulatedMoves = getMovesFromCoords(square, board, [], startingPosition, simulatedPiece, false, true)
+		const simulatedMoves = getMovesFromCoords(square, board, [], simulatedPiece, false, true)
 		for (let move of simulatedMoves) {
 			const attackingPiece = board.pieces[notationFromCoords(move.to)]
 			if (attackingPiece && attackingPiece.type === simulatedPieceType) {
@@ -1006,7 +999,7 @@ export function moveToAlgebraicNotation(moveIndex: number, state: GameState): st
 	const capture = move.capture ? 'x' : ''
 	const to = move.to
 	const promotion = move.promotion ? '=' + move.promotion.toUpperCase() : ''
-	const check = inCheck(getBoard(state), state.boardHistory[0].board) ? '+' : ''
+	const check = inCheck(getBoard(state)) ? '+' : ''
 	const checkmate = check && checkmated(state) ? '#' : ''
 
 	if (move.castle) {

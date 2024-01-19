@@ -269,7 +269,7 @@ export class Game {
 			}
 		}
 
-		const inCheck = createMemo(() => GL.inCheck(viewedBoard(), this.state.boardHistory[0].board))
+		const inCheck = createMemo(() => GL.inCheck(viewedBoard()))
 		const visibleSquares = createMemo(() => {
 			if (this.gameConfig.variant === 'fog-of-war') {
 				return GL.getVisibleSquares(this.stateSignal(), this.bottomPlayer.color)
