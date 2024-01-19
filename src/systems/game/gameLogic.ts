@@ -1,4 +1,4 @@
-import { isEqual, partition } from 'lodash'
+import {isEqual, partition} from 'lodash'
 import hash from 'object-hash'
 
 
@@ -23,6 +23,7 @@ export type SelectedMove = {
 	to: string
 }
 
+// TODO type declarations here should be deduped
 export type Move = {
 	from: string
 	to: string
@@ -33,6 +34,7 @@ export type Move = {
 	check?: boolean
 	capture: boolean
 	duck?: string
+	algebraicNotationAmbiguity: ('rank' | 'file')[]
 	ts: Timestamp
 }
 
@@ -42,6 +44,7 @@ export type CandidateMove = {
 	piece: Piece
 	castle?: 'king' | 'queen'
 	enPassant?: string
+	algebraicNotationAmbiguity: ('rank' | 'file')[]
 	promotion?: PromotionPiece
 }
 
@@ -56,13 +59,13 @@ export type CandidateMoveOptions = {
 
 export type MoveDisambiguation =
 	| {
-			type: 'promotion'
-			piece: PromotionPiece
-	  }
+	type: 'promotion'
+	piece: PromotionPiece
+}
 	| {
-			type: 'castle'
-			castling: boolean
-	  }
+	type: 'castle'
+	castling: boolean
+}
 
 export function getStartPos(variant: Variant) {
 	if (variant === 'fischer-random') {
@@ -116,48 +119,48 @@ export function getStartPos(variant: Variant) {
 
 		const pieces: Board['pieces'] = {}
 		lineup.forEach((piece, index) => {
-			pieces[notationFromCoords({ x: index, y: 1 })] = { color: 'white', type: 'pawn' }
-			pieces[notationFromCoords({ x: index, y: 0 })] = { color: 'white', type: piece }
-			pieces[notationFromCoords({ x: index, y: 6 })] = { color: 'black', type: 'pawn' }
-			pieces[notationFromCoords({ x: index, y: 7 })] = { color: 'black', type: piece }
+			pieces[notationFromCoords({x: index, y: 1})] = {color: 'white', type: 'pawn'}
+			pieces[notationFromCoords({x: index, y: 0})] = {color: 'white', type: piece}
+			pieces[notationFromCoords({x: index, y: 6})] = {color: 'black', type: 'pawn'}
+			pieces[notationFromCoords({x: index, y: 7})] = {color: 'black', type: piece}
 		})
-		return { pieces, toMove: 'white' } as Board
+		return {pieces, toMove: 'white'} as Board
 	}
 	return {
 		pieces: {
-			a1: { color: 'white', type: 'rook' },
-			b1: { color: 'white', type: 'knight' },
-			c1: { color: 'white', type: 'bishop' },
-			d1: { color: 'white', type: 'queen' },
-			e1: { color: 'white', type: 'king' },
-			f1: { color: 'white', type: 'bishop' },
-			g1: { color: 'white', type: 'knight' },
-			h1: { color: 'white', type: 'rook' },
-			a2: { color: 'white', type: 'pawn' },
-			b2: { color: 'white', type: 'pawn' },
-			c2: { color: 'white', type: 'pawn' },
-			d2: { color: 'white', type: 'pawn' },
-			e2: { color: 'white', type: 'pawn' },
-			f2: { color: 'white', type: 'pawn' },
-			g2: { color: 'white', type: 'pawn' },
-			h2: { color: 'white', type: 'pawn' },
+			a1: {color: 'white', type: 'rook'},
+			b1: {color: 'white', type: 'knight'},
+			c1: {color: 'white', type: 'bishop'},
+			d1: {color: 'white', type: 'queen'},
+			e1: {color: 'white', type: 'king'},
+			f1: {color: 'white', type: 'bishop'},
+			g1: {color: 'white', type: 'knight'},
+			h1: {color: 'white', type: 'rook'},
+			a2: {color: 'white', type: 'pawn'},
+			b2: {color: 'white', type: 'pawn'},
+			c2: {color: 'white', type: 'pawn'},
+			d2: {color: 'white', type: 'pawn'},
+			e2: {color: 'white', type: 'pawn'},
+			f2: {color: 'white', type: 'pawn'},
+			g2: {color: 'white', type: 'pawn'},
+			h2: {color: 'white', type: 'pawn'},
 
-			a8: { color: 'black', type: 'rook' },
-			b8: { color: 'black', type: 'knight' },
-			c8: { color: 'black', type: 'bishop' },
-			d8: { color: 'black', type: 'queen' },
-			e8: { color: 'black', type: 'king' },
-			f8: { color: 'black', type: 'bishop' },
-			g8: { color: 'black', type: 'knight' },
-			h8: { color: 'black', type: 'rook' },
-			a7: { color: 'black', type: 'pawn' },
-			b7: { color: 'black', type: 'pawn' },
-			c7: { color: 'black', type: 'pawn' },
-			d7: { color: 'black', type: 'pawn' },
-			e7: { color: 'black', type: 'pawn' },
-			f7: { color: 'black', type: 'pawn' },
-			g7: { color: 'black', type: 'pawn' },
-			h7: { color: 'black', type: 'pawn' },
+			a8: {color: 'black', type: 'rook'},
+			b8: {color: 'black', type: 'knight'},
+			c8: {color: 'black', type: 'bishop'},
+			d8: {color: 'black', type: 'queen'},
+			e8: {color: 'black', type: 'king'},
+			f8: {color: 'black', type: 'bishop'},
+			g8: {color: 'black', type: 'knight'},
+			h8: {color: 'black', type: 'rook'},
+			a7: {color: 'black', type: 'pawn'},
+			b7: {color: 'black', type: 'pawn'},
+			c7: {color: 'black', type: 'pawn'},
+			d7: {color: 'black', type: 'pawn'},
+			e7: {color: 'black', type: 'pawn'},
+			f7: {color: 'black', type: 'pawn'},
+			g7: {color: 'black', type: 'pawn'},
+			h7: {color: 'black', type: 'pawn'},
 		},
 		toMove: 'white',
 	} as Board
@@ -167,7 +170,7 @@ export function getStartPos(variant: Variant) {
 
 //#region QUACK
 
-export const DUCK = { type: 'duck', color: 'duck' } satisfies ColoredPiece
+export const DUCK = {type: 'duck', color: 'duck'} satisfies ColoredPiece
 //#endregion
 
 //#region organization
@@ -282,6 +285,7 @@ function candidateMoveToMove(
 		capture: capture || false,
 		check: check || false,
 		duck,
+		algebraicNotationAmbiguity: candidateMove.algebraicNotationAmbiguity,
 	} satisfies Move
 }
 
@@ -293,6 +297,7 @@ function moveToCandidateMove(move: Move): CandidateMove {
 		castle: move.castle,
 		enPassant: move.enPassant,
 		promotion: move.promotion,
+		algebraicNotationAmbiguity: move.algebraicNotationAmbiguity,
 	} satisfies CandidateMove
 }
 
@@ -305,7 +310,7 @@ export function checkmated(game: GameState) {
 }
 
 export function kingCaptured(board: Board) {
-	const piece = { color: board.toMove, type: 'king' } satisfies ColoredPiece
+	const piece = {color: board.toMove, type: 'king'} satisfies ColoredPiece
 	return !findPiece(piece, board)
 }
 
@@ -316,7 +321,7 @@ function stalemated(game: GameState) {
 function threefoldRepetition(game: GameState) {
 	if (game.boardHistory.length === 0) return false
 	const currentHash = game.boardHistory[game.boardHistory.length - 1].hash
-	const dupeCount = game.boardHistory.filter(({ hash }) => hash === currentHash).length
+	const dupeCount = game.boardHistory.filter(({hash}) => hash === currentHash).length
 	return dupeCount == 3
 }
 
@@ -361,7 +366,7 @@ export function getGameOutcome(state: GameState, config: ParsedGameConfig) {
 		// we handle flags externally
 		return null
 	}
-	return { winner, reason } as GameOutcome
+	return {winner, reason} as GameOutcome
 }
 
 //#endregion
@@ -400,7 +405,7 @@ export function validateAndPlayMove(
 	const candidate = candidates[0]
 	const isCapture = !!getBoard(game).pieces[to]
 	//@ts-ignore
-	let [newBoard, promoted] = applyMoveToBoard(candidate, getBoard(game))
+	let [newBoard ] = applyMoveToBoard(candidate, getBoard(game))
 	const move = candidateMoveToMove(candidate, undefined, isCapture, inCheck(newBoard, game.boardHistory[0].board), duck)
 	if (duck) {
 		if (!validateDuckPlacement(duck, newBoard)) {
@@ -441,7 +446,7 @@ function applyMoveToBoard(move: CandidateMove | Move, board: Board) {
 
 	if (_move.castle) {
 		// move rook
-		const { rookLeft, rookRight } = findBackRankRooks(board, board.toMove)
+		const {rookLeft, rookRight} = findBackRankRooks(board, board.toMove)
 		const rank = board.toMove === 'white' ? 0 : 7
 		const direction = _move.to.x === 6 ? 1 : -1
 		const currentRookSquare = notationFromCoords(direction === 1 ? rookRight! : rookLeft!)
@@ -453,7 +458,7 @@ function applyMoveToBoard(move: CandidateMove | Move, board: Board) {
 			}
 		}
 		const endingRookFile = direction === 1 ? 5 : 3
-		newBoard.pieces[notationFromCoords({ x: endingRookFile, y: rank })] = {
+		newBoard.pieces[notationFromCoords({x: endingRookFile, y: rank})] = {
 			color: board.toMove,
 			type: 'rook',
 		}
@@ -492,6 +497,8 @@ export function getLegalMoves(piecePositions: Coords[], game: GameState, allowSe
 		}
 		candidateMoves = [...candidateMoves, ...getMovesFromCoords(start, getBoard(game), game.moveHistory, game.boardHistory[0].board, piece, allowSelfChecks)]
 	}
+
+	findMoveAmbiguitiesInPlace(candidateMoves)
 
 	if (!allowSelfChecks) {
 		candidateMoves = candidateMoves.filter((move) => {
@@ -573,22 +580,22 @@ function pawnMoves(start: Coords, board: Board, history: MoveHistory) {
 		if (_terminateReason === 'capture') {
 			_moves.pop()
 		}
-		addMoves(_moves.map((m) => ({ to: m })))
+		addMoves(_moves.map((m) => ({to: m})))
 	}
 
 	// diagonal capture right
 	{
-		const [_moves, _terminateReason] = castLegalMoves(start, { x: 1, y: direction }, 1, board)
+		const [_moves, _terminateReason] = castLegalMoves(start, {x: 1, y: direction}, 1, board)
 		if (_terminateReason === 'capture') {
-			addMoves(_moves.map((m) => ({ to: m, capture: true })))
+			addMoves(_moves.map((m) => ({to: m, capture: true})))
 		}
 	}
 
 	// diagonal capture left
 	{
-		const [_moves, _terminateReason] = castLegalMoves(start, { x: -1, y: direction }, 1, board)
+		const [_moves, _terminateReason] = castLegalMoves(start, {x: -1, y: direction}, 1, board)
 		if (_terminateReason === 'capture') {
-			addMoves(_moves.map((m) => ({ to: m })))
+			addMoves(_moves.map((m) => ({to: m})))
 		}
 	}
 
@@ -596,7 +603,7 @@ function pawnMoves(start: Coords, board: Board, history: MoveHistory) {
 		const movesWithPromotions: CandidateMove[] = []
 		for (let move of moves) {
 			for (let promotion of PROMOTION_PIECES) {
-				movesWithPromotions.push({ ...move, promotion })
+				movesWithPromotions.push({...move, promotion})
 			}
 		}
 		moves = movesWithPromotions
@@ -612,15 +619,15 @@ function pawnMoves(start: Coords, board: Board, history: MoveHistory) {
 		let lastMoveX = coordsFromNotation(lastMove.to).x
 		let lastMoveY = coordsFromNotation(lastMove.to).y
 		const isHorizontallyAdjacent = Math.abs(start.x - lastMoveX) === 1 && start.y === lastMoveY
-		const destinationSquarePiece = board.pieces[notationFromCoords({ x: lastMoveX, y: lastMoveY + direction })]
+		const destinationSquarePiece = board.pieces[notationFromCoords({x: lastMoveX, y: lastMoveY + direction})]
 		if (
 			movedTwoRanks &&
 			isHorizontallyAdjacent &&
 			(!destinationSquarePiece || destinationSquarePiece.color === oppositeColor(board.toMove))
 		) {
 			addMove({
-				to: { x: lastMoveX, y: lastMoveY + direction },
-				enPassant: notationFromCoords({ x: lastMoveX, y: lastMoveY }),
+				to: {x: lastMoveX, y: lastMoveY + direction},
+				enPassant: notationFromCoords({x: lastMoveX, y: lastMoveY}),
 			})
 		}
 	})()
@@ -628,9 +635,49 @@ function pawnMoves(start: Coords, board: Board, history: MoveHistory) {
 	return moves
 }
 
+// annotate moves if there's an ambiguity relevant to expressing the move in algebraic notation, so we don't have to do as much work elsewhere
+function findMoveAmbiguitiesInPlace(moves: CandidateMove[]) {
+	const rankAmbiguities = new Map<string, CandidateMove[]>()
+	const fileAmbiguities = new Map<string, CandidateMove[]>()
+
+	function updateAmbiguityMap(map: Map<string, CandidateMove[]>, key: string, move: CandidateMove) {
+		let moves: CandidateMove[] = []
+		if (map.has(key)) {
+			moves = map.get(key)!
+		} else {
+			map.set(key, moves)
+		}
+		if (moves.find(m => m.from === move.from)) return
+		moves.push(move)
+	}
+
+	// group by combination of move type and destination square
+	for (let move of moves) {
+		updateAmbiguityMap(rankAmbiguities, `${move.piece}:${move.to.y}`, move)
+		updateAmbiguityMap(fileAmbiguities, `${move.piece}:${move.to.x}`, move)
+	}
+
+	for (let moves of rankAmbiguities.values()) {
+		if (moves.length === 1) continue
+		for (let move of moves) {
+			move.algebraicNotationAmbiguity.push('rank')
+		}
+	}
+
+	for (let moves of fileAmbiguities.values()) {
+		if (moves.length === 1) continue
+		for (let move of moves) {
+			move.algebraicNotationAmbiguity.push('file')
+		}
+	}
+	console.log({rankAmbiguities, fileAmbiguities})
+}
+
 function newCandidateMove(options: CandidateMoveOptions) {
 	options.promotion ??= undefined
-	return options as CandidateMove
+	const move = options as CandidateMove
+	move.algebraicNotationAmbiguity = []
+	return move
 }
 
 function knightMoves(start: Coords, board: Board) {
@@ -647,7 +694,7 @@ function knightMoves(start: Coords, board: Board) {
 	]
 
 	for (let direction of directions) {
-		const [_moves] = castLegalMoves(start, { x: direction[0], y: direction[1] }, 1, board)
+		const [_moves] = castLegalMoves(start, {x: direction[0], y: direction[1]}, 1, board)
 		moves = [...moves, ..._moves]
 	}
 	return moves.map((m) =>
@@ -656,7 +703,7 @@ function knightMoves(start: Coords, board: Board) {
 			to: m,
 			piece: 'knight',
 		})
-	) as CandidateMove[]
+	)
 }
 
 function bishopMoves(start: Coords, board: Board) {
@@ -669,10 +716,10 @@ function bishopMoves(start: Coords, board: Board) {
 	]
 
 	for (let direction of directions) {
-		const [_moves] = castLegalMoves(start, { x: direction[0], y: direction[1] }, 8, board)
+		const [_moves] = castLegalMoves(start, {x: direction[0], y: direction[1]}, 8, board)
 		moves = [...moves, ..._moves]
 	}
-	return moves.map((m) => newCandidateMove({ from: start, to: m, piece: 'bishop' }))
+	return moves.map((m) => newCandidateMove({from: start, to: m, piece: 'bishop'}))
 }
 
 function rookMoves(start: Coords, board: Board) {
@@ -685,10 +732,10 @@ function rookMoves(start: Coords, board: Board) {
 	]
 
 	for (let direction of directions) {
-		const [_moves] = castLegalMoves(start, { x: direction[0], y: direction[1] }, 8, board)
+		const [_moves] = castLegalMoves(start, {x: direction[0], y: direction[1]}, 8, board)
 		moves = [...moves, ..._moves]
 	}
-	return moves.map((m) => newCandidateMove({ from: start, to: m, piece: 'rook' }))
+	return moves.map((m) => newCandidateMove({from: start, to: m, piece: 'rook'}))
 }
 
 function findBackRankRooks(board: Board, color: Color) {
@@ -697,21 +744,21 @@ function findBackRankRooks(board: Board, color: Color) {
 	const rank = color === 'white' ? 0 : 7
 	let passedKing = false
 	for (let i = 0; i < 8; i++) {
-		const square = notationFromCoords({ x: i, y: rank })
+		const square = notationFromCoords({x: i, y: rank})
 		const piece = board.pieces[square]
 		if (piece?.type === 'king' && piece.color === color) {
 			passedKing = true
 			continue
 		}
 		if (piece?.type === 'rook' && piece.color === color) {
-			if (!passedKing) rookLeft = { x: i, y: rank } satisfies Coords
+			if (!passedKing) rookLeft = {x: i, y: rank} satisfies Coords
 			else {
-				rookRight = { x: i, y: rank } satisfies Coords
+				rookRight = {x: i, y: rank} satisfies Coords
 				break
 			}
 		}
 	}
-	return { rookLeft, rookRight }
+	return {rookLeft, rookRight}
 }
 
 // why do we need starting board?
@@ -729,7 +776,7 @@ function kingMoves(start: Coords, board: Board, startingBoard: Board, moveHistor
 	]
 
 	for (let direction of directions) {
-		const [_moves] = castLegalMoves(start, { x: direction[0], y: direction[1] }, 1, board)
+		const [_moves] = castLegalMoves(start, {x: direction[0], y: direction[1]}, 1, board)
 		moves = [...moves, ..._moves]
 	}
 
@@ -747,7 +794,7 @@ function kingMoves(start: Coords, board: Board, startingBoard: Board, moveHistor
 	// we need to look up the rook positions here because of fischer random chess, where the rooks can be in different places
 	const {rookLeft, rookRight} = findBackRankRooks(startingBoard, board.toMove)
 	if (!rookLeft || !rookRight) {
-		console.warn({ startingBoard })
+		console.warn({startingBoard})
 		throw new Error('invalid starting board')
 	}
 	//#endregion
@@ -782,7 +829,7 @@ function kingMoves(start: Coords, board: Board, startingBoard: Board, moveHistor
 		if (kingMovementDirection !== 0) {
 			kingMovementDirection = kingMovementDirection / Math.abs(kingMovementDirection)
 			for (let i = start.x; i != newKingSquare.x + kingMovementDirection; i += kingMovementDirection) {
-				const square = { x: i, y: rank } satisfies Coords
+				const square = {x: i, y: rank} satisfies Coords
 				// we can move through the rook
 				if (
 					(board.pieces[notationFromCoords(square)] && !isEqual(square, rook) && !isEqual(square, start)) ||
@@ -806,7 +853,7 @@ function kingMoves(start: Coords, board: Board, startingBoard: Board, moveHistor
 			// normalize to t or -1
 			rookMovementDirection = rookMovementDirection / Math.abs(rookMovementDirection)
 			for (let i = rook.x; i != newRookSquare.x + rookMovementDirection; i += rookMovementDirection) {
-				const square: Coords = { x: i, y: rank }
+				const square: Coords = {x: i, y: rank}
 				if (board.pieces[notationFromCoords(square)] && !isEqual(square, start) && !isEqual(square, rook)) {
 					valid = false
 					break
@@ -846,7 +893,7 @@ function castLegalMoves(start: Coords, direction: Coords, max: number, board: Bo
 	let coords = start
 	let terminateReason = 'max' satisfies TerminateReason
 	for (let i = 0; i < max; i++) {
-		coords = { x: coords.x + direction.x, y: coords.y + direction.y }
+		coords = {x: coords.x + direction.x, y: coords.y + direction.y}
 		if (!inBounds(coords)) {
 			terminateReason = 'bounds'
 			break
@@ -856,7 +903,7 @@ function castLegalMoves(start: Coords, direction: Coords, max: number, board: Bo
 			terminateReason = 'piece'
 			break
 		}
-		moves.push({ ...coords })
+		moves.push({...coords})
 		if (piece) {
 			terminateReason = 'capture'
 			break
@@ -877,7 +924,7 @@ function findPiece(piece: ColoredPiece, board: Board) {
 }
 
 export function inCheck(board: Board, startingPosition: Board) {
-	const king = findPiece({ color: board.toMove, type: 'king' }, board)
+	const king = findPiece({color: board.toMove, type: 'king'}, board)
 	if (!king) return false
 	return squareAttacked(coordsFromNotation(king), board, startingPosition)
 }
@@ -952,7 +999,8 @@ function toShortPieceName(piece: Piece) {
 	return piece[0].toUpperCase()
 }
 
-export function moveToChessNotation(moveIndex: number, state: GameState): string {
+// https://en.wikipedia.org/wiki/Algebraic_notation_(chess)
+export function moveToAlgebraicNotation(moveIndex: number, state: GameState): string {
 	const move = state.moveHistory[moveIndex]
 	const piece = move.piece === 'pawn' ? '' : toShortPieceName(move.piece)
 	const capture = move.capture ? 'x' : ''
@@ -964,7 +1012,17 @@ export function moveToChessNotation(moveIndex: number, state: GameState): string
 	if (move.castle) {
 		return move.castle === 'queen' ? 'O-O-O' : 'O-O'
 	}
-	return piece + capture + to + promotion + check + checkmate
+
+	let disambiguation = ''
+	for (let type of move.algebraicNotationAmbiguity) {
+		if (type === 'rank') {
+			disambiguation += move.from[1]
+		} else if (type === 'file') {
+			disambiguation += move.from[0]
+		}
+	}
+
+	return piece + disambiguation + capture + to + promotion + check + checkmate
 }
 
 export function getDrawIsOfferedBy(state: GameState) {
@@ -998,6 +1056,7 @@ export function getVisibleSquares(game: GameState, color: Color) {
 			from: noopCoords,
 			to: noopCoords,
 			piece: noopPiece.type,
+			algebraicNotationAmbiguity: [],
 		} satisfies CandidateMove
 		const [newBoard] = applyMoveToBoard(candidateMove, getBoard(game))
 
@@ -1026,7 +1085,7 @@ export function getVisibleSquares(game: GameState, color: Color) {
 			const startingRookFile = move.to.x === 2 ? 0 : 7
 			const endingRookFile = move.to.x === 2 ? 3 : 5
 			for (let i = startingRookFile; i <= endingRookFile; i++) {
-				visibleSquares.add(notationFromCoords({ x: i, y: rank }))
+				visibleSquares.add(notationFromCoords({x: i, y: rank}))
 			}
 		}
 	}

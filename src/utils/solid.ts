@@ -41,16 +41,17 @@ export function storeToSignal<T extends {}>(store: T): Accessor<T> {
 			return
 		}
 		untrack(() => {
-			let current = state
 			for (const { path, value } of _delta) {
-				const last = path.pop()
-				if (last === undefined) {
+				let current = state
+				const last = path[path.length - 1]
+				if (path.length === 0) {
 					state = JSON.parse(JSON.stringify(value))
 					//@ts-ignore
 					setSignal(state)
 					return
 				}
-				for (const key of path) {
+
+				for (const key of path.slice(0, -1)) {
 					//@ts-ignore
 					current = current[key]
 				}

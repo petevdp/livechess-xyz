@@ -667,12 +667,12 @@ function useClock(move$: Observable<GL.Move>, gameConfig: GL.ParsedGameConfig, g
 function getMoveHistoryAsNotation(state: GL.GameState) {
 	let moves: [string, string | null][] = []
 	for (let i = 0; i < Math.ceil(state.moveHistory.length / 2); i++) {
-		const whiteMove = GL.moveToChessNotation(i * 2, state)
+		const whiteMove = GL.moveToAlgebraicNotation(i * 2, state)
 		if (i * 2 + 1 >= state.moveHistory.length) {
 			moves.push([whiteMove, null])
 			break
 		}
-		const blackMove = GL.moveToChessNotation(i * 2 + 1, state)
+		const blackMove = GL.moveToAlgebraicNotation(i * 2 + 1, state)
 		moves.push([whiteMove, blackMove])
 	}
 	return moves

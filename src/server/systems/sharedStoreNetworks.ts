@@ -152,9 +152,11 @@ export function handleNewConnection(socket: ws.WebSocket, networkId: string, log
 		.pipe(
 			// if we don't receive any messages for a while, close the connection
 			switchMap(() => delay(NO_ACTIVITY_TIMEOUT)(of(undefined))),
-			first()
+			endWith(null),
+			first(),
 		)
-		.subscribe(() => {
+		.subscribe((msg) => {
+			if (!msg) return
 			client.send({ type: 'message-timeout', idleTime: NO_ACTIVITY_TIMEOUT })
 			// cleanup handled in socket.on('close')
 			client.socket.close()

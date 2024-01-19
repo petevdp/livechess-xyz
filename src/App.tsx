@@ -1,6 +1,6 @@
 import { ColorMode, ColorModeProvider, ColorModeScript } from '@kobalte/core'
 import { Route, Router } from '@solidjs/router'
-import { ErrorBoundary, JSXElement, Show, createEffect, createSignal } from 'solid-js'
+import {ErrorBoundary, JSXElement, Show, createEffect, createSignal, onMount} from 'solid-js'
 import { Toaster } from 'solid-toast'
 
 import { AppContainer, ScreenFittingContent } from '~/components/AppContainer.tsx'
@@ -82,6 +82,9 @@ function App() {
 
 function GenericErrorScreen(props: { error: Error }) {
 	const [showError, setShowError] = createSignal(false)
+	onMount(() => {
+		console.error(props.error)
+	})
 	return (
 		<AppContainer>
 			<ScreenFittingContent class="grid place-items-center">
