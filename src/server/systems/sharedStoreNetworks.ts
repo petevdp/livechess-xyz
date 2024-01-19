@@ -5,11 +5,13 @@ import {
 	Observable,
 	Subscription,
 	concatMap,
+	delay,
 	endWith,
 	first,
 	firstValueFrom,
 	interval,
 	mergeMap,
+	of,
 	share,
 	switchMap,
 } from 'rxjs'
@@ -18,10 +20,13 @@ import * as ws from 'ws'
 import { createId } from '~/utils/ids.ts'
 import { Base64String, ClientConfig, NewNetworkResponse, SharedStoreMessage, encodeContent } from '~/utils/sharedStore.ts'
 
+const NO_LEADER_MSG_WHITELIST = ['ack-promote-to-leader', 'promote-to-leader'] as SharedStoreMessage['type'][]
+const NO_ACTIVITY_TIMEOUT = 1000 * 60 * 20
+
 const networks = new Map<string, Network>()
 type Network = {
 	id: string
-	cleanupAt: number | null
+	timeoutAt: number | null
 	leader$: BehaviorSubject<Client | null>
 	nextLeader?: Client
 	leader: Client | null
@@ -32,7 +37,7 @@ type Network = {
 function printNetwork(network: Network) {
 	return {
 		networkId: network.id,
-		cleanupAt: network.cleanupAt,
+		cleanupAt: network.timeoutAt,
 		leader: network.leader?.clientId,
 		nextLeader: network.nextLeader?.clientId,
 		clients: network.clients.map((c) => c.clientId),
@@ -40,12 +45,10 @@ function printNetwork(network: Network) {
 	}
 }
 
-const NO_LEADER_MSG_WHITELIST = ['ack-promote-to-leader', 'promote-to-leader'] as SharedStoreMessage['type'][]
 
 class Client {
 	message$: Observable<SharedStoreMessage>
 
-	messageToSendBuffer: SharedStoreMessage[] = []
 	private log: FastifyBaseLogger
 	private sub: Subscription
 
@@ -87,6 +90,7 @@ class Client {
 		}).pipe(share())
 	}
 
+	messageToSendBuffer: SharedStoreMessage[] = []
 	send(msg: SharedStoreMessage) {
 		if (this.network.leader) {
 			this.messageToSendBuffer.forEach((m) => {
@@ -117,7 +121,7 @@ export function createNetwork() {
 	const networkId = createId(6)
 	networks.set(networkId, {
 		id: networkId,
-		cleanupAt: thirtySecondsFromNow(),
+		timeoutAt: thirtySecondsFromNow(),
 		followers: [],
 		leader$: new BehaviorSubject<Client | null>(null),
 		get leader() {
@@ -142,8 +146,19 @@ export function handleNewConnection(socket: ws.WebSocket, networkId: string, log
 		return
 	}
 
-	network.cleanupAt = null
+	network.timeoutAt = null
 	const client = new Client(socket, createId(6), network, log)
+	client.message$
+		.pipe(
+			// if we don't receive any messages for a while, close the connection
+			switchMap(() => delay(NO_ACTIVITY_TIMEOUT)(of(undefined))),
+			first()
+		)
+		.subscribe(() => {
+			client.send({ type: 'message-timeout', idleTime: NO_ACTIVITY_TIMEOUT })
+			// cleanup handled in socket.on('close')
+			client.socket.close()
+		})
 
 	log = log.child({ clientId: client.clientId })
 	log.info(`client connecting to network %s`, networkId, printNetwork(network))
@@ -324,7 +339,7 @@ export function handleNewConnection(socket: ws.WebSocket, networkId: string, log
 		}
 
 		if (network.clients.length === 0) {
-			network.cleanupAt = thirtySecondsFromNow()
+			network.timeoutAt = thirtySecondsFromNow()
 		} else {
 			// asks clients to remove the disconnected client from their copy of client-controlled-states
 
@@ -351,7 +366,7 @@ export function setupSharedStoreSystem(log: FastifyBaseLogger) {
 	//#region clean up networks marked for deletion
 	interval(1000).subscribe(() => {
 		for (let [networkId, network] of networks) {
-			if (network.cleanupAt && network.cleanupAt < Date.now()) {
+			if (network.timeoutAt && network.timeoutAt < Date.now()) {
 				log.info(`cleaning up network %s`, networkId, printNetwork(network))
 				const sockets = [network.leader, ...network.followers]
 				sockets.forEach((s) => s?.socket.close())

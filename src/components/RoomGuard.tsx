@@ -1,7 +1,7 @@
 import { until } from '@solid-primitives/promise'
 import { useNavigate, useParams } from '@solidjs/router'
-import { Match, Show, Switch, createEffect, createSignal, getOwner } from 'solid-js'
-import toast from 'solid-toast'
+import { Subscription } from 'rxjs'
+import { Match, Show, Switch, createEffect, createSignal, getOwner, onCleanup } from 'solid-js'
 
 import { Spinner } from '~/components/Spinner.tsx'
 import { Button } from '~/components/ui/button.tsx'
@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card.t
 import { Checkbox } from '~/components/ui/checkbox.tsx'
 import { Input } from '~/components/ui/input.tsx'
 import { Label } from '~/components/ui/label.tsx'
+import * as Errors from '~/systems/errors.ts'
 import * as P from '~/systems/player.ts'
 import * as R from '~/systems/room.ts'
 
@@ -57,24 +58,41 @@ export function RoomGuard() {
 		throw new Error('player form state is not submitted')
 	}
 
+	//#region connect to room, handle connection status
+
+	let connectionSub: Subscription | null = null
 	createEffect(() => {
 		if ((!R.room() || R.room()!.roomId !== params.id) && P.playerId()) {
 			setConnectionStatus('connecting')
 			console.log('connecting to room', params.id)
-			R.connectToRoom(params.id, P.playerId()!, initPlayer, owner, () => {
-				toast('connection aborted, please try again')
-				navigate('/')
+			connectionSub = R.connectToRoom(params.id, P.playerId()!, initPlayer, owner).subscribe((state) => {
+				switch (state.status) {
+					case 'connecting':
+						setConnectionStatus('connecting')
+						break
+					case 'connected':
+						setConnectionStatus('connected')
+						break
+					case 'lost':
+						setConnectionStatus('disconnected')
+
+						Errors.pushFatalError('Connection Lost', `Connection to room ${params.id} lost.`)
+						navigate('/')
+						break
+					case 'timeout':
+						setConnectionStatus('disconnected')
+						Errors.pushFatalError('Timed Out', `Connection to room ${params.id} timed out.`)
+						navigate('/')
+						break
+				}
 			})
-				.catch(() => {
-					setConnectionStatus('disconnected')
-					toast('connection failed, please try again')
-					navigate('/')
-				})
-				.then(() => {
-					setConnectionStatus('connected')
-				})
 		}
 	})
+
+	onCleanup(() => {
+		connectionSub?.unsubscribe()
+	})
+	//#endregion
 
 	createEffect(() => {
 		console.log('connection status', connectionStatus())

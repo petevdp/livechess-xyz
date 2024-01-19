@@ -1,4 +1,4 @@
-import { createEffect, createSignal } from 'solid-js'
+import { Show, createEffect, createSignal } from 'solid-js'
 
 import * as Svgs from '~/components/Svgs.tsx'
 import { Button } from '~/components/ui/button.tsx'
@@ -45,9 +45,7 @@ export function SettingsDialog() {
 					<Svgs.Settings/>
 				</Button>
 			</DialogTrigger>
-			<DialogContent
-				class="sm:max-w-[425px]"
-			>
+			<DialogContent class="sm:max-w-[425px]">
 				<form onSubmit={onSubmit}>
 					<DialogHeader>
 						<DialogTitle>Settings</DialogTitle>
@@ -66,18 +64,20 @@ export function SettingsDialog() {
 						</div>
 						<div class="flex w-full items-center justify-between space-x-2">
 							<Label class="text-right">Touch Offset Direction</Label>
-							<MultiChoiceButton
-								listClass="flex"
-								choices={
-									[
-										{label: 'Left', id: 'left'},
-										{label: 'None', id: 'none'},
-										{label: 'Right', id: 'right'},
-									] satisfies Choice<P.PlayerSettings['touchOffsetDirection']>[]
-								}
-								selected={P.settings.touchOffsetDirection}
-								onChange={(id) => P.setSettings({touchOffsetDirection: id})}
-							/>
+							<Show when={P.settings.usingTouch}>
+								<MultiChoiceButton
+									listClass="flex"
+									choices={
+										[
+											{label: 'Left', id: 'left'},
+											{label: 'None', id: 'none'},
+											{label: 'Right', id: 'right'},
+										] satisfies Choice<P.PlayerSettings['touchOffsetDirection']>[]
+									}
+									selected={P.settings.touchOffsetDirection}
+									onChange={(id) => P.setSettings({touchOffsetDirection: id})}
+								/>
+							</Show>
 						</div>
 						<div class="flex w-full items-center justify-between space-x-2">
 							<Label class="text-right">Close QR Code Dialog on Join</Label>

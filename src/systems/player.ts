@@ -17,6 +17,7 @@ export type PlayerSettings = {
 	muteAudio: boolean
 	touchOffsetDirection: 'left' | 'right' | 'none'
 	closeQrCodeDialogOnJoin: boolean
+	usingTouch: boolean
 }
 
 const [_playerId, setPlayerId] = makePersisted(createSignal(null as string | null), {
@@ -30,15 +31,26 @@ export const [settings, setSettings] = makePersisted(
 		muteAudio: false,
 		touchOffsetDirection: 'none',
 		closeQrCodeDialogOnJoin: true,
+		usingTouch: false,
 	}),
 	{ name: 'settings', storage: localStorage }
 )
 
-export async function setupPlayer() {
+export function setupPlayerSystem() {
 	if (!playerId()) setPlayerId(createId(6))
 	createEffect(() => {
 		const playerName = settings.name
 		if (!R.room()?.player || !playerName || playerName === R.room()!.player.name) return
 		R.room()!.setCurrentPlayerName(playerName!)
 	})
+
+	if (!settings.usingTouch) {
+		// we're doing it this way so we can differentiate users that are actually using their touch screen vs those that are using a mouse but happen to have a touchscreen
+		function touchListener() {
+			setSettings('usingTouch', true)
+			document.removeEventListener('touchstart', touchListener)
+		}
+
+		document.addEventListener('touchstart', touchListener)
+	}
 }

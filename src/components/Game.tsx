@@ -24,7 +24,6 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader } from '~/compon
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '~/components/ui/hover-card.tsx'
 import { BOARD_COLORS } from '~/config.ts'
 import { cn } from '~/lib/utils.ts'
-import * as Agent from '~/systems/agent.ts'
 import * as Audio from '~/systems/audio.ts'
 import * as G from '~/systems/game/game.ts'
 import * as GL from '~/systems/game/gameLogic.ts'
@@ -202,10 +201,10 @@ export function Game(props: { gameId: string }) {
 			boardView: getBoardView(),
 			grabbedMousePos: grabbedMousePos(),
 			activePieceSquare: activePieceSquare(),
-			currentMousePos: Agent.usingTouch() ? null : currentMousePos(),
+			currentMousePos: P.settings.usingTouch ? null : currentMousePos(),
 			context: grabbedPieceCanvas.getContext('2d')!,
 			placingDuck: game.placingDuck(),
-			touchScreen: Agent.usingTouch(),
+			touchScreen: P.settings.usingTouch,
 		}
 		Pieces.pieceChangedEpoch()
 
@@ -716,7 +715,7 @@ function Player(props: { player: G.PlayerWithColor; class: string }) {
 					<HoverCardContent
 						class="bg-destructive border-destructive p-1 w-max text-sm flex space-x-2 items-center justify-between">
 						<span
-							class="text-balance text-destructive-foreground">{`${Agent.usingTouch() ? 'Tap' : 'Click'} square to place duck`}</span>
+							class="text-balance text-destructive-foreground">{`${P.settings.usingTouch ? 'Tap' : 'Click'} square to place duck`}</span>
 						<Button
 							class="text-xs text-destructive-foreground whitespace-nowrap bg-black"
 							variant="secondary"

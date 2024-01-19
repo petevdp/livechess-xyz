@@ -9,7 +9,6 @@ import { AppContainer, ScreenFittingContent } from './AppContainer.tsx'
 
 export function Home() {
 	const navigate = useNavigate()
-
 	async function createRoom() {
 		const res = await R.createRoom()
 		navigate(`/rooms/${res.networkId}`)
@@ -20,7 +19,13 @@ export function Home() {
 			<ScreenFittingContent class="grid place-items-center">
 				<Card class="h-min w-80">
 					<CardHeader>
-						<CardTitle>Welcome to <a href="/" class="text-primary underline">livechess.xyz</a>!</CardTitle>
+						<CardTitle>
+							Welcome to{' '}
+							<a href="/" class="text-primary underline">
+								livechess.xyz
+							</a>
+							!
+						</CardTitle>
 					</CardHeader>
 					<CardContent>
 						<p>Play chess with your friends.</p>

@@ -1,6 +1,6 @@
 import { until } from '@solid-primitives/promise'
 import isEqual from 'lodash/isEqual'
-import { Observable, Subject, Subscription, concatMap, endWith, firstValueFrom, merge, share } from 'rxjs'
+import { Observable, Subject, Subscription, concatMap, endWith, first, firstValueFrom, merge, share } from 'rxjs'
 import { batch, createSignal, onCleanup } from 'solid-js'
 import { createStore, produce, unwrap } from 'solid-js/store'
 
@@ -92,6 +92,12 @@ export type SharedStoreMessage =
 			forClient?: string
 			states: Base64String
 	  }
+	| SharedStoreTimeoutMessage
+
+type SharedStoreTimeoutMessage = {
+	type: 'message-timeout'
+	idleTime: number
+}
 
 //#endregion
 
@@ -103,7 +109,6 @@ export type SharedStore<T extends object, CCS extends ClientControlledState = Cl
 export const DELETE = '__DELETE__'
 
 export const PUSH = '__PUSH__'
-
 
 /**
  * Create a shared store that can be used to synchronize state between multiple clients, and can rollback any conflicting changes.
@@ -152,7 +157,7 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 	 * Dispatches action with no attached mutations
 	 */
 	function dispatchEvents(events: Event[]) {
-		return setStoreWithRetries(() => ({events: events, mutations: []}))
+		return setStoreWithRetries(() => ({ events: events, mutations: [] }))
 	}
 
 	//#endregion
@@ -618,6 +623,19 @@ export class SharedStoreProvider<Event extends any> {
 		document.addEventListener('beforeunload', () => {
 			this.ws.close()
 		})
+	}
+
+	get timedOut$() {
+		return this.message$.pipe(
+			concatMap((msg): number[] =>
+				msg.type === 'message-timeout'
+					? [
+						msg.idleTime
+					]
+					: []
+			),
+			first()
+		)
 	}
 
 	waitForConnected() {

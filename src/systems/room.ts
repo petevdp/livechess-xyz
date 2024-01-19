@@ -1,7 +1,8 @@
 import { trackDeep, trackStore } from '@solid-primitives/deep'
 import { until } from '@solid-primitives/promise'
 import { isEqual } from 'lodash'
-import { concatMap, interval } from 'rxjs'
+import { Observable, concatMap, first, interval, mergeAll, race, from as rxFrom, startWith } from 'rxjs'
+import { map } from 'rxjs/operators'
 import { Owner, createEffect, createMemo, createRoot, createSignal, getOwner, onCleanup, runWithOwner, untrack } from 'solid-js'
 import { unwrap } from 'solid-js/store'
 
@@ -68,16 +69,29 @@ export async function createRoom() {
 	return await newNetwork(SERVER_HOST)
 }
 
-export async function connectToRoom(
+export type ConnectionState =
+	| {
+			status: 'connecting'
+	  }
+	| {
+			status: 'connected'
+	  }
+	| {
+			status: 'timeout'
+			idleTime: number
+	  }
+	| {
+			status: 'lost'
+	  }
+
+export function connectToRoom(
 	roomId: string,
 	playerId: string,
 	initPlayer: (numPlayers: number) => Promise<{ player: P.Player; isSpectating: boolean }>,
-	parentOwner: Owner,
-	abort?: () => void
-) {
+	parentOwner: Owner
+): Observable<ConnectionState> {
 	console.log('connecting to room')
 	const provider = new SharedStoreProvider<RoomEvent>(SERVER_HOST, roomId)
-	provider.disconnected$.then(() => abort && abort())
 
 	// will only be used if the room is new
 	let state: RoomState
@@ -98,6 +112,14 @@ export async function connectToRoom(
 			gameStates: {},
 		}
 	}
+
+	const disconnected$: Observable<ConnectionState> = race(
+		provider.disconnected$.then(() => ({ status: 'lost' }) satisfies ConnectionState),
+		provider.timedOut$.pipe(
+			first(),
+			map((idleTime) => ({ status: 'timeout', idleTime }) satisfies ConnectionState)
+		)
+	)
 
 	let store = null as unknown as SharedStore<RoomState, ClientOwnedState, RoomEvent>
 	let instanceOwner = null as unknown as Owner
@@ -127,7 +149,7 @@ export async function connectToRoom(
 
 		const sub = interval(10000).subscribe(() => {
 			// make sure render's server doesn't spin down while we're in the middle of a game
-			fetch('/ping')
+			fetch(SERVER_HOST + '/ping')
 		})
 
 		disposePrevious = () => {
@@ -142,57 +164,61 @@ export async function connectToRoom(
 		onCleanup(disposePrevious)
 	})
 
-	await until(() => store.initialized())
-	console.log('store initialized')
-	if (!state.members.some((p) => p.id === playerId)) {
-		const { player, isSpectating } = await initPlayer(Object.values(store.rollbackStore.gameParticipants).length)
-		console.log('new player', player.id, 'isSpectating', isSpectating)
-		//#region connect player
-		await store.setStoreWithRetries((state) => {
-			// leader will report player reconnection
-			if (state.members.some((p) => p.id === playerId)) return []
-			const mutations: StoreMutation[] = [
-				{
-					path: ['members', PUSH],
-					value: player satisfies RoomMember,
-				},
-			]
+	const connected$ = until(() => store.initialized()).then(async () => {
+		console.log('store initialized')
+		if (!state.members.some((p) => p.id === playerId)) {
+			const { player, isSpectating } = await initPlayer(Object.values(store.rollbackStore.gameParticipants).length)
+			console.log('new player', player.id, 'isSpectating', isSpectating)
+			//#region connect player
+			await store.setStoreWithRetries((state) => {
+				// leader will report player reconnection
+				if (state.members.some((p) => p.id === playerId)) return []
+				const mutations: StoreMutation[] = [
+					{
+						path: ['members', PUSH],
+						value: player satisfies RoomMember,
+					},
+				]
 
-			if (!isSpectating) {
-				let gameParticipant = {
-					id: playerId,
-					isReadyForGame: false,
-					agreePieceSwap: false,
-				} satisfies GameParticipantDetails
-				if (state.gameParticipants.white) {
-					mutations.push({
-						path: ['gameParticipants', 'black'],
-						value: gameParticipant,
-					})
-				} else if (state.gameParticipants.black) {
-					mutations.push({
-						path: ['gameParticipants', 'white'],
-						value: gameParticipant,
-					})
-				} else {
-					mutations.push({
-						path: ['gameParticipants', Math.random() < 0.5 ? 'white' : 'black'],
-						value: gameParticipant,
-					})
+				if (!isSpectating) {
+					let gameParticipant = {
+						id: playerId,
+						isReadyForGame: false,
+						agreePieceSwap: false,
+					} satisfies GameParticipantDetails
+					if (state.gameParticipants.white) {
+						mutations.push({
+							path: ['gameParticipants', 'black'],
+							value: gameParticipant,
+						})
+					} else if (state.gameParticipants.black) {
+						mutations.push({
+							path: ['gameParticipants', 'white'],
+							value: gameParticipant,
+						})
+					} else {
+						mutations.push({
+							path: ['gameParticipants', Math.random() < 0.5 ? 'white' : 'black'],
+							value: gameParticipant,
+						})
+					}
 				}
-			}
 
-			return {
-				mutations,
-				events: [{type: 'player-connected', playerId: player.id}],
-			}
-		})
-	}
+				return {
+					mutations,
+					events: [{ type: 'player-connected', playerId: player.id }],
+				}
+			})
+		}
+
+		const room = runWithOwner(instanceOwner, () => new Room(store, provider, store.rollbackStore.members.find((p) => playerId === p.id)!))!
+		setRoom(room)
+	})
 	//#endregion
 
-	const room = runWithOwner(instanceOwner, () => new Room(store, provider, store.rollbackStore.members.find((p) => playerId === p.id)!))!
-	setRoom(room)
-	return room
+	return mergeAll()(rxFrom([rxFrom(connected$).pipe(map(() => ({ status: 'connected' }))), disconnected$])).pipe(
+		startWith({ status: 'connecting' } satisfies ConnectionState)
+	)
 }
 
 export class Room {

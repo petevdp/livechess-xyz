@@ -51,7 +51,7 @@ function loadPiece(key: keyof typeof pieceSvgs, squareSize: number) {
 	return loadImage(image64, 180)
 }
 
-export function initPieceSystem() {
+export function setupPieceSystem() {
 	createEffect(() => {
 		let promises: Promise<void>[] = []
 		for (const key in pieceSvgs) {

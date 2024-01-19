@@ -8,7 +8,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'url'
 import * as ws from 'ws'
 
-import * as SSS from './sharedStoreSystem.ts'
+import * as SSS from './systems/sharedStoreNetworks.ts'
 
 
 if (typeof crypto === 'undefined') {
