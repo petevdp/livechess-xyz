@@ -107,13 +107,12 @@ server.head('/networks/:networkId', (req, res) => {
 	//@ts-ignore
 	const networkId: string = req.params.networkId
 	if (SSS.getNetwork(networkId)) {
-		res.status(200)
+		res.status(200).send()
 	} else {
-		res.status(404)
+		res.status(404).send()
 	}
-	return res
 })
-server.get('/rooms/:networkId/', (req, res) => {
+server.get('/rooms/:networkId', (_, res) => {
 	// serve index.html
 	return res.sendFile('index.html')
 })

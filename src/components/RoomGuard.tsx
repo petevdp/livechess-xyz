@@ -16,6 +16,8 @@ import { checkNetworkExists } from '~/utils/sharedStore.ts'
 
 import { AppContainer, ScreenFittingContent } from './AppContainer.tsx'
 import { Room } from './Room.tsx'
+import * as Pieces from "~/systems/piece.tsx";
+import {SERVER_HOST} from "~/config.ts";
 
 type ConnectionStatus = 'connected' | 'disconnected' | 'connecting'
 type PlayerFormState =
@@ -27,6 +29,8 @@ type PlayerFormState =
 	  }
 
 export default function RoomGuard() {
+	P.setupPlayerSystem()
+	Pieces.setupPieceSystem()
 	const params = useParams()
 	const [connectionStatus, setConnectionStatus] = createSignal<ConnectionStatus>(R.room() ? 'connected' : 'disconnected')
 	const navigate = useNavigate()
@@ -41,7 +45,7 @@ export default function RoomGuard() {
 		navigate('/rooms/' + params.id, { replace: true })
 		;[networkExists] = createResource(() => Promise.resolve(true))
 	} else {
-		;[networkExists] = createResource(() => checkNetworkExists(params.id))
+		;[networkExists] = createResource(() => checkNetworkExists(params.id, SERVER_HOST))
 	}
 
 	createEffect(() => {

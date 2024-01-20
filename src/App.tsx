@@ -12,14 +12,10 @@ import { Callout, CalloutContent, CalloutTitle } from '~/components/ui/callout.t
 import * as Errors from '~/systems/errors.ts'
 
 import { Home } from './components/Home.tsx'
-import * as Pieces from './systems/piece.tsx'
-import * as P from './systems/player.ts'
 
 const RoomGuard = lazy(() => import('~/components/RoomGuard.tsx'))
 
 function App() {
-	P.setupPlayerSystem()
-	Pieces.setupPieceSystem()
 	const [displayedError, setDisplayedError] = createSignal<Errors.FatalError | null>(null)
 	createEffect(() => {
 		if (Errors.fatalError()) {
