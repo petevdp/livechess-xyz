@@ -1,8 +1,9 @@
 import QRCode from 'qrcode'
-import { Match, ParentProps, Show, Switch, createResource, createSignal, onCleanup } from 'solid-js'
+import { Match, ParentProps, Show, Suspense, Switch, createResource, createSignal, lazy, onCleanup } from 'solid-js'
 import toast from 'solid-toast'
 
 import { ScreenFittingContent } from '~/components/AppContainer.tsx'
+import { Spinner } from '~/components/Spinner.tsx'
 import * as Svgs from '~/components/Svgs.tsx'
 import { VariantInfoDialog } from '~/components/VariantInfoDialog.tsx'
 import { Button } from '~/components/ui/button.tsx'
@@ -18,8 +19,9 @@ import { getPieceSvg } from '~/systems/piece.tsx'
 import * as P from '~/systems/player.ts'
 import * as R from '~/systems/room.ts'
 
-import { Game } from './Game.tsx'
+// import { Game } from './Game.tsx'
 
+const Game = lazy(() => import('./Game.tsx'))
 
 export function Room() {
 	const room = R.room()!
@@ -66,10 +68,15 @@ export function Room() {
 				<Lobby />
 			</Match>
 			<Match when={room.rollbackState.activeGameId}>
-				<Game gameId={room.rollbackState.activeGameId!} />
-			</Match>
-			<Match when={true}>
-				<div>idk</div>
+				<Suspense
+					fallback={
+						<ScreenFittingContent class="grid place-items-center">
+							<Spinner />
+						</ScreenFittingContent>
+					}
+				>
+					<Game gameId={room.rollbackState.activeGameId!} />
+				</Suspense>
 			</Match>
 		</Switch>
 	)
@@ -311,7 +318,7 @@ function SwapButton(props: { initiatePieceSwap: () => void; alreadySwapping: boo
 				<Tooltip>
 					<TooltipTrigger>
 						<Button disabled={props.disabled} onclick={requestSwap} size="icon" variant="ghost">
-							<Svgs.Swap/>
+							<Svgs.Swap />
 						</Button>
 					</TooltipTrigger>
 					<TooltipContent>Ask to Swap Pieces</TooltipContent>

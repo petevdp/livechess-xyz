@@ -17,8 +17,6 @@ if (typeof crypto === 'undefined') {
 	})
 }
 
-//TODO improve organization of this file
-
 if (!fs.existsSync('./logs')) {
 	fs.mkdirSync('./logs')
 }
@@ -105,7 +103,17 @@ server.post('/networks', () => {
 	return SSS.createNetwork()
 })
 
-server.get('/rooms/:networkId', (_, res) => {
+server.head('/networks/:networkId', (req, res) => {
+	//@ts-ignore
+	const networkId: string = req.params.networkId
+	if (SSS.getNetwork(networkId)) {
+		res.status(200)
+	} else {
+		res.status(404)
+	}
+	return res
+})
+server.get('/rooms/:networkId/', (req, res) => {
 	// serve index.html
 	return res.sendFile('index.html')
 })

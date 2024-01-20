@@ -1,19 +1,21 @@
 import { ColorMode, ColorModeProvider, ColorModeScript } from '@kobalte/core'
-import { Route, Router } from '@solidjs/router'
-import {ErrorBoundary, JSXElement, Show, createEffect, createSignal, onMount} from 'solid-js'
+import { Navigate, Route, Router } from '@solidjs/router'
+import { ErrorBoundary, JSXElement, Show, Suspense, createEffect, createSignal, lazy, onMount } from 'solid-js'
 import { Toaster } from 'solid-toast'
 
+import NotFound from '~/components/404.tsx'
 import { AppContainer, ScreenFittingContent } from '~/components/AppContainer.tsx'
+import { Spinner } from '~/components/Spinner.tsx'
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogTitle } from '~/components/ui/alert-dialog.tsx'
 import { Button } from '~/components/ui/button.tsx'
 import { Callout, CalloutContent, CalloutTitle } from '~/components/ui/callout.tsx'
 import * as Errors from '~/systems/errors.ts'
 
 import { Home } from './components/Home.tsx'
-import { RoomGuard } from './components/RoomGuard.tsx'
 import * as Pieces from './systems/piece.tsx'
 import * as P from './systems/player.ts'
 
+const RoomGuard = lazy(() => import('~/components/RoomGuard.tsx'))
 
 function App() {
 	P.setupPlayerSystem()
@@ -24,9 +26,6 @@ function App() {
 			setDisplayedError(Errors.fatalError())
 		}
 	})
-	// onMount(() => {
-	// 	Errors.pushFatalError('oh no', 'it broke')
-	// })
 
 	const dismissError = () => {
 		Errors.shiftFatalError()
@@ -40,6 +39,12 @@ function App() {
 			</ErrorBoundary>
 		)
 	}
+
+	const spinner = (
+		<ScreenFittingContent class="grid place-items-center">
+			<Spinner />
+		</ScreenFittingContent>
+	)
 
 	// we're not handling errors that occur above this error boundary, do don't put anything too crazy in <App />
 	return (
@@ -57,7 +62,21 @@ function App() {
 				<Toaster />
 				<Router>
 					<Route path="/" component={ErrorHandled(Home)} />
-					<Route path="/rooms/:id" component={ErrorHandled(RoomGuard)} />
+					<Route
+						path="/rooms/:id"
+						component={ErrorHandled(() => (
+							<Suspense fallback={spinner}>
+								<RoomGuard />
+							</Suspense>
+						))}
+					/>
+					<Route
+						path="/404"
+						component={ErrorHandled(() => (
+							<NotFound />
+						))}
+					/>
+					<Route path="*" component={() => <Navigate href="/404" />} />
 				</Router>
 			</ColorModeProvider>
 			<Toaster />

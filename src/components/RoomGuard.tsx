@@ -1,7 +1,7 @@
 import { until } from '@solid-primitives/promise'
 import { useNavigate, useParams } from '@solidjs/router'
 import { Subscription } from 'rxjs'
-import { Match, Show, Switch, createEffect, createSignal, getOwner, onCleanup } from 'solid-js'
+import { Match, Resource, Show, Switch, createEffect, createResource, createSignal, getOwner, onCleanup } from 'solid-js'
 
 import { Spinner } from '~/components/Spinner.tsx'
 import { Button } from '~/components/ui/button.tsx'
@@ -12,10 +12,10 @@ import { Label } from '~/components/ui/label.tsx'
 import * as Errors from '~/systems/errors.ts'
 import * as P from '~/systems/player.ts'
 import * as R from '~/systems/room.ts'
+import { checkNetworkExists } from '~/utils/sharedStore.ts'
 
 import { AppContainer, ScreenFittingContent } from './AppContainer.tsx'
 import { Room } from './Room.tsx'
-
 
 type ConnectionStatus = 'connected' | 'disconnected' | 'connecting'
 type PlayerFormState =
@@ -26,13 +26,28 @@ type PlayerFormState =
 			payload: { name: string; isSpectating: boolean }
 	  }
 
-export function RoomGuard() {
+export default function RoomGuard() {
 	const params = useParams()
 	const [connectionStatus, setConnectionStatus] = createSignal<ConnectionStatus>(R.room() ? 'connected' : 'disconnected')
 	const navigate = useNavigate()
 	const owner = getOwner()!
 	const [playerFormState, setPlayerFormState] = createSignal<PlayerFormState>({
 		state: 'hidden',
+	})
+
+	let networkExists: Resource<boolean>
+	if (params.createdRoom) {
+		// remove param from url
+		navigate('/rooms/' + params.id, { replace: true })
+		;[networkExists] = createResource(() => Promise.resolve(true))
+	} else {
+		;[networkExists] = createResource(() => checkNetworkExists(params.id))
+	}
+
+	createEffect(() => {
+		if (networkExists() === false) {
+			navigate('/404')
+		}
 	})
 
 	async function initPlayer(numPlayers: number): Promise<{ player: P.Player; isSpectating: boolean }> {
@@ -62,7 +77,7 @@ export function RoomGuard() {
 
 	let connectionSub: Subscription | null = null
 	createEffect(() => {
-		if ((!R.room() || R.room()!.roomId !== params.id) && P.playerId()) {
+		if ((!R.room() || R.room()!.roomId !== params.id) && P.playerId() && networkExists()) {
 			setConnectionStatus('connecting')
 			console.log('connecting to room', params.id)
 			connectionSub = R.connectToRoom(params.id, P.playerId()!, initPlayer, owner).subscribe((state) => {
@@ -107,7 +122,7 @@ export function RoomGuard() {
 				</Match>
 				<Match when={!R.room() || connectionStatus() === 'connecting'}>
 					<ScreenFittingContent class="grid place-items-center">
-						<Spinner/>
+						<Spinner />
 					</ScreenFittingContent>
 				</Match>
 				<Match when={connectionStatus() === 'disconnected'}>

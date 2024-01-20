@@ -38,7 +38,7 @@ import * as Modal from './utils/Modal.tsx'
 
 //TODO component duplicates on reload sometimes for some reason
 
-export function Game(props: { gameId: string }) {
+export default function Game(props: { gameId: string }) {
 	let game = new G.Game(props.gameId, R.room()!, R.room()!.rollbackState.gameConfig)
 	G.setGame(game)
 
@@ -807,7 +807,6 @@ function ActionsPanel(props: { class: string; placingDuck: boolean }) {
 					</Show>
 					<Show when={game.drawIsOfferedBy === game.topPlayer.color}>
 						<div class="flex space-x-1">
-							{/* TODO when we're at a small viewport, we should probably render this somewhere else */}
 							<Button size="sm" onClick={() => game.offerOrAcceptDraw()}>
 								Accept Draw
 							</Button>

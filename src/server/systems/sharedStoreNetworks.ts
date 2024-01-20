@@ -137,6 +137,10 @@ export function createNetwork() {
 	return { networkId } satisfies NewNetworkResponse
 }
 
+export function getNetwork(networkId: string) {
+	return networks.get(networkId) || null
+}
+
 export function handleNewConnection(socket: ws.WebSocket, networkId: string, log: FastifyBaseLogger) {
 	//#region retrieve network and create client
 	const network = networks.get(networkId)!
@@ -346,7 +350,6 @@ export function handleNewConnection(socket: ws.WebSocket, networkId: string, log
 			// asks clients to remove the disconnected client from their copy of client-controlled-states
 
 			// wait for the new leader to be elected, otherwise we may throw off userspace logic that depends on a leader being set at all times
-			// TODO check if we should do this sort of validation elsewhere
 			await firstValueFrom(network.leader$.pipe(first((l) => !!l)))
 			log.info(`nulling out client-controlled-states for disconnected client %s`, client.clientId)
 			const states = encodeContent({ [client.clientId]: null })

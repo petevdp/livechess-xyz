@@ -5,8 +5,6 @@ import { batch, createSignal, onCleanup } from 'solid-js'
 import { createStore, produce, unwrap } from 'solid-js/store'
 
 
-//TODO attact metadata such as eventName to transactions, so we don't have to do as many manual delta checks
-
 //#region types
 
 // TODO: strong typing for paths and values like in solid's setStore
@@ -599,7 +597,6 @@ export class SharedStoreProvider<Event extends any> {
 			const listener = (event: MessageEvent) => {
 				const message = JSON.parse(event.data) as SharedStoreMessage
 				console.debug(`client:${this.clientId} received message`, message)
-
 				subscriber.next(message)
 			}
 
@@ -781,7 +778,7 @@ export class SharedStoreProvider<Event extends any> {
 				})
 			)
 		).catch((e) => {
-			throw new Error(`Failed to connect to server: ${e.message}`)
+			// throw new Error(`Failed to connect to server: ${e.message}`)
 		})
 	}
 
@@ -845,4 +842,9 @@ export async function buildTransaction<Event extends any>(fn: (t: SharedStoreTra
 export async function newNetwork(host?: string) {
 	let url = `${window.location.protocol}//${host || window.location.host}/networks`
 	return (await fetch(url, { method: 'POST' }).then((res) => res.json())) as NewNetworkResponse
+}
+
+export async function checkNetworkExists(networkId: string, host?: string) {
+	let url = `${window.location.protocol}//${host || window.location.host}/networks/${networkId}`
+	return await fetch(url, { method: 'HEAD' }).then((res) => res.status === 200)
 }
