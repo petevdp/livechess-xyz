@@ -1,6 +1,6 @@
 import { trackDeep, trackStore } from '@solid-primitives/deep'
 import { until } from '@solid-primitives/promise'
-import { isEqual } from 'lodash'
+import { isEqual } from 'lodash-es'
 import { Observable, concatMap, first, interval, mergeAll, race, from as rxFrom, startWith } from 'rxjs'
 import { map } from 'rxjs/operators'
 import { Owner, createEffect, createMemo, createRoot, createSignal, getOwner, onCleanup, runWithOwner, untrack } from 'solid-js'

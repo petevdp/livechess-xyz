@@ -1,5 +1,5 @@
 import { until } from '@solid-primitives/promise'
-import isEqual from 'lodash/isEqual'
+import {isEqual} from 'lodash-es'
 import { Observable, Subject, Subscription, concatMap, endWith, first, firstValueFrom, merge, share } from 'rxjs'
 import { batch, createSignal, onCleanup } from 'solid-js'
 import { createStore, produce, unwrap } from 'solid-js/store'

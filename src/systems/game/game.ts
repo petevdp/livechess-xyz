@@ -1,5 +1,5 @@
 import { until } from '@solid-primitives/promise'
-import { isEqual } from 'lodash'
+import { isEqual } from 'lodash-es'
 import { Observable, ReplaySubject, combineLatest, concatMap, distinctUntilChanged, from as rxFrom, skip } from 'rxjs'
 import { map } from 'rxjs/operators'
 import { Accessor, createEffect, createMemo, createSignal, from, getOwner, observable, onCleanup } from 'solid-js'

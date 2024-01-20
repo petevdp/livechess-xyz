@@ -1,4 +1,4 @@
-import {isEqual, partition} from 'lodash'
+import {isEqual, partition} from 'lodash-es'
 import hash from 'object-hash'
 
 

@@ -1,5 +1,5 @@
 import { useColorMode } from '@kobalte/core'
-import { isEqual } from 'lodash'
+import { isEqual } from 'lodash-es'
 import { filter, first, from as rxFrom, skip } from 'rxjs'
 import {
 	For,
