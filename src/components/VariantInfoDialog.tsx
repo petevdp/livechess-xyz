@@ -3,7 +3,7 @@ import { Match, ParentProps, Switch } from 'solid-js'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog.tsx'
 import * as GL from '~/systems/game/gameLogic.ts'
 
-import styles from './HelpCard.module.scss'
+import styles from './Dialog.module.scss'
 
 function DuckChess() {
 	return (
@@ -12,7 +12,7 @@ function DuckChess() {
 				<DialogTitle>Duck Chess</DialogTitle>
 				<DialogDescription>
 					Modified Excerpt from{' '}
-					<a href="https://en.wikipedia.org/wiki/List_of_chess_variants#Duck_Chess">
+					<a class="link" href="https://en.wikipedia.org/wiki/List_of_chess_variants#Duck_Chess">
 						https://en.wikipedia.org/wiki/List_of_chess_variants#Duck_Chess
 					</a>
 				</DialogDescription>
@@ -35,18 +35,19 @@ function FogOfWar() {
 			<DialogHeader>
 				<DialogTitle>Fog of War Chess</DialogTitle>
 				<DialogDescription>
-					Excerpt from <a href="https://www.chess.com/variants/fog-of-war">https://www.chess.com/variants/fog-of-war</a>
+					Excerpt from{' '}
+					<a class="link" href="https://www.chess.com/variants/fog-of-war">
+						https://www.chess.com/variants/fog-of-war
+					</a>
 				</DialogDescription>
 			</DialogHeader>
 			<p>
 				Each player views a different version of the board, on which they can only see their own pieces, and the squares where these pieces
-				can legally move, as well as any opponent pieces on those squares (which must therefore be capturable). Hidden
-				squares are indicated
+				can legally move, as well as any opponent pieces on those squares (which must therefore be capturable). Hidden squares are indicated
 				with a slightly darker shade.
 			</p>
 			<p>
-				As an example, it is always clear when an enemy piece is directly in front of a pawn, because that square will
-				be hidden (as
+				As an example, it is always clear when an enemy piece is directly in front of a pawn, because that square will be hidden (as
 				capturing it is not a legal move for the pawn to make).
 			</p>
 			<p>
@@ -69,19 +70,19 @@ function FischerRandom() {
 				<DialogTitle>Fisher Random Chess</DialogTitle>
 				<DialogDescription>
 					Excerpt adapted from{' '}
-					<a
-						href="https://en.wikipedia.org/wiki/Fischer_random_chess">https://en.wikipedia.org/wiki/Fischer_random_chess</a>
+					<a class="link" href="https://en.wikipedia.org/wiki/Fischer_random_chess">
+						https://en.wikipedia.org/wiki/Fischer_random_chess
+					</a>
 				</DialogDescription>
 			</DialogHeader>
 			<p>
-				Fischer random chess, also known as Chess960 ('chess nine-sixty'), is like standard chess but with randomized
-				starting positions.
+				Fischer random chess, also known as Chess960 ('chess nine-sixty'), is like standard chess but with randomized starting positions.
 			</p>
 			<p>
 				As in classical chess, each player may castle once per game, moving both the king and a rook in a single move; however, the castling
-				rules were reinterpreted in Fischer random chess to support the different possible initial positions of king and rook. After
-				castling, the final positions of king and rook are exactly the same as in classical chess.
+				rules were reinterpreted in Fischer random chess to support the different possible initial positions of king and rook.
 			</p>
+			<p>After castling, the final positions of king and rook are exactly the same as in classical chess.</p>
 		</article>
 	)
 }
@@ -102,7 +103,7 @@ export function VariantInfoDialog(props: { variant: GL.Variant } & ParentProps) 
 	return (
 		<Dialog>
 			<DialogTrigger>{props.children}</DialogTrigger>
-			<DialogContent class={styles.helpCard}>
+			<DialogContent class={styles.dialogContent}>
 				<Switch>
 					<Match when={props.variant === 'duck'}>
 						<DuckChess />

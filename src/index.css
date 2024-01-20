@@ -66,3 +66,9 @@
 		@apply px-4;
 	}
 }
+
+@layer utilities {
+	.link {
+		@apply text-primary underline;
+	}
+}
