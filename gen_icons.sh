@@ -2,7 +2,7 @@
 
 # generates all icons needed in app manifest
 
-LOGO="./src/assets/icons/logo.svg"
+LOGO="./public/favicon.svg"
 
 inkscape $LOGO -o public/icons/192.svg -w 192 -h 192
 inkscape $LOGO -o public/icons/384.svg -w 384 -h 384
