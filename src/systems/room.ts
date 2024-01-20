@@ -149,7 +149,8 @@ export function connectToRoom(
 
 		const sub = interval(10000).subscribe(() => {
 			// make sure render's server doesn't spin down while we're in the middle of a game
-			fetch(SERVER_HOST + '/ping')
+			console.log(SERVER_HOST)
+			fetch(window.location.protocol + '//' + SERVER_HOST + '/ping')
 		})
 
 		disposePrevious = () => {
