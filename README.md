@@ -19,8 +19,7 @@ Just paste a link or have your friend scan a QR code and you're ready to play.
 ## Screenshots
 
 ## Planned features
-
-- premoves
+- pre-moves
 - more gamemodes
 - pause game
 - take back move requests
@@ -32,14 +31,14 @@ existing issue that you want to work on. If you want to work on an issue, please
 know that you are working on it. When you are done, open a pull request and request a review.
 
 Not all are required depending on what you'll be working on, but here are some technologies that you might need to learn:
-solidjs, tailwindcss, nodejs, websockets, and rxjs
+solidjs, tailwindcss, node, websockets, and rxjs
 
 If you need some help, feel free shoot me an email(pjvanderpol@gmail.com)
 
 ## Setup
 ### Requirements
-nodejs (tested with v19)
-pnpm (`npm i -g pnpm`)
+`node` (tested with v19)
+`pnpm` (`npm i -g pnpm`)
 
 
 ```bash
