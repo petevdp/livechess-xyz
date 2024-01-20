@@ -1,6 +1,7 @@
+[https://livechess.xyz](https://livechess.xyz)
 # livechess.xyz
 
-livechess.xyz is a free and open-source chess site.
+A free and open-source chess site.
 he goal is to provide a convenient way to play chess with your friends without requiring sign-ups or accounts of any
 kind.
 Just paste a link or have your friend scan a QR code and you're ready to play.
