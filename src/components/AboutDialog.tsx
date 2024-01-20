@@ -4,7 +4,6 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 
 import styles from './Dialog.module.scss'
 
-// TODO fill out about page
 export function AboutDialog() {
 	return (
 		<Dialog>
