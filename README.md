@@ -21,6 +21,7 @@ Just paste a link or have your friend scan a QR code and you're ready to play.
 - more gamemodes
 - pause game
 - take back move requests
+- piece animations
 
 ## Contributing
 
