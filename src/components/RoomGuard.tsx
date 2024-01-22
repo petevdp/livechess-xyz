@@ -9,15 +9,16 @@ import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card.t
 import { Checkbox } from '~/components/ui/checkbox.tsx'
 import { Input } from '~/components/ui/input.tsx'
 import { Label } from '~/components/ui/label.tsx'
+import { SERVER_HOST } from '~/config.ts'
 import * as Errors from '~/systems/errors.ts'
+import * as Pieces from '~/systems/piece.tsx'
 import * as P from '~/systems/player.ts'
 import * as R from '~/systems/room.ts'
 import { checkNetworkExists } from '~/utils/sharedStore.ts'
 
 import { AppContainer, ScreenFittingContent } from './AppContainer.tsx'
-import { Room } from './Room.tsx'
-import * as Pieces from "~/systems/piece.tsx";
-import {SERVER_HOST} from "~/config.ts";
+import { Room } from './Room.tsx';
+
 
 type ConnectionStatus = 'connected' | 'disconnected' | 'connecting'
 type PlayerFormState =
@@ -132,7 +133,7 @@ export default function RoomGuard() {
 				<Match when={connectionStatus() === 'disconnected'}>
 					<div>disconnected</div>
 				</Match>
-				<Match when={connectionStatus() === 'connected'}>
+				<Match when={connectionStatus() === 'connected' && R.room()}>
 					<Room />
 				</Match>
 			</Switch>
