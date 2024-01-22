@@ -1,24 +1,12 @@
-import { FastifyBaseLogger } from 'fastify'
-import {
-	BehaviorSubject,
-	EMPTY,
-	Observable,
-	Subscription,
-	concatMap,
-	delay,
-	endWith,
-	first,
-	firstValueFrom,
-	interval,
-	mergeMap,
-	of,
-	share,
-	switchMap,
-} from 'rxjs'
-import * as ws from 'ws'
+import { FastifyBaseLogger } from 'fastify';
+import { BehaviorSubject, EMPTY, Observable, Subscription, concatMap, delay, endWith, first, firstValueFrom, interval, mergeMap, of, share, switchMap } from 'rxjs';
+import * as ws from 'ws';
 
-import { createId } from '~/utils/ids.ts'
-import { Base64String, ClientConfig, NewNetworkResponse, SharedStoreMessage, encodeContent } from '~/utils/sharedStore.ts'
+
+
+import { createId } from '~/utils/ids.ts';
+import { Base64String, ClientConfig, NewNetworkResponse, SharedStoreMessage, encodeContent } from '~/utils/sharedStore.ts';
+
 
 const NO_LEADER_MSG_WHITELIST = ['ack-promote-to-leader', 'promote-to-leader'] as SharedStoreMessage['type'][]
 const NO_ACTIVITY_TIMEOUT = 1000 * 60 * 20
@@ -44,7 +32,6 @@ function printNetwork(network: Network) {
 		followers: network.followers.map((c) => c.clientId),
 	}
 }
-
 
 class Client {
 	message$: Observable<SharedStoreMessage>
@@ -157,7 +144,7 @@ export function handleNewConnection(socket: ws.WebSocket, networkId: string, log
 			// if we don't receive any messages for a while, close the connection
 			switchMap(() => delay(NO_ACTIVITY_TIMEOUT)(of(undefined))),
 			endWith(null),
-			first(),
+			first()
 		)
 		.subscribe((msg) => {
 			if (!msg) return
@@ -216,29 +203,29 @@ export function handleNewConnection(socket: ws.WebSocket, networkId: string, log
 
 		//#region send client-controlled-states to new client
 		if (network.leader?.clientId !== client.clientId) {
-			for (let otherClient of network.clients) {
-				if (otherClient.clientId === client.clientId) continue
-				const state$ = firstValueFrom(
-					otherClient.message$.pipe(
-						mergeMap((m) => {
-							return m.type === 'client-controlled-states' && m.forClient === client.clientId ? [m.states] : []
-						}),
-						endWith(null)
+        for (const otherClient of network.clients) {
+					if (otherClient.clientId === client.clientId) continue
+					const state$ = firstValueFrom(
+						otherClient.message$.pipe(
+							mergeMap((m) => {
+								return m.type === 'client-controlled-states' && m.forClient === client.clientId ? [m.states] : []
+							}),
+							endWith(null)
+						)
 					)
-				)
-				state$
-					.catch(() => {
-						log.info(`error getting client-controlled-states from client ${otherClient.clientId}, ignoring`)
+					state$
+						.catch(() => {
+							log.info(`error getting client-controlled-states from client ${otherClient.clientId}, ignoring`)
+						})
+						.then((state) => {
+							if (!state) return
+							client.send({ type: 'client-controlled-states', states: state })
+						})
+					otherClient.send({
+						type: 'request-client-controlled-states',
+						forClient: client.clientId,
 					})
-					.then((state) => {
-						if (!state) return
-						client.send({ type: 'client-controlled-states', states: state })
-					})
-				otherClient.send({
-					type: 'request-client-controlled-states',
-					forClient: client.clientId,
-				})
-			}
+				}
 		}
 
 		//#endregion
@@ -252,7 +239,7 @@ export function handleNewConnection(socket: ws.WebSocket, networkId: string, log
 	let leaderMsgBuffer: SharedStoreMessage[] = []
 	network.leader$.subscribe((leader) => {
 		if (!leader) return
-		for (let msg of leaderMsgBuffer) {
+      for (const msg of leaderMsgBuffer) {
 			leader.send(msg)
 		}
 		leaderMsgBuffer = []
@@ -282,7 +269,7 @@ export function handleNewConnection(socket: ws.WebSocket, networkId: string, log
 				}
 
 				if (message.commit && isLeader) {
-					for (let follower of network!.followers) {
+					for (const follower of network!.followers) {
 						follower.send(message)
 					}
 				}
@@ -311,7 +298,7 @@ export function handleNewConnection(socket: ws.WebSocket, networkId: string, log
 			case 'client-controlled-states': {
 				// we handle this in the initial dispatch
 				if (message.forClient) break
-				for (let client of network.clients) {
+          for (const client of network.clients) {
 					if (client.clientId === sender.clientId) continue
 					client.send(message)
 				}
@@ -357,7 +344,7 @@ export function handleNewConnection(socket: ws.WebSocket, networkId: string, log
 				type: 'client-controlled-states',
 				states,
 			}
-			for (let clt of network.clients) {
+			for (const clt of network.clients) {
 				if (clt.clientId === client.clientId) continue
 				clt.send(message)
 			}
@@ -370,15 +357,15 @@ export function handleNewConnection(socket: ws.WebSocket, networkId: string, log
 export function setupSharedStoreSystem(log: FastifyBaseLogger) {
 	//#region clean up networks marked for deletion
 	interval(1000).subscribe(() => {
-		for (let [networkId, network] of networks) {
-			if (network.timeoutAt && network.timeoutAt < Date.now()) {
-				log.info(`cleaning up network %s`, networkId, printNetwork(network))
-				const sockets = [network.leader, ...network.followers]
-				sockets.forEach((s) => s?.socket.close())
-				network.leader$.next(null)
-				networks.delete(networkId)
+      for (const [networkId, network] of networks) {
+				if (network.timeoutAt && network.timeoutAt < Date.now()) {
+					log.info(`cleaning up network %s`, networkId, printNetwork(network))
+					const sockets = [network.leader, ...network.followers]
+					sockets.forEach((s) => s?.socket.close())
+					network.leader$.next(null)
+					networks.delete(networkId)
+				}
 			}
-		}
 	})
 	//#endregion
 }

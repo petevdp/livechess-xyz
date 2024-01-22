@@ -1,9 +1,7 @@
 import { Tooltip as TooltipPrimitive } from '@kobalte/core';
 import { type Component, splitProps } from 'solid-js'
 
-
-
-import { cn } from '~/lib/utils';
+import { cn } from '~/lib/utils'
 
 
 const Tooltip: Component<TooltipPrimitive.TooltipRootProps> = (props) => {

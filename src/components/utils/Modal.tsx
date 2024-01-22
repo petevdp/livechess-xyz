@@ -3,7 +3,8 @@ import { Accessor, JSXElement, Show, createEffect, createRoot, createSignal, get
 
 
 import { Button } from '~/components/ui/button.tsx';
-import { myUntil } from '~/utils/solid.ts'
+import { myUntil } from '~/utils/solid.ts';
+
 
 let modalContainer: HTMLDivElement | null = null
 // for some reason checking for reference equality on the JSXElement itself isn't working, so we're wrap it in an object as a workaround
@@ -34,9 +35,9 @@ export function ModalContainer() {
 				[activeModal()?.closeOnOutsideClick ? 'pointer-events-auto' : 'pointer-events-none']: true,
 			}}
 			id="modal-container"
-			tabindex="-1"
+      tabIndex="-1"
 			aria-labelledby="modalLabel"
-			onclick={() => setActiveModal(null)}
+      onClick={() => setActiveModal(null)}
 			aria-hidden={!activeModal()}
 		>
 			<div
@@ -51,7 +52,7 @@ export function ModalContainer() {
 					display: activeModal()?.visible() ? undefined : 'none',
 					visibility: activeModal()?.visible() ? undefined : 'hidden',
 				}}
-				onclick={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
 			>
 				<div class="pointer-events-auto relative flex w-full flex-col rounded-md border bg-card text-card-foreground shadow-sm outline-none">
 					<Show when={activeModal()?.title}>
@@ -65,14 +66,8 @@ export function ModalContainer() {
 								{activeModal()!.title}
 							</h5>
 							<Button variant="secondary" onclick={() => setActiveModal(null)}>
-								<svg
-									xmlns="http://www.w3.org/2000/svg"
-									fill="none"
-									viewBox="0 0 24 24"
-									stroke-width="1.5"
-									stroke="currentColor"
-									class="h-6 w-6"
-								>
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                       stroke="currentColor" class="h-6 w-6">
 									<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
 								</svg>
 							</Button>
@@ -99,7 +94,7 @@ export function addModal(props: ModalProps) {
 	// this closure owns the modal's element
 	let current: ActiveModal | null = null
 
-	let owner = getOwner()
+    const owner = getOwner()
 	if (!owner) throw new Error('addModal must be called with an owner')
 
 	let storedDisplay = 'block'
@@ -160,17 +155,17 @@ export async function prompt<T>(
 		const rendered = component({ onCompleted })
 
 		if (typeof rendered === 'string') {
-			let buttonRef: HTMLButtonElement | null = null
+        const buttonRef: HTMLButtonElement | null = null
 
-			function keyListener(e: KeyboardEvent) {
-				if (e.key === 'Enter') {
-					onCompleted(defaultValue)
+				function keyListener(e: KeyboardEvent) {
+					if (e.key === 'Enter') {
+						onCompleted(defaultValue)
+					}
 				}
-			}
 
-			onMount(() => {
-				document.addEventListener('keydown', keyListener)
-			})
+				onMount(() => {
+					document.addEventListener('keydown', keyListener)
+				})
 
 			onCleanup(() => {
 				document.removeEventListener('keydown', keyListener)

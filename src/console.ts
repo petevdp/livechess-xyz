@@ -34,17 +34,17 @@ export type AppConsole = typeof appConsole
 export type UtilsConsole = typeof utils
 
 if (window) {
-	// @ts-ignore
+	// @ts-expect-error
 	window.App = appConsole
-	// @ts-ignore
+	// @ts-expect-error
 	window.Utils = utils
 }
 
 createRoot(() => {
 	createEffect(() => {
-		// @ts-ignore
+		// @ts-expect-error
 		appConsole.room = R.room()
-		// @ts-ignore
+		// @ts-expect-error
 		appConsole.game = G.game()
 	})
 })

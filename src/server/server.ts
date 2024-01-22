@@ -1,14 +1,16 @@
-import fastifyCors from '@fastify/cors'
-import fastifyStatic from '@fastify/static'
-import fastifyWebsocket from '@fastify/websocket'
-import { Crypto } from '@peculiar/webcrypto'
-import Fastify from 'fastify'
-import * as fs from 'node:fs'
-import path from 'node:path'
-import { fileURLToPath } from 'url'
-import * as ws from 'ws'
+import fastifyCors from '@fastify/cors';
+import fastifyStatic from '@fastify/static';
+import fastifyWebsocket from '@fastify/websocket';
+import { Crypto } from '@peculiar/webcrypto';
+import Fastify from 'fastify';
+import * as fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'url';
+import * as ws from 'ws';
 
-import * as SSS from './systems/sharedStoreNetworks.ts'
+
+
+import * as SSS from './systems/sharedStoreNetworks.ts';
 
 
 if (typeof crypto === 'undefined') {
@@ -62,8 +64,7 @@ server.log.info(`environment: %s`, environment)
 
 server.register(fastifyWebsocket)
 server.register(fastifyCors, () => {
-	//@ts-ignore
-	return (req, callback) => {
+	return (req: any, callback: any) => {
 		const corsOptions = {
 			// This is NOT recommended for production as it enables reflection exploits
 			origin: true,
@@ -78,14 +79,14 @@ server.register(fastifyCors, () => {
 		callback(null, corsOptions)
 	}
 })
-let PROJECT_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../dist')
+const PROJECT_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../dist')
 server.register(fastifyStatic, {
 	root: PROJECT_ROOT,
 })
 //#region websocket routes
 server.register(async function () {
 	server.get('/networks/:networkId', { websocket: true }, (connection, request) => {
-		//@ts-ignore
+		//@ts-expect-error
 		const networkId: string = request.params!.networkId
 		const log = request.log.child({ networkId })
 
@@ -104,7 +105,7 @@ server.post('/networks', () => {
 })
 
 server.head('/networks/:networkId', (req, res) => {
-	//@ts-ignore
+	//@ts-expect-error
 	const networkId: string = req.params.networkId
 	if (SSS.getNetwork(networkId)) {
 		res.status(200).send()
@@ -121,8 +122,7 @@ server.get('/rooms/:networkId', (_, res) => {
 
 SSS.setupSharedStoreSystem(server.log)
 
-//@ts-ignore
-const port: number = parseInt(process.env.PORT) || 8080
+const port: number = parseInt(process.env.PORT as string) || 8080
 
 server.listen({ port, host: '0.0.0.0' }, (err, address) => {
 	if (err) {

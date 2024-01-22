@@ -19,9 +19,9 @@
 	grid-template-columns: 1fr max-content 1fr max-content;
 	grid-template-rows: max-content 1fr max-content;
 	grid-template-areas:
-	'top-left-actions    opponent clock-opponent .'
-	'board               board    board          captured-pieces'
-	'bottom-left-actions player   clock-player   .';
+		'top-left-actions    opponent clock-opponent .'
+		'board               board    board          captured-pieces'
+		'bottom-left-actions player   clock-player   .';
 }
 
 @media screen and (max-aspect-ratio: 7/6) {
@@ -56,7 +56,7 @@
 				'top-left-actions    opponent        opponent        clock-opponent'
 				'board               board           board           board'
 				'bottom-left-actions player          player          clock-player'
-				'captured-pieces     captured-pieces captured-pieces captured-pieces'
+				'captured-pieces     captured-pieces captured-pieces captured-pieces';
 		}
 	}
 }

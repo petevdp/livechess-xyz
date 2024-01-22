@@ -1,12 +1,14 @@
-import { Show, createEffect, createSignal } from 'solid-js'
+import { Show, createEffect, createSignal } from 'solid-js';
 
-import * as Svgs from '~/components/Svgs.tsx'
-import { Button } from '~/components/ui/button.tsx'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog.tsx'
-import { Input } from '~/components/ui/input.tsx'
-import { Label } from '~/components/ui/label.tsx'
-import { Choice, MultiChoiceButton } from '~/components/utils/MultiChoiceButton.tsx'
-import * as P from '~/systems/player.ts'
+
+
+import * as Svgs from '~/components/Svgs.tsx';
+import { Button } from '~/components/ui/button.tsx';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog.tsx';
+import { Input } from '~/components/ui/input.tsx';
+import { Label } from '~/components/ui/label.tsx';
+import { Choice, MultiChoiceButton } from '~/components/utils/MultiChoiceButton.tsx';
+import * as P from '~/systems/player.ts';
 
 
 export function SettingsDialog() {
@@ -28,7 +30,7 @@ export function SettingsDialog() {
 		triggerButtonRef?.blur()
 	}
 
-	let triggerButtonRef: HTMLButtonElement | null = null
+	const triggerButtonRef: HTMLButtonElement | null = null
 
 	return (
 		<Dialog
@@ -41,7 +43,7 @@ export function SettingsDialog() {
 		>
 			<DialogTrigger>
 				<Button ref={triggerButtonRef!} size="icon" variant="ghost">
-					<Svgs.Settings/>
+            <Svgs.Settings/>
 				</Button>
 			</DialogTrigger>
 			<DialogContent class="sm:max-w-[425px]">
@@ -68,13 +70,13 @@ export function SettingsDialog() {
 									listClass="flex"
 									choices={
 										[
-											{label: 'Left', id: 'left'},
-											{label: 'None', id: 'none'},
-											{label: 'Right', id: 'right'},
+                        {label: 'Left', id: 'left'},
+                        {label: 'None', id: 'none'},
+                        {label: 'Right', id: 'right'},
 										] satisfies Choice<P.PlayerSettings['touchOffsetDirection']>[]
 									}
 									selected={P.settings.touchOffsetDirection}
-									onChange={(id) => P.setSettings({touchOffsetDirection: id})}
+                  onChange={(id) => P.setSettings({touchOffsetDirection: id})}
 								/>
 							</Show>
 						</div>

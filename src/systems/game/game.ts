@@ -1,18 +1,22 @@
-import { until } from '@solid-primitives/promise'
-import { isEqual } from 'lodash-es'
-import { Observable, ReplaySubject, combineLatest, concatMap, distinctUntilChanged, from as rxFrom, skip } from 'rxjs'
-import { map } from 'rxjs/operators'
-import { Accessor, createEffect, createMemo, createSignal, from, getOwner, observable, onCleanup } from 'solid-js'
-import { unwrap } from 'solid-js/store'
+import { until } from '@solid-primitives/promise';
+import { isEqual } from 'lodash-es';
+import { Observable, ReplaySubject, combineLatest, concatMap, distinctUntilChanged, from as rxFrom, skip } from 'rxjs';
+import { map } from 'rxjs/operators';
+import { Accessor, createEffect, createMemo, createSignal, from, getOwner, observable, onCleanup } from 'solid-js';
+import { unwrap } from 'solid-js/store';
 
-import { PUSH } from '~/utils/sharedStore.ts'
-import { storeToSignal, trackAndUnwrap } from '~/utils/solid.ts'
-import { unit } from '~/utils/unit.ts'
 
-import * as P from '../player.ts'
-import * as R from '../room.ts'
-import * as GL from './gameLogic.ts'
-import { MoveDisambiguation } from './gameLogic.ts'
+
+import { PUSH } from '~/utils/sharedStore.ts';
+import { storeToSignal, trackAndUnwrap } from '~/utils/solid.ts';
+import { unit } from '~/utils/unit.ts';
+
+
+
+import * as P from '../player.ts';
+import * as R from '../room.ts';
+import * as GL from './gameLogic.ts';
+import { MoveDisambiguation } from './gameLogic.ts';
 
 
 //#region types
@@ -174,7 +178,7 @@ export class Game {
 			if (!GL.kingCaptured(result.board)) {
 				this.setPlacingDuck(true)
 				this.setBoardWithCurrentMove(result.board)
-				let prevDuckPlacement = Object.keys(this.board.pieces).find((square) => this.board.pieces[square]!.type === 'duck')
+				const prevDuckPlacement = Object.keys(this.board.pieces).find((square) => this.board.pieces[square]!.type === 'duck')
 				if (prevDuckPlacement) {
 					// render previous duck while we're placing the new one, so it's clear that the duck can't be placed in the same spot twice
 					result.board.pieces[prevDuckPlacement] = GL.DUCK
@@ -185,19 +189,19 @@ export class Game {
 
 		const disambiguation = this.currentDisambiguation()
 		this.setCurrentDisambiguation(null)
-		let expectedMoveIndex = this.state.moveHistory.length
+		const expectedMoveIndex = this.state.moveHistory.length
 		const currentDuckPlacement = this.currentDuckPlacement
 		this.setCurrentMove(null)
 		this.currentDuckPlacement = null
 		this.setPlacingDuck(false)
 		this.setBoardWithCurrentMove(null)
-		let [acceptedMove, setAcceptedMove] = createSignal(null as null | GL.Move)
+		const [acceptedMove, setAcceptedMove] = createSignal(null as null | GL.Move)
 		this.room.sharedStore.setStoreWithRetries(() => {
 			const state = unwrap(this.state)
 			if (this.viewedMoveIndex() !== state.moveHistory.length - 1 || this.outcome) return
 			// check that we're still on the same currentMove
 			if (this.state.moveHistory.length !== expectedMoveIndex) return
-			let board = GL.getBoard(state)
+        const board = GL.getBoard(state)
 			if (!GL.isPlayerTurn(board, this.bottomPlayer.color) || !board.pieces[currentMove.from]) return
 			const result = GL.validateAndPlayMove(
 				currentMove.from,
@@ -336,7 +340,7 @@ export class Game {
 		function getPieceCounts(pieces: GL.Piece[]) {
 			const counts = {} as Record<GL.Piece, number>
 
-			for (let piece of pieces) {
+			for (const piece of pieces) {
 				counts[piece] = (counts[piece] || 0) + 1
 			}
 
@@ -354,19 +358,17 @@ export class Game {
 				.map((p) => p.type)
 		)
 
-		for (let [key, count] of Object.entries(currentPieceCounts)) {
-			//@ts-ignore
-			pieceCounts[key] -= count
-		}
-
-		const capturedPieces: GL.ColoredPiece[] = []
-
-		for (let [key, count] of Object.entries(pieceCounts)) {
-			for (let i = 0; i < count; i++) {
-				//@ts-ignore
-				capturedPieces.push({ type: key, color })
+      for (const [key, count] of Object.entries(currentPieceCounts)) {
+				pieceCounts[key as keyof typeof pieceCounts] -= count
 			}
-		}
+
+			const capturedPieces: GL.ColoredPiece[] = []
+
+      for (const [key, count] of Object.entries(pieceCounts)) {
+          for (let i = 0; i < count; i++) {
+              capturedPieces.push({type: key as GL.Piece, color})
+          }
+      }
 
 		return capturedPieces
 	}
@@ -472,8 +474,7 @@ export class Game {
 		if (!this.isClientPlayerParticipating) return
 		const moveOffered = this.lockstepState.moveHistory.length
 		this.room.sharedStore.setStoreWithRetries(() => {
-			if (!this.state || this.lockstepState.moveHistory.length !== moveOffered || GL.getGameOutcome(this.state, this.parsedGameConfig))
-				return
+        if (!this.state || this.lockstepState.moveHistory.length !== moveOffered || GL.getGameOutcome(this.state, this.parsedGameConfig)) return
 			const drawIsOfferedBy = GL.getDrawIsOfferedBy(this.state)
 			if (drawIsOfferedBy !== this.bottomPlayer.color) return
 			return {
@@ -609,9 +610,9 @@ function observeMoves(gameState: GL.GameState) {
 }
 
 function useClock(move$: Observable<GL.Move>, gameConfig: GL.ParsedGameConfig, gameEnded: Accessor<boolean>) {
-	let startingTime = gameConfig.timeControl
+    const startingTime = gameConfig.timeControl
 	if (gameConfig.timeControl === null) {
-		return () => ({white: 0, black: 0})
+      return () => ({white: 0, black: 0})
 	}
 	const [white, setWhite] = createSignal(startingTime!)
 	const [black, setBlack] = createSignal(startingTime!)
@@ -671,16 +672,16 @@ function useClock(move$: Observable<GL.Move>, gameConfig: GL.ParsedGameConfig, g
 }
 
 function getMoveHistoryAsNotation(state: GL.GameState) {
-	let moves: [string, string | null][] = []
-	for (let i = 0; i < Math.ceil(state.moveHistory.length / 2); i++) {
-		const whiteMove = GL.moveToAlgebraicNotation(i * 2, state)
-		if (i * 2 + 1 >= state.moveHistory.length) {
-			moves.push([whiteMove, null])
-			break
-		}
-		const blackMove = GL.moveToAlgebraicNotation(i * 2 + 1, state)
-		moves.push([whiteMove, blackMove])
-	}
+    const moves: [string, string | null][] = []
+    for (let i = 0; i < Math.ceil(state.moveHistory.length / 2); i++) {
+        const whiteMove = GL.moveToAlgebraicNotation(i * 2, state)
+        if (i * 2 + 1 >= state.moveHistory.length) {
+            moves.push([whiteMove, null])
+            break
+        }
+        const blackMove = GL.moveToAlgebraicNotation(i * 2 + 1, state)
+        moves.push([whiteMove, blackMove])
+    }
 	return moves
 }
 

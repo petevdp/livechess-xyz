@@ -1,21 +1,25 @@
-import { until } from '@solid-primitives/promise'
-import { Component, ComponentProps, createEffect, createSignal } from 'solid-js'
+import { until } from '@solid-primitives/promise';
+import { Component, ComponentProps, createEffect, createSignal } from 'solid-js';
 
-import bbishop from '~/assets/pieces/bBishop.svg'
-import bking from '~/assets/pieces/bKing.svg'
-import bknight from '~/assets/pieces/bKnight.svg'
-import bpawn from '~/assets/pieces/bPawn.svg'
-import bqueen from '~/assets/pieces/bQueen.svg'
-import brook from '~/assets/pieces/bRook.svg'
-import duck from '~/assets/pieces/duck.svg'
-import wbishop from '~/assets/pieces/wBishop.svg'
-import wking from '~/assets/pieces/wKing.svg'
-import wknight from '~/assets/pieces/wKnight.svg'
-import wpawn from '~/assets/pieces/wPawn.svg'
-import wqueen from '~/assets/pieces/wQueen.svg'
-import wrook from '~/assets/pieces/wRook.svg'
 
-import * as GL from './game/gameLogic.ts'
+
+import bbishop from '~/assets/pieces/bBishop.svg';
+import bking from '~/assets/pieces/bKing.svg';
+import bknight from '~/assets/pieces/bKnight.svg';
+import bpawn from '~/assets/pieces/bPawn.svg';
+import bqueen from '~/assets/pieces/bQueen.svg';
+import brook from '~/assets/pieces/bRook.svg';
+import duck from '~/assets/pieces/duck.svg';
+import wbishop from '~/assets/pieces/wBishop.svg';
+import wking from '~/assets/pieces/wKing.svg';
+import wknight from '~/assets/pieces/wKnight.svg';
+import wpawn from '~/assets/pieces/wPawn.svg';
+import wqueen from '~/assets/pieces/wQueen.svg';
+import wrook from '~/assets/pieces/wRook.svg';
+
+
+
+import * as GL from './game/gameLogic.ts';
 
 
 const pieceSvgs = {
@@ -43,8 +47,7 @@ export const [pieceChangedEpoch, setPiecedChangedEpoch] = createSignal(0)
 export const initialized = () => pieceCache.size > 0
 
 function loadPiece(key: keyof typeof pieceSvgs, squareSize: number) {
-	const Svg = pieceSvgs[key]
-	//@ts-ignore
+	const Svg = pieceSvgs[key] as unknown as Component<ComponentProps<'svg'>>
 	const svg = (<Svg class="chess-piece" width={squareSize} height={squareSize} />) as HTMLElement
 	const xml = new XMLSerializer().serializeToString(svg)
 	const image64 = 'data:image/svg+xml;base64,' + btoa(xml)
@@ -53,7 +56,7 @@ function loadPiece(key: keyof typeof pieceSvgs, squareSize: number) {
 
 export function setupPieceSystem() {
 	createEffect(() => {
-		let promises: Promise<void>[] = []
+		const promises: Promise<void>[] = []
 		for (const key in pieceSvgs) {
 			promises.push(
 				loadPiece(key as keyof typeof pieceSvgs, squareSize()).then((img) => {
@@ -80,7 +83,7 @@ export function getPieceSrc(piece: GL.ColoredPiece) {
 }
 
 export async function getPiece(piece: GL.ColoredPiece, size?: number) {
-	let key = getPieceKey(piece)
+	const key = getPieceKey(piece)
 	if (!size) {
 		await until(() => initialized())
 		return pieceCache.get(key)!

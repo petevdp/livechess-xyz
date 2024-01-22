@@ -42,22 +42,29 @@ function FogOfWar() {
 				</DialogDescription>
 			</DialogHeader>
 			<p>
-				Each player views a different version of the board, on which they can only see their own pieces, and the squares where these pieces
-				can legally move, as well as any opponent pieces on those squares (which must therefore be capturable). Hidden squares are indicated
-				with a slightly darker shade.
+				Each player views a different version of the board, on which they can only see their own pieces, and the
+				squares where these pieces can
+				legally move, as well as any opponent pieces on those squares (which must therefore be capturable). Hidden
+				squares are indicated with a
+				slightly darker shade.
 			</p>
 			<p>
-				As an example, it is always clear when an enemy piece is directly in front of a pawn, because that square will be hidden (as
-				capturing it is not a legal move for the pawn to make).
+				As an example, it is always clear when an enemy piece is directly in front of a pawn, because that square will
+				be hidden (as capturing
+				it is not a legal move for the pawn to make).
 			</p>
 			<p>
-				The goal of this chess variant is not to checkmate the king, but to capture it. A player is not told if their king is in check.
-				Failing to move out of check, or moving into check, are both legal, and can obviously result in a capture and loss of the game.
+				The goal of this chess variant is not to checkmate the king, but to capture it. A player is not told if their
+				king is in check. Failing
+				to move out of check, or moving into check, are both legal, and can obviously result in a capture and loss of
+				the game.
 			</p>
 			<p>
-				En passant capture is allowed; the threatened pawn and the square it moved through are both visible to the capturing player, but
-				only until the end of the turn. Unlike standard chess, castling is allowed out of check, into check, and through the positions
-				attacked by enemy pieces.
+				En passant capture is allowed; the threatened pawn and the square it moved through are both visible to the
+				capturing player, but only
+				until the end of the turn. Unlike standard chess, castling is allowed out of check, into check, and through
+				the positions attacked by
+				enemy pieces.
 			</p>
 		</article>
 	)
@@ -75,9 +82,8 @@ function FischerRandom() {
 					</a>
 				</DialogDescription>
 			</DialogHeader>
-			<p>
-				Fischer random chess, also known as Chess960 ('chess nine-sixty'), is like standard chess but with randomized starting positions.
-			</p>
+			<p>Fischer random chess, also known as Chess960 ('chess nine-sixty'), is like standard chess but with randomized
+				starting positions.</p>
 			<p>
 				As in classical chess, each player may castle once per game, moving both the king and a rook in a single move; however, the castling
 				rules were reinterpreted in Fischer random chess to support the different possible initial positions of king and rook.
@@ -92,8 +98,9 @@ function RegularChess() {
 		<article>
 			<p>Standard FIDE chess rules.</p>
 			<p>
-				For more information about other variants, selec one and click the <span class="text-primary underline">'?'</span> button again to
-				learn more about it.
+				For more information about other variants, selec one and click the <span
+				class="text-primary underline">'?'</span> button again to learn
+				more about it.
 			</p>
 		</article>
 	)

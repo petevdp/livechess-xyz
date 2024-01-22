@@ -1,57 +1,47 @@
-import { useColorMode } from '@kobalte/core'
-import { createMediaQuery } from '@solid-primitives/media'
-import { isEqual } from 'lodash-es'
-import { filter, first, from as rxFrom, skip } from 'rxjs'
-import {
-	For,
-	Match,
-	ParentProps,
-	Show,
-	Switch,
-	batch,
-	createEffect,
-	createMemo,
-	createSignal,
-	observable,
-	onCleanup,
-	onMount,
-	untrack,
-} from 'solid-js'
-import toast from 'solid-toast'
+import { useColorMode } from '@kobalte/core';
+import { createMediaQuery } from '@solid-primitives/media';
+import { isEqual } from 'lodash-es';
+import { filter, first, from as rxFrom, skip } from 'rxjs';
+import { For, Match, ParentProps, Show, Switch, batch, createEffect, createMemo, createSignal, observable, onCleanup, onMount, untrack } from 'solid-js';
+import toast from 'solid-toast';
 
-import * as Svgs from '~/components/Svgs.tsx'
-import { VariantInfoDialog } from '~/components/VariantInfoDialog.tsx'
-import { Dialog, DialogContent, DialogDescription, DialogHeader } from '~/components/ui/dialog.tsx'
-import { HoverCard, HoverCardContent, HoverCardTrigger } from '~/components/ui/hover-card.tsx'
-import { BOARD_COLORS } from '~/config.ts'
-import { cn } from '~/lib/utils.ts'
-import * as Audio from '~/systems/audio.ts'
-import * as G from '~/systems/game/game.ts'
-import * as GL from '~/systems/game/gameLogic.ts'
-import * as Pieces from '~/systems/piece.tsx'
-import * as P from '~/systems/player.ts'
-import * as R from '~/systems/room.ts'
 
-import styles from './Game.module.css'
-import { Button } from './ui/button.tsx'
-import * as Modal from './utils/Modal.tsx'
+
+import * as Svgs from '~/components/Svgs.tsx';
+import { VariantInfoDialog } from '~/components/VariantInfoDialog.tsx';
+import { Dialog, DialogContent, DialogDescription, DialogHeader } from '~/components/ui/dialog.tsx';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '~/components/ui/hover-card.tsx';
+import { BOARD_COLORS } from '~/config.ts';
+import { cn } from '~/lib/utils.ts';
+import * as Audio from '~/systems/audio.ts';
+import * as G from '~/systems/game/game.ts';
+import * as GL from '~/systems/game/gameLogic.ts';
+import * as Pieces from '~/systems/piece.tsx';
+import * as P from '~/systems/player.ts';
+import * as R from '~/systems/room.ts';
+
+
+
+import styles from './Game.module.css';
+import { Button } from './ui/button.tsx';
+import * as Modal from './utils/Modal.tsx';
 
 
 //TODO component duplicates on reload sometimes for some reason
 
 export default function Game(props: { gameId: string }) {
-	let game = new G.Game(props.gameId, R.room()!, R.room()!.rollbackState.gameConfig)
+    const game = new G.Game(props.gameId, R.room()!, R.room()!.rollbackState.gameConfig)
 	G.setGame(game)
 
 	//#region calc board sizes
 	// let BOARD_SIZE = 600
 	// let SQUARE_SIZE = BOARD_SIZE / 8
-	let boardRef = null as unknown as HTMLDivElement
+    const boardRef = null as unknown as HTMLDivElement
 
-	const [windowSize, setWindowSize] = createSignal({
-		width: window.innerWidth,
-		height: window.innerHeight,
-	})
+		const [windowSize, setWindowSize] = createSignal({
+			width: window.innerWidth,
+			height: window.innerHeight,
+		})
 
 	window.addEventListener('resize', () => {
 		setWindowSize({ width: window.innerWidth, height: window.innerHeight })
@@ -463,7 +453,10 @@ export default function Game(props: { gameId: string }) {
 										size="icon"
 										onclick={() => {
 											if (game.currentMoveAmbiguity?.type !== 'promotion') return
-											game.setCurrentDisambiguation({ type: 'promotion', piece: pp as GL.PromotionPiece })
+                        game.setCurrentDisambiguation({
+                            type: 'promotion',
+                            piece: pp as GL.PromotionPiece,
+                        })
 											makeMove()
 										}}
 									>
@@ -641,17 +634,17 @@ export default function Game(props: { gameId: string }) {
 				</Show>
 				<div class={`${styles.topLeftActions} flex items-start space-x-1`}>
 					<Button variant="ghost" size="icon" onclick={() => setBoardFlipped((f) => !f)} class="mb-1">
-						<Svgs.Flip/>
+              <Svgs.Flip/>
 					</Button>
 					<Show when={game.gameConfig.variant !== 'regular'}>
 						<VariantInfoDialog variant={game.gameConfig.variant}>
 							<Button variant="ghost" size="icon" class="mb-1">
-								<Svgs.Help/>
+                  <Svgs.Help/>
 							</Button>
 						</VariantInfoDialog>
 					</Show>
 				</div>
-				<Player class={styles.topPlayer} player={game.topPlayer}/>
+          <Player class={styles.topPlayer} player={game.topPlayer}/>
 				<Clock
 					class={styles.clockTopPlayer}
 					clock={game.clock[game.topPlayer.color]}
@@ -659,7 +652,7 @@ export default function Game(props: { gameId: string }) {
 					timeControl={game.gameConfig.timeControl}
 					color={game.topPlayer.color}
 				/>
-				<CapturedPieces/>
+          <CapturedPieces/>
 				<div class={styles.board}>
 					<span>{boardCanvas}</span>
 					<span class="absolute -translate-y-full">{highlightsCanvas}</span>
@@ -746,11 +739,10 @@ function Player(props: { player: G.PlayerWithColor; class: string }) {
 			<Show when={game.bottomPlayer.color === props.player.color} fallback={title}>
 				<HoverCard placement="bottom" open={game.placingDuck()}>
 					<HoverCardTrigger>{title}</HoverCardTrigger>
-					<HoverCardContent
-						class="bg-destructive border-destructive p-1 w-max text-sm flex space-x-2 items-center justify-between">
-						<span class="text-balance text-destructive-foreground">{`${
-							P.settings.usingTouch ? 'Tap' : 'Click'
-						} square to place duck`}</span>
+            <HoverCardContent
+                class="bg-destructive border-destructive p-1 w-max text-sm flex space-x-2 items-center justify-between">
+                <span
+                    class="text-balance text-destructive-foreground">{`${P.settings.usingTouch ? 'Tap' : 'Click'} square to place duck`}</span>
 						<Button
 							class="text-xs text-destructive-foreground whitespace-nowrap bg-black"
 							variant="secondary"
@@ -785,7 +777,7 @@ function Clock(props: { clock: number; class: string; ticking: boolean; timeCont
 	}
 
 	return (
-		<Show when={props.timeControl !== 'unlimited'} fallback={<span class={props.class}/>}>
+      <Show when={props.timeControl !== 'unlimited'} fallback={<span class={props.class}/>}>
 			<div class={cn('flex items-center justify-end space-x-3 text-xl', props.class)}>
 				<span
 					class="mt-[0.4em] font-mono"
@@ -808,13 +800,8 @@ function ActionsPanel(props: { class: string; placingDuck: boolean }) {
 				<Match when={!game.outcome}>
 					<DrawHoverCard>
 						<span>
-							<Button
-								disabled={!!game.drawIsOfferedBy}
-								title="Offer Draw"
-								size="icon"
-								variant="ghost"
-								onclick={() => game.offerOrAcceptDraw()}
-							>
+							<Button disabled={!!game.drawIsOfferedBy} title="Offer Draw" size="icon" variant="ghost"
+                      onclick={() => game.offerOrAcceptDraw()}>
 								<Svgs.OfferDraw />
 							</Button>
 							<Button disabled={!!game.drawIsOfferedBy} title="Resign" size="icon" variant="ghost" onclick={() => game.resign()}>
@@ -831,31 +818,32 @@ function ActionsPanel(props: { class: string; placingDuck: boolean }) {
 			</Switch>
 		</span>
 	)
+}
 
-	function DrawHoverCard(props: ParentProps) {
-		return (
-			<HoverCard placement="bottom" open={!!game.drawIsOfferedBy}>
-				<HoverCardTrigger>{props.children}</HoverCardTrigger>
-				<HoverCardContent class="w-max p-[0.25rem]">
-					<Show when={game.drawIsOfferedBy === game.bottomPlayer.color}>
-						<Button size="sm" onClick={() => game.cancelDraw()}>
-							Cancel Draw
+function DrawHoverCard(props: ParentProps) {
+	const game = G.game()!
+	return (
+		<HoverCard placement="bottom" open={!!game.drawIsOfferedBy}>
+			<HoverCardTrigger>{props.children}</HoverCardTrigger>
+			<HoverCardContent class="w-max p-[0.25rem]">
+				<Show when={game.drawIsOfferedBy === game.bottomPlayer.color}>
+					<Button size="sm" onClick={() => game.cancelDraw()}>
+						Cancel Draw
+					</Button>
+				</Show>
+				<Show when={game.drawIsOfferedBy === game.topPlayer.color}>
+					<div class="flex space-x-1">
+						<Button size="sm" onClick={() => game.offerOrAcceptDraw()}>
+							Accept Draw
 						</Button>
-					</Show>
-					<Show when={game.drawIsOfferedBy === game.topPlayer.color}>
-						<div class="flex space-x-1">
-							<Button size="sm" onClick={() => game.offerOrAcceptDraw()}>
-								Accept Draw
-							</Button>
-							<Button size="sm" onClick={() => game.declineDraw()}>
-								Decline Draw
-							</Button>
-						</div>
-					</Show>
-				</HoverCardContent>
-			</HoverCard>
-		)
-	}
+						<Button size="sm" onClick={() => game.declineDraw()}>
+							Decline Draw
+						</Button>
+					</div>
+				</Show>
+			</HoverCardContent>
+		</HoverCard>
+	)
 }
 
 function MoveHistory(props: MoveNavProps) {
@@ -941,10 +929,9 @@ function MoveNav(props: MoveNavProps) {
 export function CapturedPieces() {
 	const game = G.game()!
 	return (
-		<div
-			class={cn(styles.capturedPiecesContainer, 'flex flex-col wc:flex-row justify-between space-y-1 wc:space-y-0 wc:space-x-1')}>
-			<CapturedPiecesForColor pieces={game.capturedPieces(game.bottomPlayer.color)} capturedBy={'top-player'}/>
-			<CapturedPiecesForColor pieces={game.capturedPieces(game.topPlayer.color)} capturedBy={'bottom-player'}/>
+		<div class={cn(styles.capturedPiecesContainer, 'flex flex-col wc:flex-row justify-between space-y-1 wc:space-y-0 wc:space-x-1')}>
+			<CapturedPiecesForColor pieces={game.capturedPieces(game.bottomPlayer.color)} capturedBy={'top-player'} />
+			<CapturedPiecesForColor pieces={game.capturedPieces(game.topPlayer.color)} capturedBy={'bottom-player'} />
 		</div>
 	)
 }
@@ -966,7 +953,7 @@ function CapturedPiecesForColor(props: { pieces: GL.ColoredPiece[]; capturedBy: 
 			<For each={sortedPieces()}>
 				{(piece) => {
 					const Piece = Pieces.getPieceSvg(piece)
-					return <Piece class="max-w-[30px] max-h-[30px]"/>
+					return <Piece class="max-w-[30px] max-h-[30px]" />
 				}}
 			</For>
 		</div>
@@ -995,7 +982,7 @@ function renderBoard(args: RenderBoardArgs) {
 
 	if (args.shouldHideNonVisible) {
 		ctx.fillStyle = BOARD_COLORS.light
-		for (let square of args.visibleSquares) {
+		for (const square of args.visibleSquares) {
 			let { x, y } = GL.coordsFromNotation(square)
 			if ((x + y) % 2 === 0) continue
 			;[x, y] = boardCoordsToDisplayCoords({ x, y }, args.boardFlipped, args.squareSize)
@@ -1006,7 +993,7 @@ function renderBoard(args: RenderBoardArgs) {
 	// fill in dark squares
 	for (let i = 0; i < 8; i++) {
 		for (let j = i % 2; j < 8; j += 2) {
-			let visible =
+			const visible =
 				!args.shouldHideNonVisible ||
 				args.visibleSquares.has(
 					GL.notationFromCoords({
@@ -1035,7 +1022,7 @@ type RenderPiecesArgs = {
 
 function renderPieces(args: RenderPiecesArgs) {
 	const ctx = args.context
-	for (let [square, piece] of Object.entries(args.boardView.board.pieces)) {
+    for (const [square, piece] of Object.entries(args.boardView.board.pieces)) {
 		if (
 			(args.grabbedMousePos && args.activePieceSquare === square) ||
 			(args.shouldHideNonVisible ? !args.boardView.visibleSquares.has(square) : false)
@@ -1071,7 +1058,7 @@ function renderHighlights(args: RenderHighlightsArgs) {
 	const highlightColor = '#aff682'
 	if (args.boardView.lastMove && !args.shouldHideNonVisible) {
 		const highlightedSquares = [args.boardView.lastMove.from, args.boardView.lastMove.to]
-		for (let square of highlightedSquares) {
+      for (const square of highlightedSquares) {
 			if (!square) continue
 			const [x, y] = squareNotationToDisplayCoords(square, args.boardFlipped, args.squareSize)
 			ctx.fillStyle = highlightColor
@@ -1083,7 +1070,7 @@ function renderHighlights(args: RenderHighlightsArgs) {
 	//#region draw legal move highlights
 	const dotColor = '#f2f2f2'
 	const captureHighlightColor = '#fc3c3c'
-	for (let move of args.legalMovesForActivePiece) {
+	for (const move of args.legalMovesForActivePiece) {
 		// draw dot in center of move end
 		const [x, y] = boardCoordsToDisplayCoords(move.to, args.boardFlipped, args.squareSize)
 		const piece = args.boardView.board.pieces[GL.notationFromCoords(move.to)]
@@ -1151,8 +1138,8 @@ function renderGrabbedPiece(args: RenderGrabbedPieceArgs) {
 
 	const size = args.touchScreen ? args.squareSize * 1.5 : args.squareSize
 	if (args.grabbedMousePos) {
-		let x = args.grabbedMousePos!.x
-		let y = args.grabbedMousePos!.y
+		const x = args.grabbedMousePos!.x
+		const y = args.grabbedMousePos!.y
 		ctx.drawImage(Pieces.getCachedPiece(args.boardView.board.pieces[args.activePieceSquare!]!), x - size / 2, y - size / 2, size, size)
 	}
 

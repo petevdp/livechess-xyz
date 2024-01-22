@@ -1,0 +1,35 @@
+{
+  "extends": [
+    "eslint:recommended",
+    "plugin:@typescript-eslint/recommended",
+    "plugin:solid/typescript",
+    "plugin:eslint-plugin-prettier/recommended"
+  ],
+  "parser": "@typescript-eslint/parser",
+  "plugins": [
+    "@typescript-eslint",
+    "spellcheck",
+    "solid",
+    "tailwindcss",
+    "eslint-plugin-prettier"
+  ],
+  "root": true,
+  "rules": {
+    "@typescript-eslint/no-explicit-any": 0,
+    "@typescript-eslint/ban-types": 0,
+    "@typescript-eslint/no-unused-vars": 0,
+    "@typescript-eslint/ban-ts-comment": [
+      "error",
+      {
+        "ts-expect-error": "allow-with-description",
+        "ts-ignore": true,
+        "ts-nocheck": true,
+        "ts-check": false,
+        "minimumDescriptionLength": 0
+      }
+    ],
+    "no-inner-declarations": 0,
+    "solid/reactivity": 0,
+    "no-mixed-spaces-and-tabs": 0
+  }
+}

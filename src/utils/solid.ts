@@ -1,10 +1,10 @@
 import { captureStoreUpdates, trackStore } from '@solid-primitives/deep';
-import { Accessor, createEffect, createRoot, createSignal, untrack } from 'solid-js'
+import { Accessor, createEffect, createRoot, createSignal, untrack } from 'solid-js';
 import { unwrap } from 'solid-js/store';
 
 
 // reg until seems to be broken
-export function myUntil(fn: () => {}) {
+export function myUntil(fn: () => any) {
 	return new Promise((resolve) => {
 		createRoot((dispose) => {
 			createEffect(() => {
@@ -46,18 +46,14 @@ export function storeToSignal<T extends {}>(store: T): Accessor<T> {
 				const last = path[path.length - 1]
 				if (path.length === 0) {
 					state = JSON.parse(JSON.stringify(value))
-					//@ts-ignore
 					setSignal(state)
 					return
 				}
 
 				for (const key of path.slice(0, -1)) {
-					//@ts-ignore
 					current = current[key]
 				}
-				//@ts-ignore
 				current[last] = JSON.parse(JSON.stringify(value))
-				//@ts-ignore
 				setSignal(state)
 			}
 		})

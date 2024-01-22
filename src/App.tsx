@@ -1,17 +1,22 @@
-import { ColorMode, ColorModeProvider, ColorModeScript } from '@kobalte/core'
-import { Navigate, Route, Router } from '@solidjs/router'
-import { ErrorBoundary, JSXElement, Show, Suspense, createEffect, createSignal, lazy, onMount } from 'solid-js'
-import { Toaster } from 'solid-toast'
+import { ColorMode, ColorModeProvider, ColorModeScript } from '@kobalte/core';
+import { Navigate, Route, Router } from '@solidjs/router';
+import { ErrorBoundary, JSXElement, Show, Suspense, createEffect, createSignal, lazy, onMount } from 'solid-js';
+import { Toaster } from 'solid-toast';
 
-import NotFound from '~/components/404.tsx'
-import { AppContainer, ScreenFittingContent } from '~/components/AppContainer.tsx'
-import { Spinner } from '~/components/Spinner.tsx'
-import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogTitle } from '~/components/ui/alert-dialog.tsx'
-import { Button } from '~/components/ui/button.tsx'
-import { Callout, CalloutContent, CalloutTitle } from '~/components/ui/callout.tsx'
-import * as Errors from '~/systems/errors.ts'
+
+
+import NotFound from '~/components/404.tsx';
+import { AppContainer, ScreenFittingContent } from '~/components/AppContainer.tsx';
+import { Spinner } from '~/components/Spinner.tsx';
+import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogTitle } from '~/components/ui/alert-dialog.tsx';
+import { Button } from '~/components/ui/button.tsx';
+import { Callout, CalloutContent, CalloutTitle } from '~/components/ui/callout.tsx';
+import * as Errors from '~/systems/errors.ts';
+
+
 
 import { Home } from './components/Home.tsx'
+
 
 const RoomGuard = lazy(() => import('~/components/RoomGuard.tsx'))
 
@@ -50,8 +55,7 @@ function App() {
 				storageManager={{
 					type: 'localStorage',
 					ssr: false,
-					get: (fallback: 'light' | 'dark' | 'system' | undefined) =>
-						(localStorage.getItem('colorMode') as ColorMode) || fallback || 'dark',
+            get: (fallback: 'light' | 'dark' | 'system' | undefined) => (localStorage.getItem('colorMode') as ColorMode) || fallback || 'dark',
 					set: (value: 'light' | 'dark' | 'system') => localStorage.setItem('colorMode', value),
 				}}
 			>

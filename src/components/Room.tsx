@@ -1,23 +1,25 @@
-import QRCode from 'qrcode'
-import { Match, ParentProps, Show, Suspense, Switch, createResource, createSignal, lazy, onCleanup } from 'solid-js'
-import toast from 'solid-toast'
+import QRCode from 'qrcode';
+import { Match, ParentProps, Show, Suspense, Switch, createResource, createSignal, lazy, onCleanup } from 'solid-js';
+import toast from 'solid-toast';
 
-import { ScreenFittingContent } from '~/components/AppContainer.tsx'
-import { Spinner } from '~/components/Spinner.tsx'
-import * as Svgs from '~/components/Svgs.tsx'
-import { VariantInfoDialog } from '~/components/VariantInfoDialog.tsx'
-import { Button } from '~/components/ui/button.tsx'
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '~/components/ui/card.tsx'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog'
-import { HoverCard, HoverCardContent, HoverCardTrigger } from '~/components/ui/hover-card.tsx'
-import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover.tsx'
-import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip.tsx'
-import { Choice, MultiChoiceButton } from '~/components/utils/MultiChoiceButton.tsx'
-import * as Audio from '~/systems/audio.ts'
-import * as GL from '~/systems/game/gameLogic.ts'
-import { getPieceSvg } from '~/systems/piece.tsx'
-import * as P from '~/systems/player.ts'
-import * as R from '~/systems/room.ts'
+
+
+import { ScreenFittingContent } from '~/components/AppContainer.tsx';
+import { Spinner } from '~/components/Spinner.tsx';
+import * as Svgs from '~/components/Svgs.tsx';
+import { VariantInfoDialog } from '~/components/VariantInfoDialog.tsx';
+import { Button } from '~/components/ui/button.tsx';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '~/components/ui/card.tsx';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '~/components/ui/hover-card.tsx';
+import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover.tsx';
+import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip.tsx';
+import { Choice, MultiChoiceButton } from '~/components/utils/MultiChoiceButton.tsx';
+import * as Audio from '~/systems/audio.ts';
+import * as GL from '~/systems/game/gameLogic.ts';
+import { getPieceSvg } from '~/systems/piece.tsx';
+import * as P from '~/systems/player.ts';
+import * as R from '~/systems/room.ts';
 
 
 // import { Game } from './Game.tsx'
@@ -113,7 +115,7 @@ function Lobby() {
 function QrCodeDialog() {
 	const room = R.room()!
 	const [dataUrl] = createResource(() => QRCode.toDataURL(window.location.href, { scale: 12 }))
-	let btn: HTMLButtonElement | null = null
+	const btn: HTMLButtonElement | null = null
 	const [open, setOpen] = createSignal(false)
 	room.event$.subscribe((action) => {
 		if (action.type === 'player-connected' && open()) btn?.click()
@@ -199,9 +201,9 @@ function GameConfigForm() {
 				selected={gameConfig().timeControl}
 				onChange={(v): void => {
 					if (v === 'unlimited') {
-						room!.setGameConfig({increment: "0", timeControl: v})
+						room!.setGameConfig({ increment: '0', timeControl: v })
 					} else {
-						room!.setGameConfig({timeControl: v});
+						room!.setGameConfig({ timeControl: v })
 					}
 				}}
 				disabled={!room.isPlayerParticipating || room.leftPlayer?.isReadyForGame}
@@ -213,7 +215,7 @@ function GameConfigForm() {
 				selected={gameConfig().increment}
 				onChange={(v) => {
 					if (gameConfig().timeControl === 'unlimited') return
-					room!.setGameConfig({increment: v});
+            room!.setGameConfig({increment: v})
 				}}
 				disabled={!room.isPlayerParticipating || room.leftPlayer?.isReadyForGame || gameConfig().timeControl === 'unlimited'}
 			/>
@@ -243,8 +245,7 @@ function PlayerAwareness() {
 				}
 				break
 			case 'initiate-piece-swap':
-				if (action.player.id === room.rightPlayer?.id) {
-				} else {
+				if (action.player.id !== room.rightPlayer?.id) {
 					const waitingPlayer = action.player.id === room.leftPlayer?.id ? room.rightPlayer : room.leftPlayer
 					toast(`Waiting for ${waitingPlayer!.name} to accept piece swap`)
 				}
@@ -280,7 +281,7 @@ function PlayerAwareness() {
 					<OpponentPlaceholder color={leftPlayerColor()!} />
 				</Match>
 			</Switch>
-			<span></span>
+        <span/>
 			<Show when={room.rightPlayer} fallback={<OpponentPlaceholder color={rightPlayerColor()} />}>
 				<OpponentConfigDisplay
 					opponent={room.rightPlayer!}
@@ -292,10 +293,7 @@ function PlayerAwareness() {
 			<PlayerColorDisplay color={leftPlayerColor()} />
 			<SwapButton
 				disabled={
-					!room.isPlayerParticipating ||
-					room.leftPlayer?.agreePieceSwap ||
-					room.rightPlayer?.agreePieceSwap ||
-					room.leftPlayer?.isReadyForGame
+            !room.isPlayerParticipating || room.leftPlayer?.agreePieceSwap || room.rightPlayer?.agreePieceSwap || room.leftPlayer?.isReadyForGame
 				}
 				alreadySwapping={room.leftPlayer?.agreePieceSwap || false}
 				initiatePieceSwap={() => room.initiateOrAgreePieceSwap()}

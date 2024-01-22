@@ -1,18 +1,22 @@
-import { trackDeep, trackStore } from '@solid-primitives/deep'
-import { until } from '@solid-primitives/promise'
-import { isEqual } from 'lodash-es'
-import { Observable, concatMap, first, interval, mergeAll, race, from as rxFrom, startWith } from 'rxjs'
-import { map } from 'rxjs/operators'
-import { Owner, createEffect, createMemo, createRoot, createSignal, getOwner, onCleanup, runWithOwner, untrack } from 'solid-js'
-import { unwrap } from 'solid-js/store'
+import { trackDeep, trackStore } from '@solid-primitives/deep';
+import { until } from '@solid-primitives/promise';
+import { isEqual } from 'lodash-es';
+import { Observable, concatMap, first, interval, mergeAll, race, from as rxFrom, startWith } from 'rxjs';
+import { map } from 'rxjs/operators';
+import { Owner, createEffect, createMemo, createRoot, createSignal, getOwner, onCleanup, runWithOwner, untrack } from 'solid-js';
+import { unwrap } from 'solid-js/store';
 
-import { createId } from '~/utils/ids.ts'
-import { DELETE, PUSH, SharedStore, SharedStoreProvider, StoreMutation, initSharedStore, newNetwork } from '~/utils/sharedStore.ts'
 
-import { PLAYER_TIMEOUT, SERVER_HOST } from '../config.ts'
-import * as G from './game/game.ts'
-import * as GL from './game/gameLogic.ts'
-import * as P from './player.ts'
+
+import { createId } from '~/utils/ids.ts';
+import { DELETE, PUSH, SharedStore, SharedStoreProvider, StoreMutation, initSharedStore, newNetwork } from '~/utils/sharedStore.ts';
+
+
+
+import { PLAYER_TIMEOUT, SERVER_HOST } from '../config.ts';
+import * as G from './game/game.ts';
+import * as GL from './game/gameLogic.ts';
+import * as P from './player.ts';
 
 
 //#region types
@@ -182,7 +186,7 @@ export function connectToRoom(
 				]
 
 				if (!isSpectating) {
-					let gameParticipant = {
+					const gameParticipant = {
 						id: playerId,
 						isReadyForGame: false,
 						agreePieceSwap: false,
@@ -239,10 +243,10 @@ export class Room {
 	//#region members(players + spectators)
 
 	setupPlayerEventTracking() {
-		let prevConnected: RoomMember[] = []
+		const prevConnected: RoomMember[] = []
 		const connectedPlayers = createMemo(() => {
 			trackDeep(this.sharedStore.clientControlledStates)
-			let playerIds: string[] = Object.values(this.sharedStore.clientControlledStates).map((s) => s.playerId)
+			const playerIds: string[] = Object.values(this.sharedStore.clientControlledStates).map((s) => s.playerId)
 			const currConnected = this.members.filter((p) => playerIds.includes(p.id) && p.name)
 			// return same object so equality check passes
 			if (isEqual(playerIds, prevConnected)) return prevConnected
@@ -254,7 +258,7 @@ export class Room {
 		createEffect(() => {
 			const _connectedPlayers = unwrap(connectedPlayers())
 			untrack(() => {
-				for (let player of this.members) {
+				for (const player of this.members) {
 					const isConnected = _connectedPlayers.some((p) => p.id === player.id)
 					if (!previouslyConnected.has(player.id) && isConnected) {
 						previouslyConnected.add(player.id)
@@ -296,7 +300,7 @@ export class Room {
 		})
 		interval(PLAYER_TIMEOUT / 4).subscribe(() => {
 			if (!this.sharedStore.isLeader()) return
-			for (let id of previouslyConnected) {
+			for (const id of previouslyConnected) {
 				const member = this.members.find((p) => p.id === id)!
 				if (member.disconnectedAt !== undefined && Date.now() - member.disconnectedAt) {
 					this.sharedStore.setStoreWithRetries(() => {
@@ -379,7 +383,7 @@ export class Room {
 			if (state.members.some((p) => p.id === this.player.id && p.name === name)) return []
 
 			// check if name taken
-			let duplicates = state.members.filter((p) => p.name === name)
+			const duplicates = state.members.filter((p) => p.name === name)
 			if (duplicates.length > 0) {
 				_name = `${name} (${duplicates.length})`
 			}
@@ -414,7 +418,7 @@ export class Room {
 	get event$() {
 		return this.sharedStore.event$.pipe(
 			concatMap((event) => {
-				let player = this.members.find((p) => p.id === event.playerId)!
+				const player = this.members.find((p) => p.id === event.playerId)!
 				if (!player) {
 					console.warn('unknown player id in action', event)
 					return []
