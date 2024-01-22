@@ -1,4 +1,5 @@
 import { useColorMode } from '@kobalte/core'
+import { createMediaQuery } from '@solid-primitives/media'
 import { isEqual } from 'lodash-es'
 import { filter, first, from as rxFrom, skip } from 'rxjs'
 import {
@@ -51,17 +52,25 @@ export default function Game(props: { gameId: string }) {
 		width: window.innerWidth,
 		height: window.innerHeight,
 	})
-	onMount(() => {
-		window.addEventListener('resize', () => {
-			setWindowSize({ width: window.innerWidth, height: window.innerHeight })
-		})
+
+	window.addEventListener('resize', () => {
+		setWindowSize({ width: window.innerWidth, height: window.innerHeight })
 	})
 
+	let isPortrait: () => boolean
+	let isSmallPortrait: () => boolean
+	{
+		const _isPortrait = createMediaQuery('(max-aspect-ratio: 7/6)')
+		const _isSmallPortrait = createMediaQuery('(max-width: 700px)')
+		isPortrait = createMemo(() => _isPortrait())
+		isSmallPortrait = createMemo(() => _isSmallPortrait())
+	}
+
 	const boardSizeCss = (): number => {
-		if (windowSize().width < windowSize().height && windowSize().width > 700) {
-			return windowSize().width - 80
-		} else if (windowSize().width < windowSize().height && windowSize().width <= 700) {
-			return windowSize().width - 30
+		if (isSmallPortrait()) {
+			return Math.min(windowSize().width - 30, windowSize().height - 160)
+		} else if (isPortrait()) {
+			return Math.min(windowSize().width - 80, windowSize().height - 160)
 		} else {
 			return windowSize().height - 170
 		}

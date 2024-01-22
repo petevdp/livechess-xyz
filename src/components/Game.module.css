@@ -24,7 +24,7 @@
 	'bottom-left-actions player   clock-player   .';
 }
 
-@media screen and (max-aspect-ratio: 1/1) {
+@media screen and (max-aspect-ratio: 7/6) {
 	.boardContainer.showHistory {
 		grid-template-columns: 1fr max-content max-content 1fr;
 		grid-template-rows: repeat(5, auto);

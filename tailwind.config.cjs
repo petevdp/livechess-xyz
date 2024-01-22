@@ -5,7 +5,7 @@ export default {
 	theme: {
 		extend: {
 			screens: {
-				'wc': {raw: "(max-aspect-ratio: 1/1)"}
+				'wc': {raw: "(max-aspect-ratio: 7/6)"}
 			}
 		},
 	},
