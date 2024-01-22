@@ -321,14 +321,23 @@ export default function Game(props: { gameId: string }) {
 			return modified
 		}
 
-		grabbedPieceCanvas.addEventListener('mousedown', (e) => mouseDownListener(e.clientX, e.clientY))
+		grabbedPieceCanvas.addEventListener('mousedown', (e) => {
+			e.button === 0 && handlePrimaryPress(e.clientX, e.clientY)
+		})
+
+		grabbedPieceCanvas.addEventListener('contextmenu', (e) => {
+			e.preventDefault()
+			handleSecondaryPress()
+		})
+
+
 		grabbedPieceCanvas.addEventListener('touchstart', (e) => {
 			if (e.targetTouches.length === 0) return
 			const touch = e.targetTouches[0]
-			mouseDownListener(touch.clientX, touch.clientY)
+			handlePrimaryPress(touch.clientX, touch.clientY)
 		})
 
-		function mouseDownListener(clientX: number, clientY: number) {
+		function handlePrimaryPress(clientX: number, clientY: number) {
 			if (!game.isClientPlayerParticipating || !game.viewingLiveBoard) return
 			const rect = grabbedPieceCanvas.getBoundingClientRect()
 			const [x, y] = [clientX - rect.left, clientY - rect.top]
@@ -369,14 +378,31 @@ export default function Game(props: { gameId: string }) {
 			})
 		}
 
-		grabbedPieceCanvas.addEventListener('mouseup', (e) => mouseUpListener(e.clientX, e.clientY))
+		function handleSecondaryPress() {
+			if (!game.isClientPlayerParticipating || !game.viewingLiveBoard) return
+			// TODO draw arrows
+			if (grabbingPieceSquare()) {
+				batch(() => {
+					setGrabbingPieceSquare(false)
+					setGrabbedMousePos(null)
+				})
+			} else {
+				batch(() => {
+					setActivePieceSquare(null)
+				})
+			}
+		}
+
+		grabbedPieceCanvas.addEventListener('mouseup', (e) => {
+			if (e.button === 0) handlePrimaryRelease(e.clientX, e.clientY)
+		})
 		grabbedPieceCanvas.addEventListener('touchend', (e) => {
 			if (e.changedTouches.length === 0) return
 			const touch = e.changedTouches[0]
-			mouseUpListener(touch.clientX + touchOffsetX(), touch.clientY + touchOffsetY())
+			handlePrimaryRelease(touch.clientX + touchOffsetX(), touch.clientY + touchOffsetY())
 		})
 
-		function mouseUpListener(clientX: number, clientY: number) {
+		function handlePrimaryRelease(clientX: number, clientY: number) {
 			if (!game.isClientPlayerParticipating || !game.viewingLiveBoard) return
 			const rect = grabbedPieceCanvas.getBoundingClientRect()
 			const square = getSquareFromDisplayCoords(clientX - rect.left, clientY - rect.top)
@@ -525,7 +551,7 @@ export default function Game(props: { gameId: string }) {
 		)
 			.pipe(
 				skip(1),
-				filter(([pastWarnThreshold, isPlayerParticipating]) => pastWarnThreshold && isPlayerParticipating),
+				filter(([pastWarnThreshold, isPlayerParticipating]) => !!pastWarnThreshold && isPlayerParticipating),
 				first()
 			)
 			.subscribe(() => {
@@ -714,8 +740,9 @@ function Player(props: { player: G.PlayerWithColor; class: string }) {
 					<HoverCardTrigger>{title}</HoverCardTrigger>
 					<HoverCardContent
 						class="bg-destructive border-destructive p-1 w-max text-sm flex space-x-2 items-center justify-between">
-						<span
-							class="text-balance text-destructive-foreground">{`${P.settings.usingTouch ? 'Tap' : 'Click'} square to place duck`}</span>
+						<span class="text-balance text-destructive-foreground">{`${
+							P.settings.usingTouch ? 'Tap' : 'Click'
+						} square to place duck`}</span>
 						<Button
 							class="text-xs text-destructive-foreground whitespace-nowrap bg-black"
 							variant="secondary"
