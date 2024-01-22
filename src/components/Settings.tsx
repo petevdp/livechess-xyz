@@ -5,7 +5,6 @@ import { Button } from '~/components/ui/button.tsx'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog.tsx'
 import { Input } from '~/components/ui/input.tsx'
 import { Label } from '~/components/ui/label.tsx'
-import { Switch } from '~/components/ui/switch.tsx'
 import { Choice, MultiChoiceButton } from '~/components/utils/MultiChoiceButton.tsx'
 import * as P from '~/systems/player.ts'
 
@@ -78,13 +77,6 @@ export function SettingsDialog() {
 									onChange={(id) => P.setSettings({touchOffsetDirection: id})}
 								/>
 							</Show>
-						</div>
-						<div class="flex w-full items-center justify-between space-x-2">
-							<Label class="text-right">Close QR Code Dialog on Join</Label>
-							<Switch
-								checked={P.settings.closeQrCodeDialogOnJoin}
-								onchange={() => P.setSettings({closeQrCodeDialogOnJoin: !P.settings.closeQrCodeDialogOnJoin})}
-							/>
 						</div>
 					</div>
 					<DialogFooter>
