@@ -20,6 +20,7 @@
 		"@fastify/static": "^6.12.0",
 		"@fastify/websocket": "^8.3.1",
 		"@kobalte/core": "^0.11.2",
+		"@msgpack/msgpack": "3.0.0-beta2",
 		"@peculiar/webcrypto": "^1.4.4",
 		"@solid-primitives/deep": "^0.2.4",
 		"@solid-primitives/media": "^2.2.6",

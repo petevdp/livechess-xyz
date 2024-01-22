@@ -17,6 +17,9 @@ dependencies:
   '@kobalte/core':
     specifier: ^0.11.2
     version: 0.11.2(solid-js@1.8.7)
+  '@msgpack/msgpack':
+    specifier: 3.0.0-beta2
+    version: 3.0.0-beta2
   '@peculiar/webcrypto':
     specifier: ^1.4.4
     version: 1.4.4
@@ -1618,6 +1621,11 @@ packages:
   /@lukeed/ms@2.0.2:
     resolution: {integrity: sha512-9I2Zn6+NJLfaGoz9jN3lpwDgAYvfGeNYdbAIjJOqzs4Tpc+VU3Jqq4IofSUBKajiDS8k9fZIg18/z13mpk1bsA==}
     engines: {node: '>=8'}
+    dev: false
+
+  /@msgpack/msgpack@3.0.0-beta2:
+    resolution: { integrity: sha512-y+l1PNV0XDyY8sM3YtuMLK5vE3/hkfId+Do8pLo/OPxfxuFAUwcGz3oiiUuV46/aBpwTzZ+mRWVMtlSKbradhw== }
+    engines: { node: '>= 14' }
     dev: false
 
   /@nodelib/fs.scandir@2.1.5:

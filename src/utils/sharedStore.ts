@@ -1,5 +1,6 @@
+import { decode, encode } from '@msgpack/msgpack'
 import { until } from '@solid-primitives/promise'
-import {isEqual} from 'lodash-es'
+import { isEqual } from 'lodash-es'
 import { Observable, Subject, Subscription, concatMap, endWith, first, firstValueFrom, merge, share } from 'rxjs'
 import { batch, createSignal, onCleanup } from 'solid-js'
 import { createStore, produce, unwrap } from 'solid-js/store'
@@ -701,7 +702,7 @@ export class SharedStoreProvider<Event extends any> {
 		// we assume all mutations we receive are committed
 		return this.message$.pipe(
 			concatMap((message: SharedStoreMessage) => {
-				if (message.type === 'mutation') return [parseContent(message.mutation)]
+				if (message.type === 'mutation') return [decodeContent(message.mutation)]
 				return []
 			})
 		)
@@ -746,7 +747,7 @@ export class SharedStoreProvider<Event extends any> {
 	observeClientControlledStates<C extends ClientControlledState>(): Observable<ClientControlledStates<C>> {
 		return this.message$.pipe(
 			concatMap((message: SharedStoreMessage) => {
-				if (message.type === 'client-controlled-states') return [parseContent(message.states)]
+				if (message.type === 'client-controlled-states') return [decodeContent(message.states)]
 				return []
 			})
 		)
@@ -770,7 +771,7 @@ export class SharedStoreProvider<Event extends any> {
 						this.clientId = message.config.clientId
 						const config: ClientConfig<T> = {
 							...message.config,
-							initialState: parseContent(message.config.initialState) as T,
+							initialState: decodeContent(message.config.initialState) as T,
 						}
 						return [config]
 					}
@@ -789,11 +790,18 @@ export class SharedStoreProvider<Event extends any> {
 }
 
 export function encodeContent(content: any) {
-	return btoa(JSON.stringify(content))
+	//@ts-ignore
+	return btoa(String.fromCharCode.apply(null, encode(content)))
 }
 
-function parseContent(content: Base64String) {
-	return JSON.parse(atob(content))
+function decodeContent(str: Base64String) {
+	const strArr = atob(str).split('') as (string | number)[]
+	// updating in place so we don't need an extra array allocation
+	for (let i = 0; i < strArr.length; i++) {
+		strArr[i] = (strArr[i] as string).charCodeAt(0)
+	}
+	const arr = new Uint8Array(strArr as number[])
+	return decode(arr)
 }
 
 export class SharedStoreTransactionBuilder<Event extends any> {
