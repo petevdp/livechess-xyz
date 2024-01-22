@@ -1,19 +1,16 @@
-import { trackStore } from '@solid-primitives/deep';
-import { until } from '@solid-primitives/promise';
-import { firstValueFrom } from 'rxjs';
-import { createEffect, createRoot } from 'solid-js';
-import { unwrap } from 'solid-js/store';
-import { describe, expect, it, test } from 'vitest';
+import { trackStore } from '@solid-primitives/deep'
+import { until } from '@solid-primitives/promise'
+import { firstValueFrom } from 'rxjs'
+import { createEffect, createRoot } from 'solid-js'
+import { unwrap } from 'solid-js/store'
+import { describe, expect, it, test } from 'vitest'
 
-
-
-import { SERVER_HOST } from '../config.ts';
-import { DELETE, PUSH, SharedStore, SharedStoreProvider, buildTransaction, initSharedStore, newNetwork } from './sharedStore.ts';
-import { sleep } from './time.ts';
-
+import { SERVER_HOST } from '../config.ts'
+import { DELETE, PUSH, SharedStore, SharedStoreProvider, buildTransaction, initSharedStore, newNetwork } from './sharedStore.ts'
+import { sleep } from './time.ts'
 
 /**
- * All of the tests below assume that the sharedstore server  is running on localhost:8080
+ * All the tests below assume that the shareStore server  is running on localhost:8080
  */
 describe('network provider/shared store', () => {
 	it('can create a network', async () => {
@@ -32,9 +29,9 @@ describe('network provider/shared store', () => {
 		const network = await newNetwork(SERVER_HOST)
 		const provider1 = new SharedStoreProvider(SERVER_HOST, network.networkId)
 		const provider2 = new SharedStoreProvider(SERVER_HOST, network.networkId)
-      const toDispose: (() => void)[] = []
+		const toDispose: (() => void)[] = []
 
-			type T = { ayy: string; lmao?: string }
+		type T = { ayy: string; lmao?: string }
 		let leaderStore = null as unknown as ReturnType<typeof initSharedStore>
 		let followerStore = null as unknown as ReturnType<typeof initSharedStore>
 
@@ -113,14 +110,14 @@ describe('network provider/shared store', () => {
 		const network = await newNetwork(SERVER_HOST)
 		let leaderStore = null as unknown as SharedStore<{ ayy: string }>
 		let followerStore = null as unknown as SharedStore<{ ayy: string }>
-      const toDispose: Function[] = []
+		const toDispose: Function[] = []
 
-			createRoot((d) => {
-				const provider1 = new SharedStoreProvider(SERVER_HOST, network.networkId)
-				toDispose.push(d)
-				//@ts-expect-error
-				leaderStore = initSharedStore(provider1, {}, { ayy: 'lmao' })
-			})
+		createRoot((d) => {
+			const provider1 = new SharedStoreProvider(SERVER_HOST, network.networkId)
+			toDispose.push(d)
+			//@ts-expect-error
+			leaderStore = initSharedStore(provider1, {}, { ayy: 'lmao' })
+		})
 
 		await sleep(200)
 

@@ -1,28 +1,23 @@
-import { until } from '@solid-primitives/promise';
-import { useNavigate, useParams } from '@solidjs/router';
-import { Subscription } from 'rxjs';
-import { Match, Resource, Show, Switch, createEffect, createResource, createSignal, getOwner, onCleanup } from 'solid-js';
+import { until } from '@solid-primitives/promise'
+import { useNavigate, useParams } from '@solidjs/router'
+import { Subscription } from 'rxjs'
+import { Match, Resource, Show, Switch, createEffect, createResource, createSignal, getOwner, onCleanup } from 'solid-js'
 
-
-
-import { Spinner } from '~/components/Spinner.tsx';
-import { Button } from '~/components/ui/button.tsx';
-import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card.tsx';
-import { Checkbox } from '~/components/ui/checkbox.tsx';
-import { Input } from '~/components/ui/input.tsx';
-import { Label } from '~/components/ui/label.tsx';
-import { SERVER_HOST } from '~/config.ts';
-import * as Errors from '~/systems/errors.ts';
-import * as Pieces from '~/systems/piece.tsx';
-import * as P from '~/systems/player.ts';
-import * as R from '~/systems/room.ts';
-import { checkNetworkExists } from '~/utils/sharedStore.ts';
-
-
+import { Spinner } from '~/components/Spinner.tsx'
+import { Button } from '~/components/ui/button.tsx'
+import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card.tsx'
+import { Checkbox } from '~/components/ui/checkbox.tsx'
+import { Input } from '~/components/ui/input.tsx'
+import { Label } from '~/components/ui/label.tsx'
+import { SERVER_HOST } from '~/config.ts'
+import * as Errors from '~/systems/errors.ts'
+import * as Pieces from '~/systems/piece.tsx'
+import * as P from '~/systems/player.ts'
+import * as R from '~/systems/room.ts'
+import { checkNetworkExists } from '~/utils/sharedStore.ts'
 
 import { AppContainer, ScreenFittingContent } from './AppContainer.tsx'
 import { Room } from './Room.tsx'
-
 
 type ConnectionStatus = 'connected' | 'disconnected' | 'connecting'
 type PlayerFormState =
@@ -126,7 +121,7 @@ export default function RoomGuard() {
 		<AppContainer>
 			<Switch>
 				<Match when={playerFormState().state === 'visible'}>
-            {/* @ts-expect-error fuck it */}
+					{/* @ts-expect-error fuck it */}
 					<PlayerForm {...playerFormState().props} />
 				</Match>
 				<Match when={!R.room() || connectionStatus() === 'connecting'}>
@@ -185,8 +180,12 @@ export function PlayerForm(props: PlayerFormProps) {
 						<div class="flex justify-between space-x-3">
 							<Show when={props.numPlayers < 2}>
 								<div class="flex items-center space-x-1">
-                    <Checkbox class="space-x-0" id="spectating-checkbox" checked={isSpectating()}
-                              onChange={() => setIsSpectating((is) => !is)}/>
+									<Checkbox
+										class="space-x-0"
+										id="spectating-checkbox"
+										checked={isSpectating()}
+										onChange={() => setIsSpectating((is) => !is)}
+									/>
 									<Label for="spectating-checkbox-input">Spectate</Label>
 								</div>
 							</Show>

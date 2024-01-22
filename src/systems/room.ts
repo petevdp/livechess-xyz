@@ -1,23 +1,18 @@
-import { trackDeep, trackStore } from '@solid-primitives/deep';
-import { until } from '@solid-primitives/promise';
-import { isEqual } from 'lodash-es';
-import { Observable, concatMap, first, interval, mergeAll, race, from as rxFrom, startWith } from 'rxjs';
-import { map } from 'rxjs/operators';
-import { Owner, createEffect, createMemo, createRoot, createSignal, getOwner, onCleanup, runWithOwner, untrack } from 'solid-js';
-import { unwrap } from 'solid-js/store';
+import { trackDeep, trackStore } from '@solid-primitives/deep'
+import { until } from '@solid-primitives/promise'
+import { isEqual } from 'lodash-es'
+import { Observable, concatMap, first, interval, mergeAll, race, from as rxFrom, startWith } from 'rxjs'
+import { map } from 'rxjs/operators'
+import { Owner, createEffect, createMemo, createRoot, createSignal, getOwner, onCleanup, runWithOwner, untrack } from 'solid-js'
+import { unwrap } from 'solid-js/store'
 
+import { createId } from '~/utils/ids.ts'
+import { DELETE, PUSH, SharedStore, SharedStoreProvider, StoreMutation, initSharedStore, newNetwork } from '~/utils/sharedStore.ts'
 
-
-import { createId } from '~/utils/ids.ts';
-import { DELETE, PUSH, SharedStore, SharedStoreProvider, StoreMutation, initSharedStore, newNetwork } from '~/utils/sharedStore.ts';
-
-
-
-import { PLAYER_TIMEOUT, SERVER_HOST } from '../config.ts';
-import * as G from './game/game.ts';
-import * as GL from './game/gameLogic.ts';
-import * as P from './player.ts';
-
+import { PLAYER_TIMEOUT, SERVER_HOST } from '../config.ts'
+import * as G from './game/game.ts'
+import * as GL from './game/gameLogic.ts'
+import * as P from './player.ts'
 
 //#region types
 export type RoomMember = P.Player & {

@@ -5,7 +5,6 @@ import { splitProps } from 'solid-js'
 
 import { cn } from '~/lib/utils'
 
-
 const DropdownMenu: Component<DropdownMenuPrimitive.DropdownMenuRootProps> = (props) => {
 	return <DropdownMenuPrimitive.Root gutter={4} {...props} />
 }

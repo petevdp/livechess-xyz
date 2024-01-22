@@ -1,13 +1,12 @@
-import { Toast as ToastPrimitive, toaster } from '@kobalte/core';
-import type { VariantProps } from 'class-variance-authority';
-import { cva } from 'class-variance-authority';
-import { TbX } from 'solid-icons/tb';
-import type { Component, JSX } from 'solid-js';
-import { splitProps } from 'solid-js';
+import { Toast as ToastPrimitive, toaster } from '@kobalte/core'
+import type { VariantProps } from 'class-variance-authority'
+import { cva } from 'class-variance-authority'
+import { TbX } from 'solid-icons/tb'
+import type { Component, JSX } from 'solid-js'
+import { splitProps } from 'solid-js'
 import { Portal } from 'solid-js/web'
 
 import { cn } from '~/lib/utils'
-
 
 const Toaster: Component<ToastPrimitive.ToastListProps> = (props) => {
 	const [, rest] = splitProps(props, ['class'])

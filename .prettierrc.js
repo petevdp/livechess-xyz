@@ -2,7 +2,6 @@
 const config = {
 	trailingComma: 'es5',
 	useTabs: true,
-	tabWidth: 1,
 	semi: false,
 	singleQuote: true,
 	printWidth: 140,

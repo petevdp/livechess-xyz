@@ -6,7 +6,6 @@ import { createId } from '~/utils/ids.ts'
 
 import * as R from './room.ts'
 
-
 export type Player = {
 	id: string
 	name: string

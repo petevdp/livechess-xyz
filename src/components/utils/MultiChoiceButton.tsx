@@ -3,7 +3,6 @@ import { For, JSXElement, Show } from 'solid-js'
 import { Button, ButtonProps } from '~/components/ui/button.tsx'
 import { cn } from '~/lib/utils.ts'
 
-
 export type Choice<T> = { id: T; label: string }
 
 export function MultiChoiceButton<T extends string>(props: {

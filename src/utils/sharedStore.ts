@@ -1,10 +1,9 @@
-import { decode, encode } from '@msgpack/msgpack';
-import { until } from '@solid-primitives/promise';
-import { isEqual } from 'lodash-es';
-import { Observable, Subject, Subscription, concatMap, endWith, first, firstValueFrom, merge, share } from 'rxjs';
-import { batch, createSignal, onCleanup } from 'solid-js';
-import { createStore, produce, unwrap } from 'solid-js/store';
-
+import { decode, encode } from '@msgpack/msgpack'
+import { until } from '@solid-primitives/promise'
+import { isEqual } from 'lodash-es'
+import { Observable, Subject, Subscription, concatMap, endWith, first, firstValueFrom, merge, share } from 'rxjs'
+import { batch, createSignal, onCleanup } from 'solid-js'
+import { createStore, produce, unwrap } from 'solid-js/store'
 
 //#region types
 
@@ -784,7 +783,7 @@ export class SharedStoreProvider<Event> {
 }
 
 export function encodeContent(content: any) {
-    //@ts-expect-error
+	//@ts-expect-error
 	return btoa(String.fromCharCode.apply(null, encode(content)))
 }
 
@@ -842,11 +841,11 @@ export async function buildTransaction<Event>(fn: (t: SharedStoreTransactionBuil
 }
 
 export async function newNetwork(host?: string) {
-    const url = `${window.location.protocol}//${host || window.location.host}/networks`
+	const url = `${window.location.protocol}//${host || window.location.host}/networks`
 	return (await fetch(url, { method: 'POST' }).then((res) => res.json())) as NewNetworkResponse
 }
 
 export async function checkNetworkExists(networkId: string, host?: string) {
-    const url = `${window.location.protocol}//${host || window.location.host}/networks/${networkId}`
+	const url = `${window.location.protocol}//${host || window.location.host}/networks/${networkId}`
 	return await fetch(url, { method: 'HEAD' }).then((res) => res.status === 200)
 }

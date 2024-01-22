@@ -6,7 +6,6 @@ import * as R from '~/systems/room.ts'
 
 import { AppContainer, ScreenFittingContent } from './AppContainer.tsx'
 
-
 export function Home() {
 	const navigate = useNavigate()
 	async function createRoom() {

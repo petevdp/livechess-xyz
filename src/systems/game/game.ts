@@ -1,23 +1,18 @@
-import { until } from '@solid-primitives/promise';
-import { isEqual } from 'lodash-es';
-import { Observable, ReplaySubject, combineLatest, concatMap, distinctUntilChanged, from as rxFrom, skip } from 'rxjs';
-import { map } from 'rxjs/operators';
-import { Accessor, createEffect, createMemo, createSignal, from, getOwner, observable, onCleanup } from 'solid-js';
-import { unwrap } from 'solid-js/store';
+import { until } from '@solid-primitives/promise'
+import { isEqual } from 'lodash-es'
+import { Observable, ReplaySubject, combineLatest, concatMap, distinctUntilChanged, from as rxFrom, skip } from 'rxjs'
+import { map } from 'rxjs/operators'
+import { Accessor, createEffect, createMemo, createSignal, from, getOwner, observable, onCleanup } from 'solid-js'
+import { unwrap } from 'solid-js/store'
 
+import { PUSH } from '~/utils/sharedStore.ts'
+import { storeToSignal, trackAndUnwrap } from '~/utils/solid.ts'
+import { unit } from '~/utils/unit.ts'
 
-
-import { PUSH } from '~/utils/sharedStore.ts';
-import { storeToSignal, trackAndUnwrap } from '~/utils/solid.ts';
-import { unit } from '~/utils/unit.ts';
-
-
-
-import * as P from '../player.ts';
-import * as R from '../room.ts';
-import * as GL from './gameLogic.ts';
-import { MoveDisambiguation } from './gameLogic.ts';
-
+import * as P from '../player.ts'
+import * as R from '../room.ts'
+import * as GL from './gameLogic.ts'
+import { MoveDisambiguation } from './gameLogic.ts'
 
 //#region types
 export type PlayerWithColor = P.Player & { color: GL.Color }
@@ -201,7 +196,7 @@ export class Game {
 			if (this.viewedMoveIndex() !== state.moveHistory.length - 1 || this.outcome) return
 			// check that we're still on the same currentMove
 			if (this.state.moveHistory.length !== expectedMoveIndex) return
-        const board = GL.getBoard(state)
+			const board = GL.getBoard(state)
 			if (!GL.isPlayerTurn(board, this.bottomPlayer.color) || !board.pieces[currentMove.from]) return
 			const result = GL.validateAndPlayMove(
 				currentMove.from,
@@ -358,17 +353,17 @@ export class Game {
 				.map((p) => p.type)
 		)
 
-      for (const [key, count] of Object.entries(currentPieceCounts)) {
-				pieceCounts[key as keyof typeof pieceCounts] -= count
+		for (const [key, count] of Object.entries(currentPieceCounts)) {
+			pieceCounts[key as keyof typeof pieceCounts] -= count
+		}
+
+		const capturedPieces: GL.ColoredPiece[] = []
+
+		for (const [key, count] of Object.entries(pieceCounts)) {
+			for (let i = 0; i < count; i++) {
+				capturedPieces.push({ type: key as GL.Piece, color })
 			}
-
-			const capturedPieces: GL.ColoredPiece[] = []
-
-      for (const [key, count] of Object.entries(pieceCounts)) {
-          for (let i = 0; i < count; i++) {
-              capturedPieces.push({type: key as GL.Piece, color})
-          }
-      }
+		}
 
 		return capturedPieces
 	}
@@ -474,7 +469,8 @@ export class Game {
 		if (!this.isClientPlayerParticipating) return
 		const moveOffered = this.lockstepState.moveHistory.length
 		this.room.sharedStore.setStoreWithRetries(() => {
-        if (!this.state || this.lockstepState.moveHistory.length !== moveOffered || GL.getGameOutcome(this.state, this.parsedGameConfig)) return
+			if (!this.state || this.lockstepState.moveHistory.length !== moveOffered || GL.getGameOutcome(this.state, this.parsedGameConfig))
+				return
 			const drawIsOfferedBy = GL.getDrawIsOfferedBy(this.state)
 			if (drawIsOfferedBy !== this.bottomPlayer.color) return
 			return {
@@ -610,9 +606,9 @@ function observeMoves(gameState: GL.GameState) {
 }
 
 function useClock(move$: Observable<GL.Move>, gameConfig: GL.ParsedGameConfig, gameEnded: Accessor<boolean>) {
-    const startingTime = gameConfig.timeControl
+	const startingTime = gameConfig.timeControl
 	if (gameConfig.timeControl === null) {
-      return () => ({white: 0, black: 0})
+		return () => ({ white: 0, black: 0 })
 	}
 	const [white, setWhite] = createSignal(startingTime!)
 	const [black, setBlack] = createSignal(startingTime!)
@@ -672,16 +668,16 @@ function useClock(move$: Observable<GL.Move>, gameConfig: GL.ParsedGameConfig, g
 }
 
 function getMoveHistoryAsNotation(state: GL.GameState) {
-    const moves: [string, string | null][] = []
-    for (let i = 0; i < Math.ceil(state.moveHistory.length / 2); i++) {
-        const whiteMove = GL.moveToAlgebraicNotation(i * 2, state)
-        if (i * 2 + 1 >= state.moveHistory.length) {
-            moves.push([whiteMove, null])
-            break
-        }
-        const blackMove = GL.moveToAlgebraicNotation(i * 2 + 1, state)
-        moves.push([whiteMove, blackMove])
-    }
+	const moves: [string, string | null][] = []
+	for (let i = 0; i < Math.ceil(state.moveHistory.length / 2); i++) {
+		const whiteMove = GL.moveToAlgebraicNotation(i * 2, state)
+		if (i * 2 + 1 >= state.moveHistory.length) {
+			moves.push([whiteMove, null])
+			break
+		}
+		const blackMove = GL.moveToAlgebraicNotation(i * 2 + 1, state)
+		moves.push([whiteMove, blackMove])
+	}
 	return moves
 }
 

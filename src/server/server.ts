@@ -1,17 +1,14 @@
-import fastifyCors from '@fastify/cors';
-import fastifyStatic from '@fastify/static';
-import fastifyWebsocket from '@fastify/websocket';
-import { Crypto } from '@peculiar/webcrypto';
-import Fastify from 'fastify';
-import * as fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'url';
-import * as ws from 'ws';
+import fastifyCors from '@fastify/cors'
+import fastifyStatic from '@fastify/static'
+import fastifyWebsocket from '@fastify/websocket'
+import { Crypto } from '@peculiar/webcrypto'
+import Fastify from 'fastify'
+import * as fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'url'
+import * as ws from 'ws'
 
-
-
-import * as SSS from './systems/sharedStoreNetworks.ts';
-
+import * as SSS from './systems/sharedStoreNetworks.ts'
 
 if (typeof crypto === 'undefined') {
 	import('@peculiar/webcrypto').then(() => {

@@ -4,7 +4,6 @@ import { splitProps } from 'solid-js'
 
 import { cn } from '~/lib/utils'
 
-
 const Popover: Component<PopoverPrimitive.PopoverRootProps> = (props) => {
 	return <PopoverPrimitive.Root gutter={4} {...props} />
 }

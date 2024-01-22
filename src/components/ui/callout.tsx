@@ -5,7 +5,6 @@ import { splitProps } from 'solid-js'
 
 import { cn } from '~/lib/utils'
 
-
 const calloutVariants = cva('rounded-md border-l-4 p-2 pl-4', {
 	variants: {
 		variant: {

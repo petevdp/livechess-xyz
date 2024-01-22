@@ -1,12 +1,9 @@
 /* @refresh reload */
-import 'solid-devtools';
-import { render } from 'solid-js/web';
+import 'solid-devtools'
+import { render } from 'solid-js/web'
 
-
-
-import App from './App';
+import App from './App'
 import './index.css'
-
 
 if (!import.meta.env.PROD) {
 	import('./console.ts')

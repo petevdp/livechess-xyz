@@ -1,7 +1,6 @@
-import { captureStoreUpdates, trackStore } from '@solid-primitives/deep';
-import { Accessor, createEffect, createRoot, createSignal, untrack } from 'solid-js';
-import { unwrap } from 'solid-js/store';
-
+import { captureStoreUpdates, trackStore } from '@solid-primitives/deep'
+import { Accessor, createEffect, createRoot, createSignal, untrack } from 'solid-js'
+import { unwrap } from 'solid-js/store'
 
 // reg until seems to be broken
 export function myUntil(fn: () => any) {
