@@ -1206,7 +1206,7 @@ function squareNotationToDisplayCoords(square: string, boardFlipped: boolean, sq
 }
 
 function checkPastWarnThreshold(timeControl: GL.TimeControl, clock: number) {
-	if (timeControl === 'none') return false
+	if (timeControl === 'unlimited') return false
 	switch (timeControl) {
 		case '1m':
 			return clock < 1000 * 15
