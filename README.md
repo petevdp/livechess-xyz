@@ -16,8 +16,6 @@ Just paste a link or have your friend scan a QR code and you're ready to play.
 - Spectator mode allowing third parties to spectate
 - Desktop and mobile friendly
 
-## Screenshots
-
 ## Planned features
 - pre-moves
 - more gamemodes
