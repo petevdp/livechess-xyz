@@ -1,6 +1,7 @@
 import { isEqual, partition } from 'lodash-es'
 import hash from 'object-hash'
 
+
 //#region primitives
 
 export const PIECES = ['pawn', 'knight', 'bishop', 'rook', 'queen', 'king', 'duck'] as const
@@ -692,7 +693,6 @@ function findMoveAmbiguitiesInPlace(moves: CandidateMove[]) {
 			move.algebraicNotationAmbiguity.push('file')
 		}
 	}
-	console.log({ rankAmbiguities, fileAmbiguities })
 }
 
 function newCandidateMove(options: CandidateMoveOptions) {
