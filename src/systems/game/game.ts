@@ -399,13 +399,18 @@ export class Game {
 			distinctUntilChanged(isEqual)
 		)
 
-		const outcome$ = combineLatest([gameOutcome$, timeout$]).pipe(
-			map(([outcome, timeouts]): GL.GameOutcome | undefined => {
-				if (timeouts.white) return { winner: 'black', reason: 'flagged' }
-				if (timeouts.black) return { winner: 'white', reason: 'flagged' }
-				return outcome || undefined
-			})
-		)
+		let outcome$: Observable<GL.GameOutcome | undefined>
+		if (this.gameConfig.timeControl === 'unlimited') {
+			outcome$ = gameOutcome$.pipe(map((outcome) => outcome || undefined))
+		} else {
+			outcome$ = combineLatest([gameOutcome$, timeout$]).pipe(
+				map(([outcome, timeouts]): GL.GameOutcome | undefined => {
+					if (timeouts.white) return { winner: 'black', reason: 'flagged' }
+					if (timeouts.black) return { winner: 'white', reason: 'flagged' }
+					return outcome || undefined
+				})
+			)
+		}
 		this.getOutcome = from(outcome$)
 	}
 
@@ -605,8 +610,11 @@ function observeMoves(gameState: GL.GameState) {
 
 function useClock(move$: Observable<GL.Move>, gameConfig: GL.ParsedGameConfig, gameEnded: Accessor<boolean>) {
 	let startingTime = gameConfig.timeControl
-	const [white, setWhite] = createSignal(startingTime)
-	const [black, setBlack] = createSignal(startingTime)
+	if (gameConfig.timeControl === null) {
+		return () => ({white: 0, black: 0})
+	}
+	const [white, setWhite] = createSignal(startingTime!)
+	const [black, setBlack] = createSignal(startingTime!)
 	let lastMoveTs = 0
 	let toPlay: GL.Color = 'white'
 
@@ -616,9 +624,9 @@ function useClock(move$: Observable<GL.Move>, gameConfig: GL.ParsedGameConfig, g
 		if (lastMoveTs !== 0) {
 			const lostTime = move.ts - lastMoveTs - gameConfig.increment
 			if (toPlay === 'white') {
-				setWhite(Math.min(white() - lostTime, startingTime))
+				setWhite(Math.min(white() - lostTime, startingTime!))
 			} else {
-				setBlack(Math.min(black() - lostTime, startingTime))
+				setBlack(Math.min(black() - lostTime, startingTime!))
 			}
 		}
 		toPlay = toPlay === 'white' ? 'black' : 'white'

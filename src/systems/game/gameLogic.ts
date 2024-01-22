@@ -191,7 +191,7 @@ export const VARIANTS = ['regular', 'fog-of-war', 'duck', 'fischer-random'] as c
 export type Variant = (typeof VARIANTS)[number]
 
 export const VARIANTS_ALLOWING_SELF_CHECKS = ['fog-of-war', 'duck'] as Variant[]
-export const TIME_CONTROLS = ['15m', '10m', '5m', '3m', '1m'] as const
+export const TIME_CONTROLS = ['15m', '10m', '5m', '3m', '1m', 'unlimited'] as const
 export type TimeControl = (typeof TIME_CONTROLS)[number]
 export const INCREMENTS = ['0', '1', '2', '5'] as const
 export type Increment = (typeof INCREMENTS)[number]
@@ -204,7 +204,7 @@ export type GameConfig = {
 export type ParsedGameConfig = {
 	variant: Variant
 	// all times are in ms
-	timeControl: number
+	timeControl: number | null
 	increment: number
 }
 export const getDefaultGameConfig = (): GameConfig => ({
@@ -996,12 +996,20 @@ export function timeControlToMs(timeControl: TimeControl) {
 }
 
 export function parseGameConfig(config: GameConfig): ParsedGameConfig {
-	const timeControl = timeControlToMs(config.timeControl)
-	const increment = parseFloat(config.increment) * 1000
-	return {
-		variant: config.variant,
-		timeControl,
-		increment,
+	if (config.timeControl !== 'unlimited') {
+		const timeControl = timeControlToMs(config.timeControl)
+		const increment = parseFloat(config.increment) * 1000
+		return {
+			variant: config.variant,
+			timeControl,
+			increment,
+		}
+	} else {
+		return {
+			variant: config.variant,
+			timeControl: null,
+			increment: 0,
+		}
 	}
 }
 

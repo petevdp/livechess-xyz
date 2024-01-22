@@ -339,7 +339,6 @@ export default function Game(props: { gameId: string }) {
 			handleSecondaryPress()
 		})
 
-
 		grabbedPieceCanvas.addEventListener('touchstart', (e) => {
 			if (e.targetTouches.length === 0) return
 			const touch = e.targetTouches[0]
@@ -786,16 +785,18 @@ function Clock(props: { clock: number; class: string; ticking: boolean; timeCont
 	}
 
 	return (
-		<div class={cn('flex items-center justify-end space-x-3 text-xl', props.class)}>
-			<span
-				class="mt-[0.4em] font-mono"
-				classList={{
-					'text-red-500': checkPastWarnThreshold(props.timeControl, props.clock),
-					'animate-pulse': props.ticking && checkPastWarnThreshold(props.timeControl, props.clock),
-					'text-neutral-400': !props.ticking,
-				}}
-			>{`${formattedClock()}`}</span>
-		</div>
+		<Show when={props.timeControl !== 'unlimited'} fallback={<span class={props.class}/>}>
+			<div class={cn('flex items-center justify-end space-x-3 text-xl', props.class)}>
+				<span
+					class="mt-[0.4em] font-mono"
+					classList={{
+						'text-red-500': checkPastWarnThreshold(props.timeControl, props.clock),
+						'animate-pulse': props.ticking && checkPastWarnThreshold(props.timeControl, props.clock),
+						'text-neutral-400': !props.ticking,
+					}}
+				>{`${formattedClock()}`}</span>
+			</div>
+		</Show>
 	)
 }
 
@@ -1205,6 +1206,7 @@ function squareNotationToDisplayCoords(square: string, boardFlipped: boolean, sq
 }
 
 function checkPastWarnThreshold(timeControl: GL.TimeControl, clock: number) {
+	if (timeControl === 'none') return false
 	switch (timeControl) {
 		case '1m':
 			return clock < 1000 * 15

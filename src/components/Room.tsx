@@ -19,6 +19,7 @@ import { getPieceSvg } from '~/systems/piece.tsx'
 import * as P from '~/systems/player.ts'
 import * as R from '~/systems/room.ts'
 
+
 // import { Game } from './Game.tsx'
 
 const Game = lazy(() => import('./Game.tsx'))
@@ -193,10 +194,16 @@ function GameConfigForm() {
 			/>
 			<MultiChoiceButton
 				label={timeControlLabel}
-				listClass="grid grid-rows-1 grid-cols-3 md:grid-cols-5 w-full tex-sm space-x-0 gap-1"
+				listClass="grid grid-rows-1 grid-cols-3 w-full tex-sm space-x-0 gap-1"
 				choices={GL.TIME_CONTROLS.map((tc) => ({ label: tc, id: tc }) satisfies Choice<GL.TimeControl>)}
 				selected={gameConfig().timeControl}
-				onChange={(v) => room!.setGameConfig({ timeControl: v })}
+				onChange={(v): void => {
+					if (v === 'unlimited') {
+						room!.setGameConfig({increment: "0", timeControl: v})
+					} else {
+						room!.setGameConfig({timeControl: v});
+					}
+				}}
 				disabled={!room.isPlayerParticipating || room.leftPlayer?.isReadyForGame}
 			/>
 			<MultiChoiceButton
@@ -204,8 +211,11 @@ function GameConfigForm() {
 				listClass="grid  grid-cols-4 text-sm"
 				choices={GL.INCREMENTS.map((i) => ({ label: `${i}s`, id: i }) satisfies Choice<GL.Increment>)}
 				selected={gameConfig().increment}
-				onChange={(v) => room!.setGameConfig({ increment: v })}
-				disabled={!room.isPlayerParticipating || room.leftPlayer?.isReadyForGame}
+				onChange={(v) => {
+					if (gameConfig().timeControl === 'unlimited') return
+					room!.setGameConfig({increment: v});
+				}}
+				disabled={!room.isPlayerParticipating || room.leftPlayer?.isReadyForGame || gameConfig().timeControl === 'unlimited'}
 			/>
 			<PlayerAwareness />
 		</div>
