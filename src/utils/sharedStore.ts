@@ -779,7 +779,7 @@ export class SharedStoreProvider<Event extends any> {
 				})
 			)
 		).catch((e) => {
-			// throw new Error(`Failed to connect to server: ${e.message}`)
+			throw new Error(`Failed to connect to server: ${e.message}`)
 		})
 	}
 
@@ -801,7 +801,7 @@ function decodeContent(str: Base64String) {
 		strArr[i] = (strArr[i] as string).charCodeAt(0)
 	}
 	const arr = new Uint8Array(strArr as number[])
-	return decode(arr)
+	return decode(arr) as any
 }
 
 export class SharedStoreTransactionBuilder<Event extends any> {
