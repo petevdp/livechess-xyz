@@ -615,7 +615,7 @@ export default function Game(props: { gameId: string }) {
 	function handleMoveNavigation(moveIndex: number | 'live') {
 		if (game.gameConfig.variant === 'fog-of-war') throw new Error('move history navigation not supported for fog of war games')
 		const move = game.state.moveHistory[moveIndex === 'live' ? game.state.moveHistory.length - 1 : moveIndex]
-		Audio.playSoundEffectForMove(move, false, true)
+		move && Audio.playSoundEffectForMove(move, false, true)
 		game.setViewedMove(moveIndex)
 	}
 

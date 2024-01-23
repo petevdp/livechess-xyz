@@ -314,7 +314,10 @@ function PlayerAwareness() {
 			<PlayerColorDisplay color={leftPlayerColor()} />
 			<SwapButton
 				disabled={
-					!room.isPlayerParticipating || room.leftPlayer?.agreePieceSwap || room.rightPlayer?.agreePieceSwap || room.leftPlayer?.isReadyForGame
+					!room.isPlayerParticipating ||
+					room.leftPlayer?.agreePieceSwap ||
+					room.rightPlayer?.agreePieceSwap ||
+					room.leftPlayer?.isReadyForGame
 				}
 				alreadySwapping={room.leftPlayer?.agreePieceSwap || false}
 				initiatePieceSwap={() => room.initiateOrAgreePieceSwap()}
