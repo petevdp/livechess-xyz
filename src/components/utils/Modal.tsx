@@ -3,7 +3,9 @@ import { Accessor, JSXElement, Show, createEffect, createRoot, createSignal, get
 import { Button } from '~/components/ui/button.tsx'
 import { myUntil } from '~/utils/solid.ts'
 
+// eslint-disable-next-line prefer-const
 let modalContainer: HTMLDivElement | null = null
+
 // for some reason checking for reference equality on the JSXElement itself isn't working, so we're wrap it in an object as a workaround
 type ActiveModal = {
 	title: string | null
@@ -158,7 +160,8 @@ export async function prompt<T>(
 		const rendered = component({ onCompleted })
 
 		if (typeof rendered === 'string') {
-			const buttonRef: HTMLButtonElement | null = null
+			// eslint-disable-next-line prefer-const
+			let buttonRef: HTMLButtonElement | null = null
 
 			function keyListener(e: KeyboardEvent) {
 				if (e.key === 'Enter') {

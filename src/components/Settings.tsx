@@ -27,7 +27,8 @@ export function SettingsDialog() {
 		triggerButtonRef?.blur()
 	}
 
-	const triggerButtonRef: HTMLButtonElement | null = null
+	// eslint-disable-next-line prefer-const
+	let triggerButtonRef: HTMLButtonElement | null = null
 
 	return (
 		<Dialog

@@ -45,7 +45,9 @@ export default function Game(props: { gameId: string }) {
 	//#region calc board sizes
 	// let BOARD_SIZE = 600
 	// let SQUARE_SIZE = BOARD_SIZE / 8
-	const boardRef = null as unknown as HTMLDivElement
+
+	// eslint-disable-next-line prefer-const
+	let boardRef = null as unknown as HTMLDivElement
 
 	const [windowSize, setWindowSize] = createSignal({
 		width: window.innerWidth,
