@@ -426,7 +426,7 @@ export function validateAndPlayMove(
 		return true
 	})
 	const candidate = candidates[0]
-	const isCapture = !!getBoard(game).pieces[to]
+	const isCapture = !!getBoard(game).pieces[to] || candidate.enPassant
 	const [newBoard] = applyMoveToBoard(candidate, getBoard(game))
 	const move = candidateMoveToMove(candidate, undefined, isCapture, inCheck(newBoard), duck)
 	if (duck) {
