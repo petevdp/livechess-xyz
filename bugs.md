@@ -1,1 +1,0 @@
-- if you hammer refresh fast enough you can set the room state to 'pregame' somehow
