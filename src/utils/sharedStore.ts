@@ -1,7 +1,7 @@
 import { decode, encode } from '@msgpack/msgpack'
 import { until } from '@solid-primitives/promise'
 import { isEqual } from 'lodash-es'
-import { Observable, Subject, Subscription, concatMap, endWith, first, firstValueFrom, merge, share } from 'rxjs'
+import { Observable, Subject, Subscription, concatMap, endWith, first, firstValueFrom, merge, mergeAll, share } from 'rxjs'
 import { batch, createSignal, onCleanup } from 'solid-js'
 import { createStore, produce, unwrap } from 'solid-js/store'
 
@@ -88,7 +88,7 @@ export type SharedStoreMessage =
 	| {
 			type: 'client-controlled-states'
 			forClient?: string
-			states: Base64String
+			states: Base64String[]
 	  }
 	| SharedStoreTimeoutMessage
 
@@ -335,12 +335,7 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 					event$.next(action)
 				}
 			} else {
-				console.warn(
-					'received mutation with index that is not the next index',
-					receivedAtom.index,
-					appliedTransactions.length,
-					receivedAtom
-				)
+				console.warn('received mutation with index that is not the next index', receivedAtom.index, appliedTransactions.length, receivedAtom)
 			}
 			return
 			//#endregion
@@ -492,6 +487,7 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 	//#region initialize store
 	;(async () => {
 		const clientConfigPromise = provider.awaitClientConfig<S>()
+		const gotStatesPromise = firstValueFrom(provider.message$.pipe(first((msg) => msg.type === 'client-controlled-states')))
 		await provider.waitForConnected()
 		const clientConfig = await clientConfigPromise
 		provider.clientId = clientConfig.clientId
@@ -508,6 +504,10 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 			provider.broadcastClientControlledState(clientControlledStates[provider.clientId!])
 		})
 		appliedTransactions.length = clientConfig.lastMutationIndex + 1
+		if (!isLeader()) {
+			const msg = await gotStatesPromise
+			console.log(msg)
+		}
 		setInitialized(true)
 	})()
 	//#endregion
@@ -579,7 +579,7 @@ function areTransactionsEqual(a: NewSharedStoreTransaction<any>, b: NewSharedSto
 }
 
 export class SharedStoreProvider<Event> {
-	private message$: Observable<SharedStoreMessage>
+	public message$: Observable<SharedStoreMessage>
 	public ws: WebSocket
 	disconnected$: Promise<undefined>
 	clientId?: string
@@ -740,18 +740,21 @@ export class SharedStoreProvider<Event> {
 	observeClientControlledStates<C extends ClientControlledState>(): Observable<ClientControlledStates<C>> {
 		return this.message$.pipe(
 			concatMap((message: SharedStoreMessage) => {
-				if (message.type === 'client-controlled-states') return [decodeContent(message.states)]
+				if (message.type === 'client-controlled-states') return [message.states.map((c) => decodeContent(c))]
 				return []
-			})
+			}),
+			mergeAll()
 		)
 	}
 
 	broadcastClientControlledState(values: ClientControlledState) {
 		this.send({
 			type: 'client-controlled-states',
-			states: encodeContent({
-				[this.clientId!]: values,
-			}),
+			states: [
+				encodeContent({
+					[this.clientId!]: values,
+				}),
+			],
 		})
 	}
 

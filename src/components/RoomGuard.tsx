@@ -153,7 +153,7 @@ export function PlayerForm(props: PlayerFormProps) {
 		e.preventDefault()
 		if (submitted()) return
 		setSubmitted(true)
-		P.setSettings({ name: displayName().trim() })
+		P.settings.name = displayName().trim()
 		props.submitPlayer(displayName(), props.numPlayers >= 2 || isSpectating())
 	}
 
@@ -180,12 +180,7 @@ export function PlayerForm(props: PlayerFormProps) {
 						<div class="flex justify-between space-x-3">
 							<Show when={props.numPlayers < 2}>
 								<div class="flex items-center space-x-1">
-									<Checkbox
-										class="space-x-0"
-										id="spectating-checkbox"
-										checked={isSpectating()}
-										onChange={() => setIsSpectating((is) => !is)}
-									/>
+									<Checkbox class="space-x-0" id="spectating-checkbox" checked={isSpectating()} onChange={() => setIsSpectating((is) => !is)} />
 									<Label for="spectating-checkbox-input">Spectate</Label>
 								</div>
 							</Show>

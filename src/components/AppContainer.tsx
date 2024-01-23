@@ -32,7 +32,7 @@ export function AppContainer(props: ParentProps) {
 				</A>
 				<div class="flex items-center justify-end space-x-1 font-light">
 					<Show when={R.room() && !R.room()!.isPlayerParticipating}>Spectating</Show>
-					<Button size="icon" variant="ghost" onclick={() => P.setSettings({ muteAudio: !P.settings.muteAudio })}>
+					<Button size="icon" variant="ghost" onclick={() => (P.settings.muteAudio = !P.settings.muteAudio)}>
 						{P.settings.muteAudio ? <Svgs.Muted /> : <Svgs.NotMuted />}
 					</Button>
 					<ThemeToggle />

@@ -1,6 +1,5 @@
 import { makePersisted } from '@solid-primitives/storage'
 import { createEffect, createSignal } from 'solid-js'
-import { createStore } from 'solid-js/store'
 
 import { createId } from '~/utils/ids.ts'
 
@@ -16,6 +15,7 @@ export type PlayerSettings = {
 	muteAudio: boolean
 	touchOffsetDirection: 'left' | 'right' | 'none'
 	usingTouch: boolean
+	dismissMultipleClientsWarning: boolean
 }
 
 const [_playerId, setPlayerId] = makePersisted(createSignal(null as string | null), {
@@ -23,15 +23,52 @@ const [_playerId, setPlayerId] = makePersisted(createSignal(null as string | nul
 	storage: localStorage,
 })
 export const playerId = _playerId
-export const [settings, setSettings] = makePersisted(
-	createStore<PlayerSettings>({
-		name: null,
-		muteAudio: false,
-		touchOffsetDirection: 'none',
-		usingTouch: false,
-	}),
-	{ name: 'settings', storage: localStorage }
-)
+
+// we're not using a store and storing them in one property here because we want to independently version these settings
+const [name, setName] = makePersisted(createSignal(null as string | null), { name: 'name', storage: localStorage })
+const [muteAudio, setMuteAudio] = makePersisted(createSignal(false), { name: 'muteAudio', storage: localStorage })
+const [touchOffsetDirection, setTouchOffsetDirection] = makePersisted(createSignal('none' as PlayerSettings['touchOffsetDirection']), {
+	name: 'touchOffsetDirection',
+	storage: localStorage,
+})
+const [usingTouch, setUsingTouch] = makePersisted(createSignal(false), { name: 'usingTouch', storage: localStorage })
+const [dismissMultipleClientsWarning, setDismissMultipleClientsWarning] = makePersisted(createSignal(false), {
+	name: 'dismissMultipleClientsWarning',
+	storage: localStorage,
+})
+
+export const settings: PlayerSettings = {
+	get name() {
+		return name()
+	},
+	set name(value) {
+		setName(value)
+	},
+	get muteAudio() {
+		return muteAudio()
+	},
+	set muteAudio(value) {
+		setMuteAudio(value)
+	},
+	get touchOffsetDirection() {
+		return touchOffsetDirection()
+	},
+	set touchOffsetDirection(value) {
+		setTouchOffsetDirection(value)
+	},
+	get usingTouch() {
+		return usingTouch()
+	},
+	set usingTouch(value) {
+		setUsingTouch(value)
+	},
+	get dismissMultipleClientsWarning() {
+		return dismissMultipleClientsWarning()
+	},
+	set dismissMultipleClientsWarning(value) {
+		setDismissMultipleClientsWarning(value)
+	},
+}
 
 export function setupPlayerSystem() {
 	if (!playerId()) setPlayerId(createId(6))
@@ -44,10 +81,20 @@ export function setupPlayerSystem() {
 	if (!settings.usingTouch) {
 		// we're doing it this way so we can differentiate users that are actually using their touch screen vs those that are using a mouse but happen to have a touchscreen
 		function touchListener() {
-			setSettings('usingTouch', true)
+			setUsingTouch(true)
 			document.removeEventListener('touchstart', touchListener)
 		}
 
 		document.addEventListener('touchstart', touchListener)
+	}
+}
+
+const previousProperties = ['settings', 'playerId']
+
+for (const property of previousProperties) {
+	// if we need to migrate a property, add that logic here
+	const previousValue = localStorage.getItem(property)
+	if (previousValue) {
+		localStorage.removeItem(property)
 	}
 }

@@ -148,7 +148,6 @@ export function connectToRoom(
 
 		const sub = interval(10000).subscribe(() => {
 			// make sure render's server doesn't spin down while we're in the middle of a game
-			console.log(SERVER_HOST)
 			fetch(window.location.protocol + '//' + SERVER_HOST + '/ping')
 		})
 
@@ -166,7 +165,7 @@ export function connectToRoom(
 
 	const connected$ = until(() => store.initialized()).then(async () => {
 		console.log('store initialized')
-		if (!state.members.some((p) => p.id === playerId)) {
+		if (!store.rollbackStore.members.some((p) => p.id === playerId)) {
 			const { player, isSpectating } = await initPlayer(Object.values(store.rollbackStore.gameParticipants).length)
 			console.log('new player', player.id, 'isSpectating', isSpectating)
 			//#region connect player
@@ -406,6 +405,10 @@ export class Room {
 
 	get state() {
 		return this.sharedStore.lockstepStore
+	}
+
+	get playerHasMultipleClients() {
+		return Object.values(this.sharedStore.clientControlledStates).filter((v) => v.playerId === this.player.id).length > 1
 	}
 
 	//#endregion

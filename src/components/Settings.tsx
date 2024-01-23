@@ -20,7 +20,7 @@ export function SettingsDialog() {
 	const onSubmit = (e: SubmitEvent) => {
 		e.preventDefault()
 		if (submitted()) return
-		P.setSettings({ name: nickname().trim() })
+		P.settings.name = nickname().trim()
 		setSubmitted(true)
 		// hacky but better than overriding default dialog behavior
 		triggerButtonRef?.click()
@@ -73,7 +73,7 @@ export function SettingsDialog() {
 										] satisfies Choice<P.PlayerSettings['touchOffsetDirection']>[]
 									}
 									selected={P.settings.touchOffsetDirection}
-									onChange={(id) => P.setSettings({ touchOffsetDirection: id })}
+									onChange={(id) => (P.settings.touchOffsetDirection = id)}
 								/>
 							</Show>
 						</div>

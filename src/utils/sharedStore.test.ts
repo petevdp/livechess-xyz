@@ -15,7 +15,7 @@ import { sleep } from './time.ts'
 describe('network provider/shared store', () => {
 	it('can create a network', async () => {
 		const network = await newNetwork(SERVER_HOST)
-		expect(network.networkId).toMatch(/[a-zA-Z0-9]{6}/)
+		expect(network.networkId).toMatch(/[a-zA-Z0-9_-]{6}/)
 	})
 
 	it('can connect to a network', async () => {
@@ -376,5 +376,26 @@ describe('network provider/shared store', () => {
 		expect(followerStore.lockstepStore.a).toEqual([1, 3])
 		expect(leaderStore.lockstepStore.a).toEqual([1, 3])
 		dispose()
+	})
+
+	test('client controlled states set before initialized is set', async () => {
+		const network = await newNetwork(SERVER_HOST)
+		const provider1 = new SharedStoreProvider(SERVER_HOST, network.networkId)
+		const provider2 = new SharedStoreProvider(SERVER_HOST, network.networkId)
+
+		let leaderStore = null as unknown as SharedStore<any>
+		let followerStore = null as unknown as SharedStore<any>
+
+		let dispose = () => {}
+		createRoot((d) => {
+			dispose = d
+			leaderStore = initSharedStore(provider1, { a: 1 })
+			followerStore = initSharedStore(provider2)
+		})
+
+		await until(() => leaderStore.initialized())
+
+		await until(() => followerStore.initialized())
+		expect(followerStore.clientControlledStates[provider1.clientId!]).toEqual({ a: 1 })
 	})
 })

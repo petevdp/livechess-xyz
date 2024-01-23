@@ -1,5 +1,5 @@
 import QRCode from 'qrcode'
-import { Match, ParentProps, Show, Suspense, Switch, createResource, onCleanup } from 'solid-js'
+import { Match, ParentProps, Show, Suspense, Switch, createResource, createSignal, onCleanup, onMount } from 'solid-js'
 import toast from 'solid-toast'
 
 import { ScreenFittingContent } from '~/components/AppContainer.tsx'
@@ -7,6 +7,7 @@ import Game from '~/components/Game.tsx'
 import { Spinner } from '~/components/Spinner.tsx'
 import * as Svgs from '~/components/Svgs.tsx'
 import { VariantInfoDialog } from '~/components/VariantInfoDialog.tsx'
+import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogTitle } from '~/components/ui/alert-dialog.tsx'
 import { Button } from '~/components/ui/button.tsx'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '~/components/ui/card.tsx'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog'
@@ -58,24 +59,57 @@ export function Room() {
 	onCleanup(() => {
 		sub.unsubscribe()
 	})
+	const [dismissedMultipleClientsWarning, setDismissedMultipleClientsWarning] = createSignal(true)
+	onMount(() => {
+		console.log(
+			'playerHasMultipleClients',
+			room.playerHasMultipleClients,
+			'dismissedMultipleClientsWarning',
+			dismissedMultipleClientsWarning(),
+
+			JSON.stringify(room.members)
+		)
+		if (room.playerHasMultipleClients && !P.settings.dismissMultipleClientsWarning) {
+			setDismissedMultipleClientsWarning(false)
+		}
+	})
 
 	return (
-		<Switch>
-			<Match when={room.state.status === 'pregame'}>
-				<Lobby />
-			</Match>
-			<Match when={room.rollbackState.activeGameId}>
-				<Suspense
-					fallback={
-						<ScreenFittingContent class="grid place-items-center">
-							<Spinner />
-						</ScreenFittingContent>
-					}
-				>
-					<Game gameId={room.rollbackState.activeGameId!} />
-				</Suspense>
-			</Match>
-		</Switch>
+		<>
+			<Switch>
+				<Match when={room.state.status === 'pregame'}>
+					<Lobby />
+				</Match>
+				<Match when={room.rollbackState.activeGameId}>
+					<Suspense
+						fallback={
+							<ScreenFittingContent class="grid place-items-center">
+								<Spinner />
+							</ScreenFittingContent>
+						}
+					>
+						<Game gameId={room.rollbackState.activeGameId!} />
+					</Suspense>
+				</Match>
+			</Switch>
+			<AlertDialog open={!dismissedMultipleClientsWarning()}>
+				<AlertDialogContent>
+					<AlertDialogTitle>Warning</AlertDialogTitle>
+					<AlertDialogDescription>
+						You are connecting to the same room from a second browser tab.
+						<br /> If you want to test this app yourself, open an incognito window instead.
+					</AlertDialogDescription>
+					<Button
+						onClick={() => {
+							setDismissedMultipleClientsWarning(true)
+							P.settings.dismissMultipleClientsWarning = true
+						}}
+					>
+						Dismiss
+					</Button>
+				</AlertDialogContent>
+			</AlertDialog>
+		</>
 	)
 }
 
@@ -280,10 +314,7 @@ function PlayerAwareness() {
 			<PlayerColorDisplay color={leftPlayerColor()} />
 			<SwapButton
 				disabled={
-					!room.isPlayerParticipating ||
-					room.leftPlayer?.agreePieceSwap ||
-					room.rightPlayer?.agreePieceSwap ||
-					room.leftPlayer?.isReadyForGame
+					!room.isPlayerParticipating || room.leftPlayer?.agreePieceSwap || room.rightPlayer?.agreePieceSwap || room.leftPlayer?.isReadyForGame
 				}
 				alreadySwapping={room.leftPlayer?.agreePieceSwap || false}
 				initiatePieceSwap={() => room.initiateOrAgreePieceSwap()}

@@ -215,29 +215,26 @@ export function handleNewConnection(socket: ws.WebSocket, networkId: string, log
 
 		//#region send client-controlled-states to new client
 		if (network.leader?.clientId !== client.clientId) {
+			const statePromises: Promise<string | null>[] = []
 			for (const otherClient of network.clients) {
 				if (otherClient.clientId === client.clientId) continue
 				const state$ = firstValueFrom(
 					otherClient.message$.pipe(
 						mergeMap((m) => {
-							return m.type === 'client-controlled-states' && m.forClient === client.clientId ? [m.states] : []
+							return m.type === 'client-controlled-states' && m.forClient === client.clientId ? [m.states[0]] : []
 						}),
 						endWith(null)
 					)
 				)
-				state$
-					.catch(() => {
-						log.info(`error getting client-controlled-states from client ${otherClient.clientId}, ignoring`)
-					})
-					.then((state) => {
-						if (!state) return
-						client.send({ type: 'client-controlled-states', states: state })
-					})
+				statePromises.push(state$)
 				otherClient.send({
 					type: 'request-client-controlled-states',
 					forClient: client.clientId,
 				})
 			}
+
+			const states = (await Promise.all(statePromises)).filter((s) => s).map((s) => encodeContent(s))
+			client.send({ type: 'client-controlled-states', states })
 		}
 
 		//#endregion
@@ -351,7 +348,7 @@ export function handleNewConnection(socket: ws.WebSocket, networkId: string, log
 			// wait for the new leader to be elected, otherwise we may throw off userspace logic that depends on a leader being set at all times
 			await firstValueFrom(network.leader$.pipe(first((l) => !!l)))
 			log.info(`nulling out client-controlled-states for disconnected client %s`, client.clientId)
-			const states = encodeContent({ [client.clientId]: null })
+			const states = [encodeContent({ [client.clientId]: null })]
 			const message: SharedStoreMessage = {
 				type: 'client-controlled-states',
 				states,
