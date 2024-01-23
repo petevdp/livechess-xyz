@@ -1,0 +1,21 @@
+{
+	"name": "livechess.xyz",
+	"short_name": "livechess",
+	"start_url": "/",
+	"display": "standalone",
+	"description": "Play chess with your friends",
+	"icons": [
+		{
+			"src": "/android-chrome-192x192.png",
+			"sizes": "192x192",
+			"type": "image/png"
+		},
+		{
+			"src": "/android-chrome-512x512.png",
+			"sizes": "512x512",
+			"type": "image/png"
+		}
+	],
+	"theme_color": "hsl(221.2 83.2% 53.3%)",
+	"background_color": "#000000"
+}
