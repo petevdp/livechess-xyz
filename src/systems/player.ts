@@ -1,4 +1,5 @@
 import { makePersisted } from '@solid-primitives/storage'
+import { H } from 'highlight.run'
 import { createEffect, createSignal } from 'solid-js'
 
 import { createId } from '~/utils/ids.ts'
@@ -37,6 +38,7 @@ const [dismissMultipleClientsWarning, setDismissMultipleClientsWarning] = makePe
 	storage: localStorage,
 })
 
+// gross getters and setters, sorry
 export const settings: PlayerSettings = {
 	get name() {
 		return name()
@@ -87,6 +89,10 @@ export function setupPlayerSystem() {
 
 		document.addEventListener('touchstart', touchListener)
 	}
+
+	H.identify(playerId()!, {
+		username: settings.name || '__no_nickname__',
+	})
 }
 
 const previousProperties = ['settings', 'playerId']
