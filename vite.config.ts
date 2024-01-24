@@ -19,6 +19,21 @@ export default defineConfig(() => {
 	process.env.VITE_GIT_BRANCH_NAME = branchName
 	process.env.VITE_GIT_COMMIT_HASH = commitHash
 	process.env.VITE_GIT_LAST_COMMIT_MESSAGE = lastCommitMessage
+
+	const expectedEnvVars = [
+		'VITE_GIT_COMMIT_DATE',
+		'VITE_GIT_BRANCH_NAME',
+		'VITE_GIT_COMMIT_HASH',
+		'VITE_GIT_LAST_COMMIT_MESSAGE',
+		'VITE_HIGHLIGHT_PROJECT_ID'
+	]
+
+	const missingEnvVars = expectedEnvVars.filter((name) => !process.env[name])
+	if (missingEnvVars.length) {
+		throw new Error(`Missing environment variables: ${missingEnvVars.join(', ')}`)
+	}
+
+
 	return {
 		plugins: [devtools({ autoname: true }), solid(), solidSvg(), tsconfigPaths()],
 		build: {
