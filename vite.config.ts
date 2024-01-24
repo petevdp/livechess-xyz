@@ -9,6 +9,7 @@ function exec(cmd: string) {
 	return execSync(cmd).toString().trimEnd()
 }
 
+// noinspection JSUnusedGlobalSymbols
 export default defineConfig(() => {
 	const commitDate = exec('git log -1 --format=%cI')
 	const branchName = exec('git rev-parse --abbrev-ref HEAD')
