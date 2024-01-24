@@ -14,10 +14,6 @@ console.debug({
 	PROD: import.meta.env.PROD,
 })
 
-if (!import.meta.env.PROD) {
-	import('./console.ts')
-}
-
 H.init(import.meta.env.VITE_HIGHLIGHT_PROJECT_ID, {
 	environment: 'production',
 	version: import.meta.env.VITE_GIT_COMMIT_HASH,
@@ -25,7 +21,16 @@ H.init(import.meta.env.VITE_HIGHLIGHT_PROJECT_ID, {
 		enabled: true,
 		recordHeadersAndBody: true,
 	},
+	enableCanvasRecording: true,
+	samplingStrategy: {
+		canvas: 2,
+		canvasMaxSnapshotDimension: 480,  // snapshot at a max 480p resolution
+	}
 })
+
+if (!import.meta.env.PROD) {
+	import('./console.ts')
+}
 
 const root = document.getElementById('root')!
 render(App, root)
