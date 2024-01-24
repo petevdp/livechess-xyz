@@ -210,7 +210,7 @@ function GameConfigForm() {
 		<div class="flex flex-col gap-y-1">
 			<MultiChoiceButton
 				label={helpCardLabel}
-				listClass="grid grid-cols-1 grid-cols-2 lg:grid-cols-4 text-sm space-x-0 gap-1"
+				listClass="grid grid-cols-2 md:grid-cols-4 text-sm space-x-0 gap-1"
 				choices={GL.VARIANTS.map((c) => ({ label: c, id: c }) satisfies Choice<GL.Variant>)}
 				selected={gameConfig().variant}
 				onChange={(v) => room!.setGameConfig({ variant: v })}
