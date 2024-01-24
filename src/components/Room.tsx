@@ -20,6 +20,7 @@ import * as GL from '~/systems/game/gameLogic.ts'
 import { getPieceSvg } from '~/systems/piece.tsx'
 import * as P from '~/systems/player.ts'
 import * as R from '~/systems/room.ts'
+import {cn} from "~/lib/utils.ts";
 
 export function Room() {
 	const room = R.room()!
@@ -279,7 +280,7 @@ function PlayerAwareness() {
 
 	// large margin needed for headroom for piece switch popup
 	return (
-		<div class="col-span-2 m-auto mt-8 grid grid-cols-[1fr_min-content_1fr] items-center">
+		<div class="col-span-2 m-auto mt-8 grid grid-cols-[1fr_min-content_1fr] items-center gap-2">
 			<Switch>
 				<Match when={room.leftPlayer?.id === room.player.id}>
 					<PlayerConfigDisplay
@@ -332,7 +333,7 @@ const BlackKingSvg = getPieceSvg({ type: 'king', color: 'black' })
 
 function PlayerColorDisplay(props: { color: GL.Color }) {
 	return (
-		<div class="ml-auto mr-auto flex w-[5rem] items-center justify-center rounded">
+		<div class={cn("ml-auto mr-auto flex w-[5rem] items-center justify-center rounded-full", "dark:bg-foreground" )}>
 			{props.color === 'white' ? <WhiteKingSvg class="w-full h-full" /> : <BlackKingSvg class="w-full h-full" />}
 		</div>
 	)
