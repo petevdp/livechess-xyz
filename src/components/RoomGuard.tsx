@@ -1,8 +1,10 @@
 import { until } from '@solid-primitives/promise'
 import { useNavigate, useParams } from '@solidjs/router'
 import { Subscription } from 'rxjs'
-import { Match, Resource, Show, Switch, createEffect, createResource, createSignal, getOwner, onCleanup } from 'solid-js'
+import { Match, Resource, Show, Switch, createEffect, createResource, createSignal, getOwner, onCleanup, onMount } from 'solid-js'
 
+import adjectives from '~/assets/names_dictionary/adjectives.ts'
+import animals from '~/assets/names_dictionary/animals.ts'
 import { Spinner } from '~/components/Spinner.tsx'
 import { Button } from '~/components/ui/button.tsx'
 import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card.tsx'
@@ -146,7 +148,7 @@ type PlayerFormProps = {
 }
 
 export function PlayerForm(props: PlayerFormProps) {
-	const [displayName, setDisplayName] = createSignal<string>(P.settings.name || '')
+	const [displayName, setDisplayName] = createSignal<string>(P.settings.name || genName())
 	const [isSpectating, setIsSpectating] = createSignal(props.numPlayers >= 2)
 	const [submitted, setSubmitted] = createSignal(false)
 	const onSubmit = (e: SubmitEvent) => {
@@ -170,6 +172,10 @@ export function PlayerForm(props: PlayerFormProps) {
 				<CardContent>
 					<form onSubmit={onSubmit} class="flex flex-col space-y-3">
 						<Input
+							autofocus
+							onfocusin={(e) => {
+								e.target.select()
+							}}
 							type="text"
 							value={displayName()}
 							disabled={submitted()}
@@ -180,7 +186,12 @@ export function PlayerForm(props: PlayerFormProps) {
 						<div class="flex justify-between space-x-3">
 							<Show when={props.numPlayers < 2}>
 								<div class="flex items-center space-x-1">
-									<Checkbox class="space-x-0" id="spectating-checkbox" checked={isSpectating()} onChange={() => setIsSpectating((is) => !is)} />
+									<Checkbox
+										class="space-x-0"
+										id="spectating-checkbox"
+										checked={isSpectating()}
+										onChange={() => setIsSpectating((is) => !is)}
+									/>
 									<Label for="spectating-checkbox-input">Spectate</Label>
 								</div>
 							</Show>
@@ -193,4 +204,17 @@ export function PlayerForm(props: PlayerFormProps) {
 			</Card>
 		</ScreenFittingContent>
 	)
+}
+
+// @ts-expect-error
+window.genName = genName
+
+function genName() {
+	let adj = adjectives[Math.floor(Math.random() * adjectives.length)]
+	let animal = animals[Math.floor(Math.random() * animals.length)]
+	adj = adj.charAt(0).toUpperCase() + adj.slice(1)
+	animal = animal.charAt(0).toUpperCase() + animal.slice(1)
+
+	console.log('generated name wtfffjlsdkjf;slkdajf;salkdfjas;lfdkj')
+	return `${adj}${animal}`
 }
