@@ -1,9 +1,9 @@
-import devtools from 'solid-devtools/vite';
-import { defineConfig } from 'vite';
-import solid from 'vite-plugin-solid';
-import solidSvg from 'vite-plugin-solid-svg';
-import tsconfigPaths from 'vite-tsconfig-paths';
 import { execSync } from 'child_process'
+import devtools from 'solid-devtools/vite'
+import { defineConfig } from 'vite'
+import solid from 'vite-plugin-solid'
+import solidSvg from 'vite-plugin-solid-svg'
+import tsconfigPaths from 'vite-tsconfig-paths'
 
 function exec(cmd: string) {
 	return execSync(cmd).toString().trimEnd()
@@ -24,7 +24,7 @@ export default defineConfig(() => {
 	return {
 		plugins: [devtools({ autoname: true }), solid(), solidSvg(), tsconfigPaths()],
 		build: {
-			sourcemap: true
-		}
+			sourcemap: true,
+		},
 	}
 })
