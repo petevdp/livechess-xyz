@@ -402,9 +402,12 @@ export class Game {
 		} else {
 			outcome$ = combineLatest([gameOutcome$, timeout$]).pipe(
 				map(([outcome, timeouts]): GL.GameOutcome | undefined => {
+					// timeouts are ignored if the game has been resolved in some other way
+					if (outcome) return outcome
 					if (timeouts.white) return { winner: 'black', reason: 'flagged' }
 					if (timeouts.black) return { winner: 'white', reason: 'flagged' }
-					return outcome || undefined
+					// (both players will never run out of time simultaneously)
+					return undefined
 				})
 			)
 		}
