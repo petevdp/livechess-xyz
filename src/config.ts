@@ -1,8 +1,8 @@
 export const ENVIRONMENTS = ['development', 'production'] as const
+import dotenv from 'dotenv'
 export let ENVIRONMENT: typeof ENVIRONMENTS[number] = 'development'
 let loc: URL | Location
 if (typeof window === 'undefined') {
-	const dotenv = await import('dotenv')
 	dotenv.config()
 	// probably won't be used, but we'll set it up correctly anyway :shrug:
 	loc = new URL(`http://${process.env.HOST}:${process.env.PORT}`)
