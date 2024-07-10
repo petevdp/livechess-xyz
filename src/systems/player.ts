@@ -48,9 +48,7 @@ export function setupPlayerSystem() {
 	if (!playerId()) setPlayerId(createId(6))
 	createEffect(() => {
 		const playerName = settings.name
-		console.log('attempting to set player name')
 		if (!R.room()?.player || !playerName || playerName === R.room()!.player.name) return
-		console.log('setting player name', playerName, R.room()!.player.name)
 		void R.room()!.setCurrentPlayerName(playerName!)
 	})
 
