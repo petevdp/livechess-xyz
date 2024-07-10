@@ -5,86 +5,92 @@ import { Button } from '~/components/ui/button.tsx'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog.tsx'
 import { Input } from '~/components/ui/input.tsx'
 import { Label } from '~/components/ui/label.tsx'
+import { Switch } from '~/components/ui/switch.tsx'
 import { Choice, MultiChoiceButton } from '~/components/utils/MultiChoiceButton.tsx'
 import * as P from '~/systems/player.ts'
 
 export function SettingsDialog() {
-	const [nickname, setNickname] = createSignal('')
-	const [submitted, setSubmitted] = createSignal(false)
-	createEffect(() => {
-		if (P.settings.name) {
-			setNickname(P.settings.name!)
-		}
-	})
-
-	const onSubmit = (e: SubmitEvent) => {
-		e.preventDefault()
-		if (submitted()) return
-		P.settings.name = nickname().trim()
-		setSubmitted(true)
-		// hacky but better than overriding default dialog behavior
-		triggerButtonRef?.click()
-		triggerButtonRef?.blur()
-	}
+	const [nickname, setNickname] = createSignal(P.settings.name ?? '')
+	const [open, setOpen] = createSignal(false)
+	// eslint-disable-next-line prefer-const
+	let nickFormRef: HTMLFormElement | null = null
 
 	// eslint-disable-next-line prefer-const
-	let triggerButtonRef: HTMLButtonElement | null = null
+	function close() {
+		if (nickFormRef?.reportValidity()) {
+			P.settings.name = nickname().trim()
+			setOpen(false)
+		}
+	}
+	function onKeyDown(e: KeyboardEvent) {
+		if (e.key === 'Enter') close()
+	}
 
 	return (
 		<Dialog
+			open={open()}
 			onOpenChange={(open) => {
-				if (open) {
+				if (!open) {
+					close()
+					return
+				} else {
 					setNickname(P.settings.name!)
-					setSubmitted(false)
 				}
+				setOpen(open)
 			}}
 		>
 			<DialogTrigger>
-				<Button ref={triggerButtonRef!} size="icon" variant="ghost">
+				<Button size="icon" variant="ghost">
 					<Svgs.Settings />
 				</Button>
 			</DialogTrigger>
-			<DialogContent class="sm:max-w-[425px]">
-				<form onSubmit={onSubmit}>
-					<DialogHeader>
-						<DialogTitle>Settings</DialogTitle>
-					</DialogHeader>
-					<div class="grid gap-4 py-4">
-						<div class="flex w-full items-center justify-between space-x-2">
-							<Label for="nickname">Nickname</Label>
+			<DialogContent class="sm:max-w-[425px]" onkeydown={onKeyDown}>
+				<DialogHeader>
+					<DialogTitle>Settings</DialogTitle>
+				</DialogHeader>
+				{/*set tabindex so we don't automatically focus the nickname, opening the keyboard on mobile devices*/}
+				<div tabindex={0} class="grid gap-4 py-4">
+					<div class="flex w-full items-center justify-between space-x-2">
+						<Label for="nickname">Nickname</Label>
+						<form
+							onSubmit={(e) => {
+								e.preventDefault()
+							}}
+							ref={nickFormRef}
+						>
 							<Input
 								required={true}
 								pattern={'[a-zA-Z0-9 ]+'}
+								minlength={3}
+								name="nickname"
 								id="nickname"
 								value={nickname()}
-								disabled={submitted()}
-								onchange={(e) => setNickname(e.target.value)}
+								oninput={(e) => setNickname(e.target.value)}
+							/>
+						</form>
+					</div>
+					<Show when={P.settings.usingTouch}>
+						<div class="flex w-full items-center justify-between space-x-2">
+							<Label class="text-right">Touch Offset Direction</Label>
+							<MultiChoiceButton
+								listClass="flex"
+								choices={
+									[
+										{ label: 'Left', id: 'left' },
+										{ label: 'None', id: 'none' },
+										{ label: 'Right', id: 'right' },
+									] satisfies Choice<P.PlayerSettings['touchOffsetDirection']>[]
+								}
+								selected={P.settings.touchOffsetDirection}
+								onChange={(id) => (P.settings.touchOffsetDirection = id)}
 							/>
 						</div>
 						<div class="flex w-full items-center justify-between space-x-2">
-							<Show when={P.settings.usingTouch}>
-								<Label class="text-right">Touch Offset Direction</Label>
-								<MultiChoiceButton
-									listClass="flex"
-									choices={
-										[
-											{ label: 'Left', id: 'left' },
-											{ label: 'None', id: 'none' },
-											{ label: 'Right', id: 'right' },
-										] satisfies Choice<P.PlayerSettings['touchOffsetDirection']>[]
-									}
-									selected={P.settings.touchOffsetDirection}
-									onChange={(id) => (P.settings.touchOffsetDirection = id)}
-								/>
-							</Show>
+							<Switch label="Vibrate" checked={P.settings.vibrate} onChange={(changed) => (P.settings.vibrate = changed)} />
 						</div>
-					</div>
-					<DialogFooter>
-						<Button type="submit" value="Submit">
-							Save changes
-						</Button>
-					</DialogFooter>
-				</form>
+					</Show>
+				</div>
+				<Button onclick={close}>Close</Button>
 			</DialogContent>
 		</Dialog>
 	)

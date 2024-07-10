@@ -52,6 +52,7 @@ export function Room() {
 				break
 			case 'new-game':
 				Audio.playSound('gameStart')
+				Audio.vibrate()
 				break
 		}
 	})

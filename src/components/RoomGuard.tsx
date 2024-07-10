@@ -172,15 +172,12 @@ export function PlayerForm(props: PlayerFormProps) {
 					<form onSubmit={onSubmit} class="flex flex-col space-y-3">
 						<Input
 							autofocus
-							onfocusin={(e) => {
-								e.target.select()
-							}}
 							type="text"
 							value={displayName()}
 							disabled={submitted()}
 							required={true}
 							pattern={'[a-zA-Z0-9 ]+'}
-							onchange={(e) => setDisplayName(e.target.value.trim())}
+							oninput={(e) => setDisplayName(e.target.value.trim())}
 						/>
 						<div class="flex justify-between space-x-3">
 							<Show when={props.numPlayers < 2}>

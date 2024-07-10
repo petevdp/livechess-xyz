@@ -539,6 +539,7 @@ export default function Game(props: { gameId: string }) {
 				case 'draw-offered':
 					toast(`${event.participant.name} offered a draw`)
 					Audio.playSound('drawOffered')
+					Audio.vibrate()
 					break
 				case 'draw-canceled':
 					toast(`${event.participant.name} cancelled their draw offer`)
@@ -585,12 +586,12 @@ export default function Game(props: { gameId: string }) {
 	//#region sound effects for incoming moves
 	{
 		const sub = game.moveEvent$.subscribe(async (event) => {
-			if (game.viewingLiveBoard && game.isClientPlayerParticipating) return
-			const moveIsFromOpponent = event.moveIndex % 2 === (game.bottomPlayer.color === 'white' ? 1 : 0)
+			const moveIsFromOpponent = event.participant.id !== game.room.player.id
 			if (moveIsFromOpponent) {
-				const move = game.state.moveHistory[event.moveIndex]
+				const move = game.room.state.moves[event.moveIndex]
 				const isVisible = game.gameConfig.variant !== 'fog-of-war' || game.currentBoardView.visibleSquares.has(move.to)
 				Audio.playSoundEffectForMove(move, false, isVisible)
+				Audio.vibrate()
 			}
 		})
 
@@ -606,8 +607,10 @@ export default function Game(props: { gameId: string }) {
 			if (!event) return
 			if (event.winner === game.bottomPlayer.color) {
 				Audio.playSound('winner')
+				Audio.vibrate()
 			} else {
 				Audio.playSound('loser')
+				Audio.vibrate()
 			}
 		})
 		onCleanup(() => {

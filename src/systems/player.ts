@@ -16,7 +16,8 @@ export type PlayerSettings = {
 	muteAudio: boolean
 	touchOffsetDirection: 'left' | 'right' | 'none'
 	usingTouch: boolean
-	dismissMultipleClientsWarning: boolean
+	dismissMultipleClientsWarning: boolean,
+	vibrate: boolean
 }
 
 const [_playerId, setPlayerId] = makePersisted(createSignal(null as string | null), {
@@ -37,6 +38,8 @@ const [dismissMultipleClientsWarning, setDismissMultipleClientsWarning] = makePe
 	name: 'dismissMultipleClientsWarning',
 	storage: localStorage,
 })
+
+const [vibrate, setVibrate] = makePersisted(createSignal(true), { name: 'vibrate', storage: localStorage })
 
 // gross getters and setters, sorry
 export const settings: PlayerSettings = {
@@ -70,13 +73,21 @@ export const settings: PlayerSettings = {
 	set dismissMultipleClientsWarning(value) {
 		setDismissMultipleClientsWarning(value)
 	},
+	get vibrate() {
+		return vibrate()
+	},
+	set vibrate(value) {
+		setVibrate(value)
+	}
 }
 
 export function setupPlayerSystem() {
 	if (!playerId()) setPlayerId(createId(6))
 	createEffect(() => {
 		const playerName = settings.name
+		console.log('attempting to set player name')
 		if (!R.room()?.player || !playerName || playerName === R.room()!.player.name) return
+		console.log('setting player name', playerName, R.room()!.player.name)
 		R.room()!.setCurrentPlayerName(playerName!)
 	})
 

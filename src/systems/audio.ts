@@ -35,6 +35,13 @@ export function playSound(name: keyof typeof audio) {
 	})
 }
 
+export function vibrate() {
+	if (P.settings.vibrate) {
+		navigator.vibrate(200)
+	}
+}
+
+
 export function playSoundEffectForMove(move: GL.Move, isClientPlayer: boolean, isVisible: boolean) {
 	if (move.duck && isClientPlayer) {
 		playSound('quack')

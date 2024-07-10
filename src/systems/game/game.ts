@@ -253,7 +253,7 @@ export class Game {
 				{
 					type: 'make-move',
 					playerId: this.bottomPlayer.id,
-					moveIndex: this.state.moveHistory.length,
+					moveIndex: expectedMoveIndex
 				},
 			]
 			const newState: GL.GameState = {
