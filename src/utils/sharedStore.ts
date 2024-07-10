@@ -505,9 +505,9 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 		})
 		appliedTransactions.length = clientConfig.lastMutationIndex + 1
 		if (!isLeader()) {
-			const msg = await gotStatesPromise
-			console.log(msg)
+			await gotStatesPromise
 		}
+		console.log("Initialized shared store")
 		setInitialized(true)
 	})()
 	//#endregion
