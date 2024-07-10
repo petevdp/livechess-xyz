@@ -30,24 +30,24 @@ export function Room() {
 	const sub = room.event$.subscribe((action) => {
 		switch (action.type) {
 			case 'player-connected':
-				if (action.player.id === P.playerId()) {
+				if (action.player!.id === P.playerId()) {
 					toast('Connected to room')
 				} else {
-					toast(`${action.player.name} connected`)
+					toast(`${action.player!.name} connected`)
 				}
 				break
 			case 'player-disconnected':
-				if (action.player.id === P.playerId()) {
+				if (action.player!.id === P.playerId()) {
 					toast('Disconnected from room')
 				} else {
-					toast(`${action.player.name} disconnected`)
+					toast(`${action.player!.name} disconnected`)
 				}
 				break
 			case 'player-reconnected':
-				if (action.player.id === P.playerId()) {
+				if (action.player!.id === P.playerId()) {
 					toast('Reconnected to room')
 				} else {
-					toast(`${action.player.name} reconnected`)
+					toast(`${action.player!.name} reconnected`)
 				}
 				break
 			case 'new-game':
@@ -255,20 +255,20 @@ function PlayerAwareness() {
 	const sub = room.event$.subscribe((action) => {
 		switch (action.type) {
 			case 'agree-piece-swap':
-				if (action.player.id === room.leftPlayer?.id) {
+				if (action.player!.id === room.leftPlayer?.id) {
 					toast(`Swapped Pieces! You are now ${leftPlayerColor()}`)
 				}
 				break
 			case 'decline-or-cancel-piece-swap':
-				if (action.player.id === room.rightPlayer?.id) {
+				if (action.player!.id === room.rightPlayer?.id) {
 					toast(`${room.rightPlayer.name} declined piece swap`)
 				} else {
 					toast('Piece swap cancelled')
 				}
 				break
 			case 'initiate-piece-swap':
-				if (action.player.id !== room.rightPlayer?.id) {
-					const waitingPlayer = action.player.id === room.leftPlayer?.id ? room.rightPlayer : room.leftPlayer
+				if (action.player!.id !== room.rightPlayer?.id) {
+					const waitingPlayer = action.player!.id === room.leftPlayer?.id ? room.rightPlayer : room.leftPlayer
 					toast(`Waiting for ${waitingPlayer!.name} to accept piece swap`)
 				}
 		}

@@ -62,8 +62,8 @@ export function SettingsDialog() {
 							/>
 						</div>
 						<div class="flex w-full items-center justify-between space-x-2">
-							<Label class="text-right">Touch Offset Direction</Label>
 							<Show when={P.settings.usingTouch}>
+								<Label class="text-right">Touch Offset Direction</Label>
 								<MultiChoiceButton
 									listClass="flex"
 									choices={

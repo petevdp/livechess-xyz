@@ -1,7 +1,7 @@
 import { until } from '@solid-primitives/promise'
 import { useNavigate, useParams } from '@solidjs/router'
 import { Subscription } from 'rxjs'
-import { Match, Resource, Show, Switch, createEffect, createResource, createSignal, getOwner, onCleanup, onMount } from 'solid-js'
+import { Match, Resource, Show, Switch, createEffect, createResource, createSignal, getOwner, onCleanup } from 'solid-js'
 
 import adjectives from '~/assets/names_dictionary/adjectives.ts'
 import animals from '~/assets/names_dictionary/animals.ts'

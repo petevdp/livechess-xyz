@@ -2,7 +2,6 @@
 import { H } from 'highlight.run'
 import 'solid-devtools'
 import { render } from 'solid-js/web'
-
 import App from './App'
 import './index.css'
 

@@ -1,5 +1,7 @@
-import { isEqual, partition } from 'lodash-es'
-import hash from 'object-hash'
+import { isEqual, partition } from 'lodash-es';
+import hash from 'object-hash';
+import {Accessor, createEffect, createMemo, on} from 'solid-js';
+
 
 //#region primitives
 
@@ -216,9 +218,6 @@ export type GameState = {
 	players: { [id: string]: Color }
 	boardHistory: BoardHistoryEntry[]
 	moveHistory: MoveHistory
-	drawOffers: Record<Color, null | Timestamp> // if number, it's a timestamp
-	drawDeclinedBy: null | { color: Color; ts: Timestamp }
-	resigned?: Color
 }
 
 export type Board = {
@@ -226,33 +225,57 @@ export type Board = {
 	toMove: Color
 }
 export type MoveHistory = Move[]
-export type BoardHistoryEntry = { hash: string; board: Board; index: number }
+export type BoardHistoryEntry = { hash: string; board: Board }
 export type Coords = {
 	x: number
 	y: number
 }
 
-//#endregion
+function hashMove(move: Move): string {
+	return hash(move)
+}
 
-export function newGameState(_config: GameConfig, players: GameState['players']): GameState {
-	const board = getStartPos(_config.variant)
-	const startingBoard: BoardHistoryEntry = {
-		board,
-		index: 0,
-		hash: hashBoard(board),
-	}
+export function useBoardHistory(moves: Accessor<Move[]>, startingBoard: Board) {
+	let moveHashes: string[] = []
+	let boardHistory: BoardHistoryEntry[] = [{hash: hashBoard(startingBoard), board: startingBoard}]
+	return () => getBoardHistory(moves())
 
-	return {
-		players,
-		boardHistory: [startingBoard],
-		moveHistory: [],
-		drawOffers: {
-			white: null,
-			black: null,
-		},
-		drawDeclinedBy: null,
+	function getBoardHistory(moves: Move[]) {
+		const movesList = moves
+		let i = 0
+		let firstNewMoveHash: string | null = null
+		for (; i < movesList.length; i++) {
+			const move = movesList[i]
+			if (i + 1 === boardHistory.length) break
+			const moveHash = hashMove(move)
+			const lastHash = moveHashes[i]
+			if (lastHash !== moveHash) {
+				boardHistory = boardHistory.slice(0, i + 1)
+				moveHashes = moveHashes.slice(0, i)
+				firstNewMoveHash = moveHash
+				break
+			}
+		}
+		const newMoves = movesList.slice(i)
+		for (const move of newMoves) {
+			let moveHash: string
+			if (firstNewMoveHash) {
+				moveHash = firstNewMoveHash
+				firstNewMoveHash = null
+			} else {
+				moveHash = hashMove(move)
+			}
+			const lastBoard = boardHistory[boardHistory.length - 1].board
+			const [newBoard] = applyMoveToBoard(move, lastBoard)
+			moveHashes.push(moveHash)
+			boardHistory.push({board: newBoard, hash: hashBoard(newBoard)})
+		}
+		return boardHistory
 	}
 }
+
+
+//#endregion
 
 //#region move conversions
 export function coordsFromNotation(notation: string) {
@@ -364,13 +387,7 @@ export function getBoard(game: GameState) {
 export function getGameOutcome(state: GameState, config: ParsedGameConfig) {
 	let winner: GameOutcome['winner']
 	let reason: GameOutcome['reason']
-	if (state.resigned) {
-		winner = oppositeColor(state.resigned)
-		reason = 'resigned'
-	} else if (!Object.values(state.drawOffers).includes(null)) {
-		winner = null
-		reason = 'draw-accepted'
-	} else if (!VARIANTS_ALLOWING_SELF_CHECKS.includes(config.variant) && checkmated(state)) {
+	if (!VARIANTS_ALLOWING_SELF_CHECKS.includes(config.variant) && checkmated(state)) {
 		winner = oppositeColor(getBoard(state).toMove)
 		reason = 'checkmate'
 	} else if (VARIANTS_ALLOWING_SELF_CHECKS.includes(config.variant) && kingCaptured(getBoard(state))) {
@@ -1046,13 +1063,6 @@ export function moveToAlgebraicNotation(moveIndex: number, state: GameState): st
 	return piece + disambiguation + capture + to + promotion + check + checkmate
 }
 
-export function getDrawIsOfferedBy(state: GameState) {
-	for (const [color, draw] of Object.entries(state.drawOffers)) {
-		if (draw !== null) return color as Color
-	}
-	return null
-}
-
 export function isPlayerTurn(board: Board, color: Color) {
 	return board.toMove === color
 }
@@ -1083,7 +1093,6 @@ export function getVisibleSquares(game: GameState, color: Color) {
 
 		simulated.boardHistory.push({
 			board: newBoard,
-			index: game.boardHistory.length,
 			hash: hashBoard(newBoard),
 		})
 		simulated.moveHistory.push(candidateMoveToMove(candidateMove))

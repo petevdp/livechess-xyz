@@ -47,13 +47,18 @@ export type RoomEvent =
 			playerId: string
 			moveIndex: number
 	  }
+	| {
+			type: 'game-over'
+	  }
 
 export type RoomState = {
 	members: RoomMember[]
 	status: 'pregame' | 'playing' | 'postgame'
 	gameConfig: GL.GameConfig
 	gameParticipants: Record<GL.Color, GameParticipantDetails>
-	gameStates: Record<string, GL.GameState>
+	drawOffers: Record<GL.Color, number | undefined>
+	moves: GL.Move[]
+	outcome?: GL.GameOutcome
 	activeGameId?: string
 }
 
@@ -108,7 +113,8 @@ export function connectToRoom(
 			status: 'pregame',
 			gameParticipants: {} as RoomState['gameParticipants'],
 			gameConfig: GL.getDefaultGameConfig(),
-			gameStates: {},
+			drawOffers: {} as RoomState['drawOffers'],
+			moves: [],
 		}
 	}
 
@@ -416,10 +422,9 @@ export class Room {
 	get event$() {
 		return this.sharedStore.event$.pipe(
 			concatMap((event) => {
-				const player = this.members.find((p) => p.id === event.playerId)!
-				if (!player) {
-					console.warn('unknown player id in action', event)
-					return []
+				let player: RoomMember |undefined = undefined
+				if (event.type !== 'game-over') {
+					player = this.members.find((p) => p.id === event.playerId)!
 				}
 				return [
 					{
@@ -520,14 +525,9 @@ export class Room {
 	toggleReady() {
 		if (!this.isPlayerParticipating) return
 		if (!this.leftPlayer!.isReadyForGame) {
-			this.sharedStore.setStoreWithRetries(() => {
+			void this.sharedStore.setStoreWithRetries(() => {
 				if (!this.isPlayerParticipating || this.leftPlayer!.isReadyForGame) return []
 				if (this.rightPlayer?.isReadyForGame) {
-					const gameState = GL.newGameState(this.rollbackState.gameConfig, {
-						[this.leftPlayer!.id]: this.leftPlayer!.id === this.rollbackState.gameParticipants.white.id ? 'white' : 'black',
-						[this.rightPlayer.id]: this.rightPlayer.id === this.rollbackState.gameParticipants.white.id ? 'white' : 'black',
-					})
-					const gameId = createId(6)
 					return {
 						events: [{ type: 'new-game', playerId: this.player.id }],
 						mutations: [
@@ -540,8 +540,10 @@ export class Room {
 								value: false,
 							},
 							{ path: ['status'], value: 'playing' },
-							{ path: ['activeGameId'], value: gameId },
-							{ path: ['gameStates', gameId], value: gameState },
+							{ path: ['moves'], value: [] },
+							{ path: ['drawOffers'], value: { white: null, black: null } },
+							{ path: ['activeGameId'], value: createId(6) },
+							{ path: ['outcome'], value: undefined },
 						] satisfies StoreMutation[],
 					}
 				} else {
@@ -554,7 +556,7 @@ export class Room {
 				}
 			})
 		} else {
-			this.sharedStore.setStoreWithRetries(() => {
+			void this.sharedStore.setStoreWithRetries(() => {
 				if (!this.isPlayerParticipating || !this.leftPlayer!.isReadyForGame) return []
 				return [
 					{
@@ -567,7 +569,7 @@ export class Room {
 	}
 
 	configureNewGame() {
-		this.sharedStore.setStoreWithRetries(() => {
+		void this.sharedStore.setStoreWithRetries(() => {
 			if (!this.rightPlayer || !this.rollbackState.activeGameId) return
 			return [
 				...this.getPieceSwapMutation(),

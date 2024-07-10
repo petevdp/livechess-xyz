@@ -115,10 +115,7 @@ export default function Game(props: { gameId: string }) {
 	const [hoveredSquare, setHoveredSquare] = createSignal(null as null | string)
 	const [activePieceSquare, setActivePieceSquare] = createSignal(null as null | string)
 	const [grabbingPieceSquare, setGrabbingPieceSquare] = createSignal(false)
-	const [currentMousePos, setCurrentMousePos] = createSignal({ x: 0, y: 0 } as {
-		x: number
-		y: number
-	} | null)
+	const [currentMousePos, setCurrentMousePos] = createSignal({ x: 0, y: 0 } as { x: number; y: number } | null)
 	const [grabbedMousePos, setGrabbedMousePos] = createSignal(null as null | { x: number; y: number })
 	//#endregion
 
@@ -486,7 +483,7 @@ export default function Game(props: { gameId: string }) {
 								onclick={() => {
 									if (game.currentMoveAmbiguity?.type !== 'castle') return
 									game.setCurrentDisambiguation({ type: 'castle', castling: true })
-									game.tryMakeMove().then()
+									void game.tryMakeMove()
 								}}
 							>
 								Yes
@@ -495,7 +492,7 @@ export default function Game(props: { gameId: string }) {
 								onclick={() => {
 									if (game.currentMoveAmbiguity?.type !== 'castle') return
 									game.setCurrentDisambiguation({ type: 'castle', castling: false })
-									game.tryMakeMove().then()
+									void game.tryMakeMove()
 								}}
 							>
 								No

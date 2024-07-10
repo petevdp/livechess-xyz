@@ -389,6 +389,7 @@ describe('network provider/shared store', () => {
 		let dispose = () => {}
 		createRoot((d) => {
 			dispose = d
+			//@ts-expect-error
 			leaderStore = initSharedStore(provider1, { a: 1 })
 			followerStore = initSharedStore(provider2)
 		})
@@ -397,5 +398,6 @@ describe('network provider/shared store', () => {
 
 		await until(() => followerStore.initialized())
 		expect(followerStore.clientControlledStates[provider1.clientId!]).toEqual({ a: 1 })
+		dispose()
 	})
 })
