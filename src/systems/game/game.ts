@@ -63,7 +63,7 @@ export class Game {
 
 		this.setupGameState()
 		this.setupBoardView()
-		this.setupOutcomeAndClocks()
+		this.setupClocks()
 		this.setupMoveSelectionAndValidation()
 	}
 
@@ -424,9 +424,9 @@ export class Game {
 
 	private getClocks = () => ({ white: 0, black: 0 })
 
-	setupOutcomeAndClocks() {
+	setupClocks() {
 		if (this.gameConfig.timeControl === 'unlimited') return
-		const move$ = observeMoves(this.state)
+		const move$ = observeMoves(this.stateSignal)
 		this.getClocks = useClock(move$, this.parsedGameConfig, () => !!this.outcome)
 
 		type Timeouts = {
@@ -447,7 +447,7 @@ export class Game {
 
 		const sub = timeout$
 			.pipe(
-				filter((t) => !!t),
+				filter((t) => t.white || t.black),
 				first()
 			)
 			.subscribe((timeouts) => {
@@ -457,7 +457,6 @@ export class Game {
 					reason: 'flagged',
 				}
 				void this.room.sharedStore.setStoreWithRetries(() => {
-					if (!this.isActiveGame) return
 					if (!this.isActiveGame) return
 					if (this.outcome) return
 					const events: R.RoomEvent[] = [{ type: 'game-over' }]
@@ -656,14 +655,14 @@ export class Game {
 }
 
 //#region helpers
-function observeMoves(gameState: GL.GameState) {
+function observeMoves(gameState: Accessor<GL.GameState>) {
 	const subject = new ReplaySubject<GL.Move>()
 	let lastObserved = -1
 	createEffect(() => {
-		for (let i = lastObserved + 1; i < gameState.moveHistory.length; i++) {
-			subject.next(gameState.moveHistory[i])
+		for (let i = lastObserved + 1; i < gameState().moveHistory.length; i++) {
+			subject.next(gameState().moveHistory[i])
 		}
-		lastObserved = gameState.moveHistory.length - 1
+		lastObserved = gameState().moveHistory.length - 1
 	})
 
 	onCleanup(() => {
@@ -706,7 +705,7 @@ function useClock(move$: Observable<GL.Move>, gameConfig: GL.ParsedGameConfig, g
 		setElapsedSinceLastMove(elapsed)
 	}
 
-	const timeout = setInterval(elapsedListener, 100)
+	const timeout = setInterval(elapsedListener, 10)
 
 	const clocks = () => {
 		const times = {
