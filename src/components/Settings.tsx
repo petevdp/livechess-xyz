@@ -15,7 +15,6 @@ export function SettingsDialog() {
 	// eslint-disable-next-line prefer-const
 	let nickFormRef: HTMLFormElement | null = null
 
-	// eslint-disable-next-line prefer-const
 	function close() {
 		if (nickFormRef?.reportValidity()) {
 			P.settings.name = nickname().trim()
