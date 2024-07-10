@@ -1,6 +1,6 @@
-import { isEqual, partition } from 'lodash-es';
-import hash from 'object-hash';
-import {Accessor, createEffect, createMemo, on} from 'solid-js';
+import { isEqual, partition } from 'lodash-es'
+import hash from 'object-hash'
+import { Accessor } from 'solid-js'
 
 
 //#region primitives
@@ -211,7 +211,7 @@ export type ParsedGameConfig = {
 export const getDefaultGameConfig = (): GameConfig => ({
 	variant: 'regular',
 	timeControl: '5m',
-	increment: '1',
+	increment: '0',
 })
 
 export type GameState = {
