@@ -1111,7 +1111,7 @@ export function getVisibleSquares(game: GameState, color: Color) {
 		}
 
 		if (move.castle) {
-			const rank = board.toMove === 'white' ? 0 : 7
+			const rank = color === 'white' ? 0 : 7
 			const startingRookFile = move.to.x === 2 ? 0 : 7
 			const endingRookFile = move.to.x === 2 ? 3 : 5
 			for (let i = startingRookFile; i <= endingRookFile; i++) {

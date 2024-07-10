@@ -14,7 +14,6 @@ import * as R from '../room.ts'
 import * as GL from './gameLogic.ts'
 import { Color } from './gameLogic.ts'
 
-
 //#region types
 export type PlayerWithColor = P.Player & { color: GL.Color }
 export type BoardView = {
@@ -68,7 +67,7 @@ export class Game {
 	}
 
 	//#region game state / board
-	get isActiveGame()	 {
+	get isActiveGame() {
 		return this.room.rollbackState.activeGameId === this.gameId
 	}
 
@@ -85,17 +84,19 @@ export class Game {
 		// this.stateSignal = state
 
 		// only update state on board history change because syncing chained signals can be annoying
-		this.stateSignal = createMemo(on(boardHistory, (boardHistory) => {
-			const state: GL.GameState = {
-				boardHistory: boardHistory,
-				moveHistory: moveHistory(),
-				players: {
-					[this.room.state.gameParticipants.white.id]: 'white',
-					[this.room.state.gameParticipants.black.id]: 'black',
-				}!,
-			}
-			return state
-		}))
+		this.stateSignal = createMemo(
+			on(boardHistory, (boardHistory) => {
+				const state: GL.GameState = {
+					boardHistory: boardHistory,
+					moveHistory: moveHistory(),
+					players: {
+						[this.room.state.gameParticipants.white.id]: 'white',
+						[this.room.state.gameParticipants.black.id]: 'black',
+					}!,
+				}
+				return state
+			})
+		)
 	}
 
 	//#endregion
@@ -304,7 +305,7 @@ export class Game {
 		const [currentMove, setViewedMove] = createSignal<'live' | number>('live')
 		this.viewedMoveIndex = () => (currentMove() === 'live' ? this.state.moveHistory.length - 1 : (currentMove() as number))
 		this._setViewedMove = setViewedMove
-		const lastMove = () => (this.state.moveHistory)[this.viewedMoveIndex()] || null
+		const lastMove = () => this.state.moveHistory[this.viewedMoveIndex()] || null
 
 		// boards are only so we don't need to deeply track this
 		const viewedBoard = () => {
@@ -548,43 +549,34 @@ export class Game {
 		})
 	}
 
-	cancelDraw() {
-		if (!this.isClientPlayerParticipating) return
-		const moveOffered = this.state.moveHistory.length
-		void this.room.sharedStore.setStoreWithRetries(() => {
-			if (!this.isActiveGame) return
-			if (!this.state || this.state.moveHistory.length !== moveOffered || GL.getGameOutcome(this.state, this.parsedGameConfig))
-				return
-			const drawIsOfferedBy = getDrawIsOfferedBy(this.room.state.drawOffers)
-			if (drawIsOfferedBy !== this.bottomPlayer.color) return
-			return {
-				events: [{ type: 'draw-canceled', playerId: this.bottomPlayer.id }],
-				mutations: [
-					{
-						path: ['drawOffers', this.bottomPlayer.color],
-						value: null,
-					},
-				],
-			}
-		})
-	}
-
-	declineDraw() {
+	declineOrCancelDraw() {
 		if (!this.isClientPlayerParticipating) return
 		const moveOffered = this.state.moveHistory.length
 		void this.room.sharedStore.setStoreWithRetries(() => {
 			if (!this.isActiveGame) return
 			if (!this.state || this.state.moveHistory.length !== moveOffered || GL.getGameOutcome(this.state, this.parsedGameConfig)) return
 			const drawIsOfferedBy = getDrawIsOfferedBy(this.room.state.drawOffers)
-			if (drawIsOfferedBy === this.bottomPlayer.color || !this.drawIsOfferedBy) return
-			return {
-				events: [{ type: 'draw-declined', playerId: this.bottomPlayer.id }],
-				mutations: [
-					{
-						path: ['drawOffers', this.bottomPlayer.color],
-						value: null,
-					},
-				],
+			if (!this.drawIsOfferedBy) return
+			if (drawIsOfferedBy === this.bottomPlayer.color) {
+				return {
+					events: [{ type: 'draw-canceled', playerId: this.bottomPlayer.id }],
+					mutations: [
+						{
+							path: ['drawOffers', this.bottomPlayer.color],
+							value: null,
+						},
+					],
+				}
+			} else {
+				return {
+					events: [{ type: 'draw-declined', playerId: this.bottomPlayer.id }],
+					mutations: [
+						{
+							path: ['drawOffers', this.topPlayer.color],
+							value: null,
+						},
+					],
+				}
 			}
 		})
 	}
@@ -610,7 +602,7 @@ export class Game {
 	}
 
 	get drawIsOfferedBy() {
-		return getDrawIsOfferedBy(this.room.state.drawOffers)
+		return getDrawIsOfferedBy(this.room.rollbackState.drawOffers)
 	}
 
 	//#endregion
@@ -754,6 +746,7 @@ export function getDrawIsOfferedBy(offers: R.RoomState['drawOffers']) {
 	}
 	return null
 }
+
 //#endregion
 
 export const [game, setGame] = createSignal<Game | null>(null)

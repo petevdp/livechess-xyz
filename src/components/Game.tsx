@@ -867,7 +867,7 @@ function DrawHoverCard(props: ParentProps) {
 			<HoverCardTrigger>{props.children}</HoverCardTrigger>
 			<HoverCardContent class="w-max p-[0.25rem]">
 				<Show when={game.drawIsOfferedBy === game.bottomPlayer.color}>
-					<Button size="sm" onClick={() => game.cancelDraw()}>
+					<Button size="sm" onClick={() => game.declineOrCancelDraw()}>
 						Cancel Draw
 					</Button>
 				</Show>
@@ -876,7 +876,7 @@ function DrawHoverCard(props: ParentProps) {
 						<Button size="sm" onClick={() => game.offerOrAcceptDraw()}>
 							Accept Draw
 						</Button>
-						<Button size="sm" onClick={() => game.declineDraw()}>
+						<Button size="sm" onClick={() => game.declineOrCancelDraw()}>
 							Decline Draw
 						</Button>
 					</div>
