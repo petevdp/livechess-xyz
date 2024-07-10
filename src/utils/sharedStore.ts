@@ -4,7 +4,7 @@ import { isEqual } from 'lodash-es';
 import { Observable, Subject, Subscription, concatMap, endWith, first, firstValueFrom, merge, mergeAll, share } from 'rxjs';
 import { batch, createSignal, onCleanup } from 'solid-js';
 import { createStore, produce, unwrap } from 'solid-js/store';
-import {API_URL, WS_API_URL} from "~/config.ts";
+import {API_URL, WS_API_URL} from "../config.ts";
 
 
 //#region types
@@ -214,10 +214,6 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 			for (const mut of transaction.mutations) {
 				mut.path = interpolatePath(mut.path, lockstepStore)
 			}
-			batch(() => {
-				applyMutationsToStore(transaction.mutations, setRollbackStore, rollbackStore)
-				applyMutationsToStore(transaction.mutations, setLockstepStore, lockstepStore)
-			})
 			let orderedTransaction: SharedStoreOrderedTransaction<Event>
 			if (transaction.index == null) {
 				orderedTransaction = {
@@ -231,17 +227,22 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 					mutationId: `${provider.clientId}:${transaction.index}`,
 				}
 			}
+			provider.broadcastAsCommitted(orderedTransaction)
+			appliedTransactions.push(orderedTransaction)
+			batch(() => {
+				applyMutationsToStore(transaction.mutations, setRollbackStore, rollbackStore)
+				applyMutationsToStore(transaction.mutations, setLockstepStore, lockstepStore)
+			})
 			for (const mut of orderedTransaction.mutations) {
 				mut.path = interpolatePath(mut.path, lockstepStore)
 			}
-			appliedTransactions.push(orderedTransaction)
-			provider.broadcastAsCommitted(orderedTransaction)
 			for (const action of orderedTransaction.events) {
 				event$.next(action)
 			}
 			return true
 		} else {
 			const previous: any[] = []
+			const commitPromise = provider.tryCommit(transaction)
 			// only update rollback store if this transaction must be applied on a particular transaction index, otherwise the history could end up irreconcilable
 			if (transaction.index) {
 				batch(() => {
@@ -250,7 +251,7 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 				appliedTransactions.push(transaction)
 				previousValues.set(transaction.index!, previous)
 			}
-			return await provider.tryCommit(transaction)
+			return await commitPromise
 		}
 	}
 

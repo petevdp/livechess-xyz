@@ -27,7 +27,7 @@ export function Home() {
 						</CardTitle>
 					</CardHeader>
 					<CardContent>
-						<p>Play chess with your friends.</p>
+						<p>Play chess with your friends, on desktop or mobile.</p>
 					</CardContent>
 					<CardFooter>
 						<Button variant="default" onclick={createRoom}>

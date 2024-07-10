@@ -1,8 +1,13 @@
-export const ENVIRONMENTS = ['development', 'production'] as const
+export const ENVIRONMENTS = ['development', 'production', 'testing'] as const
 import dotenv from 'dotenv'
 export let ENVIRONMENT: typeof ENVIRONMENTS[number] = 'development'
 let loc: URL | Location
-if (typeof window === 'undefined') {
+console.log(import.meta.env)
+if (import.meta.env?.VITE_RUNNING_VITEST === 'true') {
+	ENVIRONMENT = 'testing'
+	// just hardcode it as vitest doesn't support proxyies and we can't grav the environment variable
+	loc = new URL(`http://0.0.0.0:8080`)
+} else if (typeof window === 'undefined') {
 	dotenv.config()
 	// probably won't be used, but we'll set it up correctly anyway :shrug:
 	loc = new URL(`http://${process.env.HOST}:${process.env.PORT}`)

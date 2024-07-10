@@ -210,7 +210,5 @@ function genName() {
 	let animal = animals[Math.floor(Math.random() * animals.length)]
 	adj = adj.charAt(0).toUpperCase() + adj.slice(1)
 	animal = animal.charAt(0).toUpperCase() + animal.slice(1)
-
-	console.log('generated name wtfffjlsdkjf;slkdajf;salkdfjas;lfdkj')
 	return `${adj}${animal}`
 }
