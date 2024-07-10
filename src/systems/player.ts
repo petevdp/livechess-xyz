@@ -16,8 +16,26 @@ export type PlayerSettings = {
 	muteAudio: boolean
 	touchOffsetDirection: 'left' | 'right' | 'none'
 	usingTouch: boolean
-	dismissMultipleClientsWarning: boolean,
+	dismissMultipleClientsWarning: boolean
 	vibrate: boolean
+}
+
+const defaultSettings: PlayerSettings = {
+	name: null,
+	muteAudio: false,
+	touchOffsetDirection: 'none',
+	usingTouch: false,
+	dismissMultipleClientsWarning: false,
+	vibrate: true,
+}
+
+// getters and setters for player settings
+//@ts-expect-error
+export const settings: { [key in keyof PlayerSettings]: PlayerSettings[key] } = {}
+
+for (const [key, value] of Object.entries(defaultSettings)) {
+	const [get, set] = makePersisted(createSignal(value), { name: key, storage: localStorage })
+	Object.defineProperty(settings, key, { get, set })
 }
 
 const [_playerId, setPlayerId] = makePersisted(createSignal(null as string | null), {
@@ -26,61 +44,6 @@ const [_playerId, setPlayerId] = makePersisted(createSignal(null as string | nul
 })
 export const playerId = _playerId
 
-// we're not using a store and storing them in one property here because we want to independently version these settings
-const [name, setName] = makePersisted(createSignal(null as string | null), { name: 'name', storage: localStorage })
-const [muteAudio, setMuteAudio] = makePersisted(createSignal(false), { name: 'muteAudio', storage: localStorage })
-const [touchOffsetDirection, setTouchOffsetDirection] = makePersisted(createSignal('none' as PlayerSettings['touchOffsetDirection']), {
-	name: 'touchOffsetDirection',
-	storage: localStorage,
-})
-const [usingTouch, setUsingTouch] = makePersisted(createSignal(false), { name: 'usingTouch', storage: localStorage })
-const [dismissMultipleClientsWarning, setDismissMultipleClientsWarning] = makePersisted(createSignal(false), {
-	name: 'dismissMultipleClientsWarning',
-	storage: localStorage,
-})
-
-const [vibrate, setVibrate] = makePersisted(createSignal(true), { name: 'vibrate', storage: localStorage })
-
-// gross getters and setters, sorry
-export const settings: PlayerSettings = {
-	get name() {
-		return name()
-	},
-	set name(value) {
-		setName(value)
-	},
-	get muteAudio() {
-		return muteAudio()
-	},
-	set muteAudio(value) {
-		setMuteAudio(value)
-	},
-	get touchOffsetDirection() {
-		return touchOffsetDirection()
-	},
-	set touchOffsetDirection(value) {
-		setTouchOffsetDirection(value)
-	},
-	get usingTouch() {
-		return usingTouch()
-	},
-	set usingTouch(value) {
-		setUsingTouch(value)
-	},
-	get dismissMultipleClientsWarning() {
-		return dismissMultipleClientsWarning()
-	},
-	set dismissMultipleClientsWarning(value) {
-		setDismissMultipleClientsWarning(value)
-	},
-	get vibrate() {
-		return vibrate()
-	},
-	set vibrate(value) {
-		setVibrate(value)
-	}
-}
-
 export function setupPlayerSystem() {
 	if (!playerId()) setPlayerId(createId(6))
 	createEffect(() => {
@@ -88,13 +51,13 @@ export function setupPlayerSystem() {
 		console.log('attempting to set player name')
 		if (!R.room()?.player || !playerName || playerName === R.room()!.player.name) return
 		console.log('setting player name', playerName, R.room()!.player.name)
-		R.room()!.setCurrentPlayerName(playerName!)
+		void R.room()!.setCurrentPlayerName(playerName!)
 	})
 
 	if (!settings.usingTouch) {
 		// we're doing it this way so we can differentiate users that are actually using their touch screen vs those that are using a mouse but happen to have a touchscreen
 		function touchListener() {
-			setUsingTouch(true)
+			settings.usingTouch = true
 			document.removeEventListener('touchstart', touchListener)
 		}
 
@@ -106,6 +69,7 @@ export function setupPlayerSystem() {
 	})
 }
 
+// add any settings migration logic here
 const previousProperties = ['settings', 'playerId']
 
 for (const property of previousProperties) {
