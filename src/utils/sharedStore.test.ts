@@ -5,7 +5,6 @@ import { createEffect, createRoot } from 'solid-js'
 import { unwrap } from 'solid-js/store'
 import { describe, expect, it, test } from 'vitest'
 
-import { SERVER_HOST } from '../config.ts'
 import { DELETE, PUSH, SharedStore, SharedStoreProvider, buildTransaction, initSharedStore, newNetwork } from './sharedStore.ts'
 import { sleep } from './time.ts'
 
@@ -20,15 +19,15 @@ describe('network provider/shared store', () => {
 
 	it('can connect to a network', async () => {
 		const network = await newNetwork(SERVER_HOST)
-		const provider1 = new SharedStoreProvider(SERVER_HOST, network.networkId)
+		const provider1 = new SharedStoreProvider(network.networkId)
 		await provider1.waitForConnected()
 		expect(provider1.ws.readyState).toBe(WebSocket.OPEN)
 	})
 
 	test('can mutate', async () => {
 		const network = await newNetwork(SERVER_HOST)
-		const provider1 = new SharedStoreProvider(SERVER_HOST, network.networkId)
-		const provider2 = new SharedStoreProvider(SERVER_HOST, network.networkId)
+		const provider1 = new SharedStoreProvider(network.networkId)
+		const provider2 = new SharedStoreProvider(network.networkId)
 		const toDispose: (() => void)[] = []
 
 		type T = { ayy: string; lmao?: string }
@@ -56,11 +55,11 @@ describe('network provider/shared store', () => {
 
 	test('first mutation is always accepted', async () => {
 		const network = await newNetwork(SERVER_HOST)
-		const provider1 = new SharedStoreProvider(SERVER_HOST, network.networkId)
+		const provider1 = new SharedStoreProvider(network.networkId)
 
-		const provider2 = new SharedStoreProvider(SERVER_HOST, network.networkId)
+		const provider2 = new SharedStoreProvider(network.networkId)
 
-		const provider3 = new SharedStoreProvider(SERVER_HOST, network.networkId)
+		const provider3 = new SharedStoreProvider(network.networkId)
 
 		let leaderStore = null as unknown as ReturnType<typeof initSharedStore>
 		let follower1Store = null as unknown as ReturnType<typeof initSharedStore>
@@ -113,7 +112,7 @@ describe('network provider/shared store', () => {
 		const toDispose: Function[] = []
 
 		createRoot((d) => {
-			const provider1 = new SharedStoreProvider(SERVER_HOST, network.networkId)
+			const provider1 = new SharedStoreProvider(network.networkId)
 			toDispose.push(d)
 			//@ts-expect-error
 			leaderStore = initSharedStore(provider1, {}, { ayy: 'lmao' })
@@ -122,7 +121,7 @@ describe('network provider/shared store', () => {
 		await sleep(200)
 
 		createRoot(() => {
-			const provider2 = new SharedStoreProvider(SERVER_HOST, network.networkId)
+			const provider2 = new SharedStoreProvider(network.networkId)
 
 			toDispose.push(() => {})
 			followerStore = initSharedStore(provider2)
@@ -135,9 +134,9 @@ describe('network provider/shared store', () => {
 
 	test('can elect new leader', async () => {
 		const network = await newNetwork(SERVER_HOST)
-		const provider1 = new SharedStoreProvider(SERVER_HOST, network.networkId)
-		const provider2 = new SharedStoreProvider(SERVER_HOST, network.networkId)
-		const provider3 = new SharedStoreProvider(SERVER_HOST, network.networkId)
+		const provider1 = new SharedStoreProvider(network.networkId)
+		const provider2 = new SharedStoreProvider(network.networkId)
+		const provider3 = new SharedStoreProvider(network.networkId)
 		const toDispose: Function[] = []
 		let originalLeaderStore = null as unknown as ReturnType<typeof initSharedStore>
 		let followerStore = null as unknown as ReturnType<typeof initSharedStore>
@@ -163,8 +162,8 @@ describe('network provider/shared store', () => {
 
 	test('can handle dynamic transactions', async () => {
 		const network = await newNetwork(SERVER_HOST)
-		const provider1 = new SharedStoreProvider(SERVER_HOST, network.networkId)
-		const provider2 = new SharedStoreProvider(SERVER_HOST, network.networkId)
+		const provider1 = new SharedStoreProvider(network.networkId)
+		const provider2 = new SharedStoreProvider(network.networkId)
 		let dispose = () => {}
 		let leaderStore = null as unknown as ReturnType<typeof initSharedStore>
 		let followerStore = null as unknown as ReturnType<typeof initSharedStore>
@@ -189,8 +188,8 @@ describe('network provider/shared store', () => {
 
 	test('can replicate local client state controlled updates', async () => {
 		const network = await newNetwork(SERVER_HOST)
-		const provider1 = new SharedStoreProvider(SERVER_HOST, network.networkId)
-		const provider2 = new SharedStoreProvider(SERVER_HOST, network.networkId)
+		const provider1 = new SharedStoreProvider(network.networkId)
+		const provider2 = new SharedStoreProvider(network.networkId)
 		let dispose = () => {}
 		let leaderStore = null as unknown as ReturnType<typeof initSharedStore>
 		let followerStore = null as unknown as ReturnType<typeof initSharedStore>
@@ -217,9 +216,9 @@ describe('network provider/shared store', () => {
 
 	test('can retry transactions', async () => {
 		const network = await newNetwork(SERVER_HOST)
-		const provider1 = new SharedStoreProvider(SERVER_HOST, network.networkId)
-		const provider2 = new SharedStoreProvider(SERVER_HOST, network.networkId)
-		const provider3 = new SharedStoreProvider(SERVER_HOST, network.networkId)
+		const provider1 = new SharedStoreProvider(network.networkId)
+		const provider2 = new SharedStoreProvider(network.networkId)
+		const provider3 = new SharedStoreProvider(network.networkId)
 		let dispose = () => {}
 		let leaderStore = null as unknown as ReturnType<typeof initSharedStore>
 		let follower1Store = null as unknown as ReturnType<typeof initSharedStore>
@@ -252,8 +251,8 @@ describe('network provider/shared store', () => {
 
 	test('can push non-rollback mutations', async () => {
 		const network = await newNetwork(SERVER_HOST)
-		const provider1 = new SharedStoreProvider(SERVER_HOST, network.networkId)
-		const provider2 = new SharedStoreProvider(SERVER_HOST, network.networkId)
+		const provider1 = new SharedStoreProvider(network.networkId)
+		const provider2 = new SharedStoreProvider(network.networkId)
 
 		let dispose = () => {}
 		let leaderStore = null as unknown as ReturnType<typeof initSharedStore>
@@ -283,8 +282,8 @@ describe('network provider/shared store', () => {
 
 	test('disconnected clients removes their client controlled state', async () => {
 		const network = await newNetwork(SERVER_HOST)
-		const provider1 = new SharedStoreProvider(SERVER_HOST, network.networkId)
-		const provider2 = new SharedStoreProvider(SERVER_HOST, network.networkId)
+		const provider1 = new SharedStoreProvider(network.networkId)
+		const provider2 = new SharedStoreProvider(network.networkId)
 		let dispose = () => {}
 		let leaderStore = null as unknown as ReturnType<typeof initSharedStore>
 		let followerStore = null as unknown as ReturnType<typeof initSharedStore>
@@ -315,9 +314,9 @@ describe('network provider/shared store', () => {
 
 	test('actions', async () => {
 		const network = await newNetwork(SERVER_HOST)
-		const provider1 = new SharedStoreProvider(SERVER_HOST, network.networkId)
+		const provider1 = new SharedStoreProvider(network.networkId)
 
-		const provider2 = new SharedStoreProvider(SERVER_HOST, network.networkId)
+		const provider2 = new SharedStoreProvider(network.networkId)
 
 		let leaderStore = null as unknown as SharedStore<any>
 		let followerStore = null as unknown as SharedStore<any>
@@ -353,8 +352,8 @@ describe('network provider/shared store', () => {
 
 	test('can delete entries', async () => {
 		const network = await newNetwork(SERVER_HOST)
-		const provider1 = new SharedStoreProvider(SERVER_HOST, network.networkId)
-		const provider2 = new SharedStoreProvider(SERVER_HOST, network.networkId)
+		const provider1 = new SharedStoreProvider(network.networkId)
+		const provider2 = new SharedStoreProvider(network.networkId)
 
 		let leaderStore = null as unknown as SharedStore<any>
 		let followerStore = null as unknown as SharedStore<any>
@@ -380,8 +379,8 @@ describe('network provider/shared store', () => {
 
 	test('client controlled states set before initialized is set', async () => {
 		const network = await newNetwork(SERVER_HOST)
-		const provider1 = new SharedStoreProvider(SERVER_HOST, network.networkId)
-		const provider2 = new SharedStoreProvider(SERVER_HOST, network.networkId)
+		const provider1 = new SharedStoreProvider(network.networkId)
+		const provider2 = new SharedStoreProvider(network.networkId)
 
 		let leaderStore = null as unknown as SharedStore<any>
 		let followerStore = null as unknown as SharedStore<any>

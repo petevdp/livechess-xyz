@@ -9,7 +9,7 @@ import { unwrap } from 'solid-js/store'
 import { createId } from '~/utils/ids.ts'
 import { DELETE, PUSH, SharedStore, SharedStoreProvider, StoreMutation, initSharedStore, newNetwork } from '~/utils/sharedStore.ts'
 
-import { PLAYER_TIMEOUT, SERVER_HOST } from '../config.ts'
+import { PLAYER_TIMEOUT } from '../config.ts'
 import * as G from './game/game.ts'
 import * as GL from './game/gameLogic.ts'
 import * as P from './player.ts'
@@ -70,7 +70,7 @@ type ClientOwnedState = {
 let disposePrevious = () => {}
 
 export async function createRoom() {
-	return await newNetwork(SERVER_HOST)
+	return await newNetwork()
 }
 
 export type ConnectionState =
@@ -94,8 +94,7 @@ export function connectToRoom(
 	initPlayer: (numPlayers: number) => Promise<{ player: P.Player; isSpectating: boolean }>,
 	parentOwner: Owner
 ): Observable<ConnectionState> {
-	console.log('connecting to room')
-	const provider = new SharedStoreProvider<RoomEvent>(SERVER_HOST, roomId)
+	const provider = new SharedStoreProvider<RoomEvent>(roomId)
 
 	// will only be used if the room is new
 	let state: RoomState
@@ -154,7 +153,7 @@ export function connectToRoom(
 
 		const sub = interval(10000).subscribe(() => {
 			// make sure render's server doesn't spin down while we're in the middle of a game
-			fetch(window.location.protocol + '//' + SERVER_HOST + '/ping')
+			fetch(window.location.protocol + '//' + window.location.host + '/ping')
 		})
 
 		disposePrevious = () => {

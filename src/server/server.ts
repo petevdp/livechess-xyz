@@ -7,6 +7,9 @@ import * as fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'url'
 import * as ws from 'ws'
+import dotenv from 'dotenv'
+dotenv.config()
+
 
 import * as SSS from './systems/sharedStoreNetworks.ts'
 
@@ -82,7 +85,7 @@ server.register(fastifyStatic, {
 })
 //#region websocket routes
 server.register(async function () {
-	server.get('/networks/:networkId', { websocket: true }, (connection, request) => {
+	server.get('/api/networks/:networkId', { websocket: true }, (connection, request) => {
 		//@ts-expect-error
 		const networkId: string = request.params!.networkId
 		const log = request.log.child({ networkId })
@@ -93,15 +96,15 @@ server.register(async function () {
 //#endregion
 
 // for keep-alive on render server
-server.get('/ping', () => {
+server.get('/api/ping', () => {
 	return 'pong\n'
 })
 
-server.post('/networks', () => {
+server.post('/api/networks', () => {
 	return SSS.createNetwork()
 })
 
-server.head('/networks/:networkId', (req, res) => {
+server.head('/api/networks/:networkId', (req, res) => {
 	//@ts-expect-error
 	const networkId: string = req.params.networkId
 	if (SSS.getNetwork(networkId)) {
@@ -119,9 +122,18 @@ server.get('/rooms/:networkId', (_, res) => {
 
 SSS.setupSharedStoreSystem(server.log)
 
-const port: number = parseInt(process.env.PORT as string) || 8080
 
-server.listen({ port, host: '0.0.0.0' }, (err, address) => {
+if (!process.env.HOSTNAME) {
+	server.log.error('No HOSTNAME provided')
+	process.exit(1)
+}
+
+if (!process.env.PORT) {
+	server.log.error('No PORT provided')
+	process.exit(1)
+}
+const port = parseInt(process.env.PORT as string)
+server.listen({ port, host: process.env.HOSTNAME }, (err, address) => {
 	if (err) {
 		server.log.error(err)
 		process.exit(1)

@@ -11,7 +11,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card.t
 import { Checkbox } from '~/components/ui/checkbox.tsx'
 import { Input } from '~/components/ui/input.tsx'
 import { Label } from '~/components/ui/label.tsx'
-import { SERVER_HOST } from '~/config.ts'
 import * as Errors from '~/systems/errors.ts'
 import * as Pieces from '~/systems/piece.tsx'
 import * as P from '~/systems/player.ts'
@@ -47,7 +46,7 @@ export default function RoomGuard() {
 		navigate('/rooms/' + params.id, { replace: true })
 		;[networkExists] = createResource(() => Promise.resolve(true))
 	} else {
-		;[networkExists] = createResource(() => checkNetworkExists(params.id, SERVER_HOST))
+		;[networkExists] = createResource(() => checkNetworkExists(params.id))
 	}
 
 	createEffect(() => {

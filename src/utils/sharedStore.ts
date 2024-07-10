@@ -1,9 +1,11 @@
-import { decode, encode } from '@msgpack/msgpack'
-import { until } from '@solid-primitives/promise'
-import { isEqual } from 'lodash-es'
-import { Observable, Subject, Subscription, concatMap, endWith, first, firstValueFrom, merge, mergeAll, share } from 'rxjs'
-import { batch, createSignal, onCleanup } from 'solid-js'
-import { createStore, produce, unwrap } from 'solid-js/store'
+import { decode, encode } from '@msgpack/msgpack';
+import { until } from '@solid-primitives/promise';
+import { isEqual } from 'lodash-es';
+import { Observable, Subject, Subscription, concatMap, endWith, first, firstValueFrom, merge, mergeAll, share } from 'rxjs';
+import { batch, createSignal, onCleanup } from 'solid-js';
+import { createStore, produce, unwrap } from 'solid-js/store';
+import {API_URL, WS_API_URL} from "~/config.ts";
+
 
 //#region types
 
@@ -578,6 +580,7 @@ function areTransactionsEqual(a: NewSharedStoreTransaction<any>, b: NewSharedSto
 	return isEqual(_a, _b)
 }
 
+
 export class SharedStoreProvider<Event> {
 	public message$: Observable<SharedStoreMessage>
 	public ws: WebSocket
@@ -585,12 +588,8 @@ export class SharedStoreProvider<Event> {
 	clientId?: string
 	private nextAtomId = 0
 
-	constructor(
-		serverHost: string,
-		public networkId: string | null
-	) {
-		const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-		const url = `${protocol}//${serverHost || window.location.host}/networks/` + networkId
+	constructor(public networkId: string | null) {
+		const url = `${WS_API_URL}/networks/` + networkId
 		// TODO retry on disconnect?
 		this.ws = new WebSocket(url)
 		this.message$ = new Observable<SharedStoreMessage>((subscriber) => {
@@ -843,12 +842,10 @@ export async function buildTransaction<Event>(fn: (t: SharedStoreTransactionBuil
 	}
 }
 
-export async function newNetwork(host?: string) {
-	const url = `${window.location.protocol}//${host || window.location.host}/networks`
-	return (await fetch(url, { method: 'POST' }).then((res) => res.json())) as NewNetworkResponse
+export async function newNetwork() {
+	return (await fetch(`${API_URL}/networks`, { method: 'POST' }).then((res) => res.json())) as NewNetworkResponse
 }
 
-export async function checkNetworkExists(networkId: string, host?: string) {
-	const url = `${window.location.protocol}//${host || window.location.host}/networks/${networkId}`
-	return await fetch(url, { method: 'HEAD' }).then((res) => res.status === 200)
+export async function checkNetworkExists(networkId: string) {
+	return await fetch(`${API_URL}/networks/${networkId}`, { method: 'HEAD' }).then((res) => res.status === 200)
 }
