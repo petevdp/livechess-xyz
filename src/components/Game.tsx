@@ -21,7 +21,15 @@ import toast from 'solid-toast'
 
 import * as Svgs from '~/components/Svgs.tsx'
 import { VariantInfoDialog } from '~/components/VariantInfoDialog.tsx'
-import { Dialog, DialogContent, DialogDescription, DialogHeader } from '~/components/ui/dialog.tsx'
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+	DialogTrigger,
+} from '~/components/ui/dialog.tsx'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '~/components/ui/hover-card.tsx'
 import { BOARD_COLORS } from '~/config.ts'
 import { cn } from '~/lib/utils.ts'
@@ -815,9 +823,7 @@ function ActionsPanel(props: { class: string; placingDuck: boolean }) {
 							>
 								<Svgs.OfferDraw />
 							</Button>
-							<Button disabled={!!game.drawIsOfferedBy} title="Resign" size="icon" variant="ghost" onclick={() => game.resign()}>
-								<Svgs.Resign />
-							</Button>
+							<ResignButton />
 						</span>
 					</DrawHoverCard>
 				</Match>
@@ -828,6 +834,29 @@ function ActionsPanel(props: { class: string; placingDuck: boolean }) {
 				</Match>
 			</Switch>
 		</span>
+	)
+}
+
+function ResignButton() {
+	const game = G.game()!
+	const [open, setOpen] = createSignal(false)
+
+	return (
+		<Dialog open={open()} onOpenChange={setOpen}>
+			<DialogTrigger>
+				<Button disabled={!!game.drawIsOfferedBy} title="Resign" size="icon" variant="ghost">
+					<Svgs.Resign />
+				</Button>
+			</DialogTrigger>
+			<DialogContent>
+				<DialogTitle>Confirm Resignation</DialogTitle>
+				<DialogDescription>Are you sure you want to resign?</DialogDescription>
+				<DialogFooter>
+					<Button variant="secondary" onClick={() => setOpen(false)}>Cancel</Button>
+					<Button onClick={() => game.resign()}>Resign</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
 	)
 }
 
@@ -1027,7 +1056,10 @@ type RenderPiecesArgs = {
 	squareSize: number
 	boardFlipped: boolean
 	boardView: G.BoardView
-	grabbedMousePos: { x: number; y: number } | null
+	grabbedMousePos: {
+		x: number
+		y: number
+	} | null
 	activePieceSquare: string | null
 }
 
@@ -1135,12 +1167,18 @@ function renderHighlights(args: RenderHighlightsArgs) {
 
 type RenderGrabbedPieceArgs = {
 	context: CanvasRenderingContext2D
-	grabbedMousePos: { x: number; y: number } | null
+	grabbedMousePos: {
+		x: number
+		y: number
+	} | null
 	boardView: G.BoardView
 	squareSize: number
 	activePieceSquare: string | null
 	placingDuck: boolean
-	currentMousePos: { x: number; y: number } | null
+	currentMousePos: {
+		x: number
+		y: number
+	} | null
 	touchScreen: boolean
 }
 
