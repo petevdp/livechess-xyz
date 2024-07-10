@@ -1,13 +1,14 @@
-import { Show, createEffect, createSignal } from 'solid-js'
+import { Show, createSignal } from 'solid-js'
 
 import * as Svgs from '~/components/Svgs.tsx'
 import { Button } from '~/components/ui/button.tsx'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog.tsx'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog.tsx'
 import { Input } from '~/components/ui/input.tsx'
 import { Label } from '~/components/ui/label.tsx'
 import { Switch } from '~/components/ui/switch.tsx'
 import { Choice, MultiChoiceButton } from '~/components/utils/MultiChoiceButton.tsx'
 import * as P from '~/systems/player.ts'
+
 
 export function SettingsDialog() {
 	const [nickname, setNickname] = createSignal(P.settings.name ?? '')
@@ -60,7 +61,7 @@ export function SettingsDialog() {
 							<Input
 								required={true}
 								pattern={'[a-zA-Z0-9 ]+'}
-								minlength={3}
+								min={3}
 								name="nickname"
 								id="nickname"
 								value={nickname()}
