@@ -510,7 +510,7 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 		if (!isLeader()) {
 			await gotStatesPromise
 		}
-		console.log("Initialized shared store")
+		console.log("Initialized shared store for network " + provider.networkId)
 		setInitialized(true)
 	})()
 	//#endregion

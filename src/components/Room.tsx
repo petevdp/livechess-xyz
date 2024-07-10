@@ -63,14 +63,6 @@ export function Room() {
 	})
 	const [dismissedMultipleClientsWarning, setDismissedMultipleClientsWarning] = createSignal(true)
 	onMount(() => {
-		console.log(
-			'playerHasMultipleClients',
-			room.playerHasMultipleClients,
-			'dismissedMultipleClientsWarning',
-			dismissedMultipleClientsWarning(),
-
-			JSON.stringify(room.members)
-		)
 		if (room.playerHasMultipleClients && !P.settings.dismissMultipleClientsWarning) {
 			setDismissedMultipleClientsWarning(false)
 		}

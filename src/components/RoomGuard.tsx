@@ -115,7 +115,7 @@ export default function RoomGuard() {
 	//#endregion
 
 	createEffect(() => {
-		console.log('connection status', connectionStatus())
+		console.log('connection status:', connectionStatus())
 	})
 
 	return (

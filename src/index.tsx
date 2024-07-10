@@ -27,9 +27,6 @@ H.init(import.meta.env.VITE_HIGHLIGHT_PROJECT_ID, {
 	}
 })
 
-if (!import.meta.env.PROD) {
-	import('./console.ts')
-}
-
 const root = document.getElementById('root')!
 render(App, root)
+import('./console.ts')

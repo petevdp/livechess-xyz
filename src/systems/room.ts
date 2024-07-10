@@ -169,10 +169,8 @@ export function connectToRoom(
 	})
 
 	const connected$ = until(() => store.initialized()).then(async () => {
-		console.log('store initialized')
 		if (!store.rollbackStore.members.some((p) => p.id === playerId)) {
 			const { player, isSpectating } = await initPlayer(Object.values(store.rollbackStore.gameParticipants).length)
-			console.log('new player', player.id, 'isSpectating', isSpectating)
 			//#region connect player
 			await store.setStoreWithRetries((state) => {
 				// leader will report player reconnection
