@@ -35,29 +35,29 @@
 			'captured-pieces     captured-pieces captured-pieces captured-pieces'
 			'move-history        move-history    move-history    move-nav';
 	}
+}
 
-	@media screen and (max-width: 700px) {
-		.boardContainer.showHistory {
-			grid-template-columns: 1fr max-content max-content 1fr;
-			grid-template-rows: min-content auto min-content repeat(3, auto);
-			grid-template-areas:
+@media screen and (max-width: 700px) {
+	.boardContainer.showHistory {
+		grid-template-columns: 1fr max-content max-content 1fr;
+		grid-template-rows: min-content auto min-content repeat(3, auto);
+		grid-template-areas:
 				'top-left-actions    opponent        opponent        clock-opponent'
 				'board               board           board           board'
 				'bottom-left-actions player          player          clock-player'
 				'captured-pieces     captured-pieces captured-pieces captured-pieces'
 				'move-nav            move-nav        move-nav        move-nav'
 				'move-history        move-history    move-history    move-history';
-		}
+	}
 
-		.boardContainer.hideHistory {
-			grid-template-columns: 1fr max-content 1fr max-content;
-			grid-template-rows: min-content auto min-content auto;
-			grid-template-areas:
+	.boardContainer.hideHistory {
+		grid-template-columns: 1fr max-content 1fr max-content;
+		grid-template-rows: min-content auto min-content auto;
+		grid-template-areas:
 				'top-left-actions    opponent        opponent        clock-opponent'
 				'board               board           board           board'
 				'bottom-left-actions player          player          clock-player'
 				'captured-pieces     captured-pieces captured-pieces captured-pieces';
-		}
 	}
 }
 
