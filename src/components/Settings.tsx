@@ -9,7 +9,6 @@ import { Switch } from '~/components/ui/switch.tsx'
 import { Choice, MultiChoiceButton } from '~/components/utils/MultiChoiceButton.tsx'
 import * as P from '~/systems/player.ts'
 
-
 export function SettingsDialog() {
 	const [nickname, setNickname] = createSignal(P.settings.name ?? '')
 	const [open, setOpen] = createSignal(false)
@@ -33,14 +32,15 @@ export function SettingsDialog() {
 				if (!open) {
 					close()
 					return
-				} else {
-					setNickname(P.settings.name!)
+				} else if (P.playerId() === null) {
+					return
 				}
+				setNickname(P.settings.name ?? '')
 				setOpen(open)
 			}}
 		>
 			<DialogTrigger>
-				<Button size="icon" variant="ghost">
+				<Button size="icon" variant="ghost" disabled={P.playerId() === null}>
 					<Svgs.Settings />
 				</Button>
 			</DialogTrigger>
