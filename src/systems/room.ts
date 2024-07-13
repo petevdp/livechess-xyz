@@ -374,7 +374,7 @@ export class Room {
 	}
 
 	async setCurrentPlayerName(name: string) {
-		this.sharedStore.setStoreWithRetries((state) => {
+		void this.sharedStore.setStoreWithRetries((state) => {
 			let _name = name
 			// name already set
 			if (state.members.some((p) => p.id === this.player.id && p.name === name)) return []
@@ -435,15 +435,17 @@ export class Room {
 
 	//#region piece swapping
 	initiateOrAgreePieceSwap() {
-		this.sharedStore.setStoreWithRetries(() => {
+		void this.sharedStore.setStoreWithRetries(() => {
 			if (this.state.status !== 'pregame' || !this.isPlayerParticipating) return
 			if (!this.rightPlayer) {
+				const participant = { ...this.rollbackState.gameParticipants[this.leftPlayer!.color] }
+				participant.agreePieceSwap = false
 				return {
 					events: [{ type: 'agree-piece-swap', playerId: this.player.id }],
 					mutations: [
 						{
 							path: ['gameParticipants', GL.oppositeColor(this.leftPlayer!.color)],
-							value: this.rollbackState.gameParticipants[this.leftPlayer!.color],
+							value: participant,
 						},
 						{
 							path: ['gameParticipants', this.leftPlayer!.color],
@@ -493,18 +495,18 @@ export class Room {
 	}
 
 	declineOrCancelPieceSwap() {
-		this.sharedStore.setStoreWithRetries(() => {
+		void this.sharedStore.setStoreWithRetries(() => {
 			if (this.state.status !== 'pregame') return []
 			if (!this.rightPlayer) return []
 			return {
 				events: [{ type: 'decline-or-cancel-piece-swap', playerId: this.player.id }],
 				mutations: [
 					{
-						path: ['members', this.members.findIndex((p) => p.id === this.player.id), 'agreePieceSwap'],
+						path: ['gameParticipants', 'white', 'agreePieceSwap'],
 						value: false,
 					},
 					{
-						path: ['members', this.members.findIndex((p) => p.id === this.rightPlayer!.id), 'agreePieceSwap'],
+						path: ['gameParticipants', 'black', 'agreePieceSwap'],
 						value: false,
 					},
 				],
