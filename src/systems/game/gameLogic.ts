@@ -2,11 +2,9 @@ import { isEqual, partition } from 'lodash-es'
 import hash from 'object-hash'
 import { Accessor } from 'solid-js'
 
-
 //#region primitives
 
-export const PIECES = ['pawn', 'knight', 'bishop', 'rook', 'queen', 'king', 'duck'] as const
-export type Piece = (typeof PIECES)[number]
+export const PIECES = ['pawn', 'knight', 'bishop', 'rook', 'queen', 'king', 'duck'] as const export type Piece = (typeof PIECES)[number]
 export const PROMOTION_PIECES = ['knight', 'bishop', 'rook', 'queen'] as const
 export type PromotionPiece = (typeof PROMOTION_PIECES)[number]
 export const COLORS = ['white', 'black'] as const
@@ -237,7 +235,7 @@ function hashMove(move: Move): string {
 
 export function useBoardHistory(moves: Accessor<Move[]>, startingBoard: Board) {
 	let moveHashes: string[] = []
-	let boardHistory: BoardHistoryEntry[] = [{hash: hashBoard(startingBoard), board: startingBoard}]
+	let boardHistory: BoardHistoryEntry[] = [{ hash: hashBoard(startingBoard), board: startingBoard }]
 	return () => getBoardHistory(moves())
 
 	function getBoardHistory(moves: Move[]) {
@@ -268,12 +266,11 @@ export function useBoardHistory(moves: Accessor<Move[]>, startingBoard: Board) {
 			const lastBoard = boardHistory[boardHistory.length - 1].board
 			const [newBoard] = applyMoveToBoard(move, lastBoard)
 			moveHashes.push(moveHash)
-			boardHistory.push({board: newBoard, hash: hashBoard(newBoard)})
+			boardHistory.push({ board: newBoard, hash: hashBoard(newBoard) })
 		}
 		return boardHistory
 	}
 }
-
 
 //#endregion
 
