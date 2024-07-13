@@ -138,16 +138,21 @@ function Lobby() {
 	return (
 		<ScreenFittingContent class="grid place-items-center p-2">
 			<Card class="w-[95vw] p-1 sm:w-auto">
-				<CardHeader>
+				<CardHeader class="p-2">
 					<CardTitle class="text-center">Configure Game</CardTitle>
 				</CardHeader>
-				<CardContent class="p-1">
+				<CardContent class="p-1 space-y-4">
+					<div class="flex flex-col space-y-2">
+						<PlayerAwareness />
+						<div class="flex justify-center space-x-1">
+							<QrCodeDialog />
+							<Button variant="secondary" size="sm" onclick={copyInviteLink}>
+								Copy Invite Link
+							</Button>
+						</div>
+					</div>
 					<GameConfigForm />
 				</CardContent>
-				<CardFooter class="flex justify-center space-x-1">
-					<QrCodeDialog />
-					<Button onclick={copyInviteLink}>Copy Invite Link</Button>
-				</CardFooter>
 			</Card>
 		</ScreenFittingContent>
 	)
@@ -157,7 +162,11 @@ function QrCodeDialog() {
 	const [dataUrl] = createResource(() => QRCode.toDataURL(window.location.href, { scale: 12 }))
 	return (
 		<Dialog>
-			<DialogTrigger as={Button}>Show QR Code</DialogTrigger>
+			<DialogTrigger>
+				<Button size="sm" variant="secondary">
+					Show QR Code
+				</Button>
+			</DialogTrigger>
 			<DialogContent>
 				<DialogHeader>
 					<DialogTitle>Scan to Join LiveChess Room</DialogTitle>
@@ -338,7 +347,6 @@ function GameConfigForm() {
 				}}
 				disabled={!room.isPlayerParticipating || room.leftPlayer?.isReadyForGame || gameConfig().timeControl === 'unlimited'}
 			/>
-			<PlayerAwareness />
 		</div>
 	)
 }
@@ -377,7 +385,7 @@ function PlayerAwareness() {
 
 	// large margin needed for headroom for piece switch popup
 	return (
-		<div class="col-span-2 m-auto mt-8 grid grid-cols-[1fr_min-content_1fr] items-center gap-2">
+		<div class="col-span-2 mx-auto grid grid-cols-[1fr_min-content_1fr] items-center gap-2">
 			<Switch>
 				<Match when={room.leftPlayer?.id === room.player.id}>
 					<PlayerConfigDisplay
@@ -474,12 +482,9 @@ function PlayerConfigDisplay(props: {
 				</Button>
 			</Show>
 			<Show when={props.player.isReadyForGame}>
-				<div class="flex flex-row items-center space-x-1">
-					<span>Ready!</span>
-					<Button size="sm" variant="secondary" onclick={() => props.toggleReady()}>
-						Unready
-					</Button>
-				</div>
+				<Button size="sm" variant="secondary" onclick={() => props.toggleReady()}>
+					Unready
+				</Button>
 			</Show>
 		</PlayerDisplayContainer>
 	)
