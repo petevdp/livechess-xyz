@@ -1,47 +1,45 @@
 import { execSync } from 'child_process'
+import dotenv from 'dotenv'
 import devtools from 'solid-devtools/vite'
 import { defineConfig } from 'vite'
 import solid from 'vite-plugin-solid'
 import solidSvg from 'vite-plugin-solid-svg'
 import tsconfigPaths from 'vite-tsconfig-paths'
-import dotenv from 'dotenv'
-dotenv.config()
 
-function exec(cmd: string) {
-	return execSync(cmd).toString().trimEnd()
-}
+import { ENV, setupEnv } from './src/environment'
+
+dotenv.config()
 
 // noinspection JSUnusedGlobalSymbols
 export default defineConfig(() => {
-	const commitDate = exec('git log -1 --format=%cI')
-	const branchName = exec('git rev-parse --abbrev-ref HEAD')
-	const commitHash = exec('git rev-parse HEAD')
-	const lastCommitMessage = exec('git show -s --format=%s')
+	setupEnv()
 
-	process.env.VITE_GIT_COMMIT_DATE = commitDate
-	process.env.VITE_GIT_BRANCH_NAME = branchName
-	process.env.VITE_GIT_COMMIT_HASH = commitHash
-	process.env.VITE_GIT_LAST_COMMIT_MESSAGE = lastCommitMessage
-
-	let httpTarget = 'http://' + process.env.HOSTNAME + ':' + process.env.PORT;
-	const wsTarget = 'ws://' + process.env.HOSTNAME + ':' + process.env.PORT;
-	return {
+	const httpTarget = `http://${ENV.HOSTNAME}:${ENV.PORT}`
+	const wsTarget = `ws://${ENV.HOSTNAME}:${ENV.PORT}`
+	const config = {
 		plugins: [devtools({ autoname: true }), solid(), solidSvg(), tsconfigPaths()],
 		build: {
-			sourcemap: true
+			sourcemap: true,
 		},
 		server: {
 			proxy: {
-				"/api": {
+				'/api': {
 					target: httpTarget,
-					changeOrigin: true
+					changeOrigin: true,
 				},
-				"^/api/networks/.*": {
+				'^/api/networks/.*': {
 					target: wsTarget,
 					changeOrigin: true,
-					ws: true
+					ws: true,
 				},
-			}
-		}
+			},
+		},
 	}
+
+	for (const [key, value] of Object.entries(config.server.proxy)) {
+		console.log(`proxying ${key} to ${value.target}`)
+	}
+	console.log()
+
+	return config
 })

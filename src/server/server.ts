@@ -7,11 +7,11 @@ import * as fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'url'
 import * as ws from 'ws'
-import dotenv from 'dotenv'
-dotenv.config()
 
-
+import { ENV, setupEnv } from '../environment.ts'
 import * as SSS from './systems/sharedStoreNetworks.ts'
+
+setupEnv()
 
 if (typeof crypto === 'undefined') {
 	import('@peculiar/webcrypto').then(() => {
@@ -58,10 +58,8 @@ const envToLogger = {
 	},
 }
 
-const environment = (process.env.NODE_ENV || 'development') as 'development' | 'production'
-const server = Fastify({ logger: envToLogger[environment] })
-server.log.info(`environment: %s`, environment)
-
+const server = Fastify({ logger: envToLogger[ENV.NODE_ENV] })
+server.log.info(`environment: %s`, ENV.NODE_ENV)
 server.register(fastifyWebsocket)
 server.register(fastifyCors, () => {
 	return (req: any, callback: any) => {
@@ -122,21 +120,9 @@ server.get('/rooms/:networkId', (_, res) => {
 
 SSS.setupSharedStoreSystem(server.log)
 
-
-if (!process.env.HOSTNAME) {
-	server.log.error('No HOSTNAME provided')
-	process.exit(1)
-}
-
-if (!process.env.PORT) {
-	server.log.error('No PORT provided')
-	process.exit(1)
-}
-const port = parseInt(process.env.PORT as string)
-server.listen({ port, host: process.env.HOSTNAME }, (err, address) => {
+server.listen({ port: ENV.PORT, host: ENV.HOSTNAME }, (err, address) => {
 	if (err) {
 		server.log.error(err)
 		process.exit(1)
 	}
-	server.log.info(`server listening on ${address}`)
 })
