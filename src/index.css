@@ -56,9 +56,13 @@
 		@apply border-border;
 		font-family: Roboto, serif;
 	}
+	root {
+		min-height: 100%;
+	}
 
 	body {
 		@apply bg-background text-foreground;
+		min-height: 100%;
 		font-feature-settings: 'rlig' 1,
 		'calt' 1;
 	}

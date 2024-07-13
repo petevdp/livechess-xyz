@@ -5,13 +5,13 @@ import { Match, Resource, Show, Switch, createEffect, createResource, createSign
 
 import adjectives from '~/assets/names_dictionary/adjectives.ts'
 import animals from '~/assets/names_dictionary/animals.ts'
-import { Spinner } from '~/components/Spinner.tsx'
 import { Button } from '~/components/ui/button.tsx'
 import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card.tsx'
 import { Checkbox } from '~/components/ui/checkbox.tsx'
 import { Input } from '~/components/ui/input.tsx'
 import { Label } from '~/components/ui/label.tsx'
 import * as Errors from '~/systems/errors.ts'
+import * as GlobalLoading from '~/systems/globalLoading.ts'
 import * as Pieces from '~/systems/piece.tsx'
 import * as P from '~/systems/player.ts'
 import * as R from '~/systems/room.ts'
@@ -56,6 +56,7 @@ export default function RoomGuard() {
 	})
 
 	async function initPlayer(numPlayers: number): Promise<{ player: P.Player; isSpectating: boolean }> {
+		GlobalLoading.unsetLoading('connect-to-room')
 		setPlayerFormState({
 			state: 'visible',
 			props: {
@@ -85,22 +86,27 @@ export default function RoomGuard() {
 		if ((!R.room() || R.room()!.roomId !== params.id) && P.playerId() && networkExists()) {
 			setConnectionStatus('connecting')
 			console.log('connecting to room', params.id)
+
 			connectionSub = R.connectToRoom(params.id, P.playerId()!, initPlayer, owner).subscribe((state) => {
+				console.log(state)
 				switch (state.status) {
 					case 'connecting':
 						setConnectionStatus('connecting')
 						break
 					case 'connected':
 						setConnectionStatus('connected')
+						GlobalLoading.unsetLoading('connect-to-room')
 						break
 					case 'lost':
 						setConnectionStatus('disconnected')
 
+						GlobalLoading.unsetLoading('connect-to-room')
 						Errors.pushFatalError('Connection Lost', `Connection to room ${params.id} lost.`)
 						navigate('/')
 						break
 					case 'timeout':
 						setConnectionStatus('disconnected')
+						GlobalLoading.unsetLoading('connect-to-room')
 						Errors.pushFatalError('Timed Out', `Connection to room ${params.id} timed out.`)
 						navigate('/')
 						break
@@ -125,11 +131,7 @@ export default function RoomGuard() {
 					{/* @ts-expect-error fuck it */}
 					<PlayerForm {...playerFormState().props} />
 				</Match>
-				<Match when={!R.room() || connectionStatus() === 'connecting'}>
-					<ScreenFittingContent class="grid place-items-center">
-						<Spinner />
-					</ScreenFittingContent>
-				</Match>
+				<Match when={!R.room() || connectionStatus() === 'connecting'}>{null}</Match>
 				<Match when={connectionStatus() === 'disconnected'}>
 					<div>disconnected</div>
 				</Match>

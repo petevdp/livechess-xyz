@@ -2,6 +2,7 @@
 import { H } from 'highlight.run'
 import 'solid-devtools'
 import { render } from 'solid-js/web'
+
 import App from './App'
 import './index.css'
 
@@ -23,8 +24,8 @@ H.init(import.meta.env.VITE_HIGHLIGHT_PROJECT_ID, {
 	enableCanvasRecording: true,
 	samplingStrategy: {
 		canvas: 2,
-		canvasMaxSnapshotDimension: 480,  // snapshot at a max 480p resolution
-	}
+		canvasMaxSnapshotDimension: 480, // snapshot at a max 480p resolution
+	},
 })
 
 const root = document.getElementById('root')!

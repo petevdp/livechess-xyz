@@ -10,6 +10,7 @@ import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogTit
 import { Button } from '~/components/ui/button.tsx'
 import { Callout, CalloutContent, CalloutTitle } from '~/components/ui/callout.tsx'
 import * as Errors from '~/systems/errors.ts'
+import * as GlobalLoading from '~/systems/globalLoading.ts'
 
 import { Home } from './components/Home.tsx'
 
@@ -20,6 +21,7 @@ function App() {
 	createEffect(() => {
 		if (Errors.fatalError()) {
 			setDisplayedError(Errors.fatalError())
+			GlobalLoading.clear()
 		}
 	})
 
@@ -99,6 +101,7 @@ function GenericErrorScreen(props: { error: Error }) {
 	const [showError, setShowError] = createSignal(false)
 	onMount(() => {
 		console.error(props.error)
+		GlobalLoading.clear()
 	})
 	return (
 		<AppContainer>

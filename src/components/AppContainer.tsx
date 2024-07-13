@@ -1,12 +1,14 @@
 import { As, useColorMode } from '@kobalte/core'
 import { A } from '@solidjs/router'
-import { ComponentProps, ParentProps, Show, splitProps } from 'solid-js'
+import { ComponentProps, Match, ParentProps, Show, Switch, splitProps } from 'solid-js'
 
 import { AboutDialog } from '~/components/AboutDialog.tsx'
 import { SettingsDialog } from '~/components/Settings.tsx'
+import { Spinner } from '~/components/Spinner.tsx'
 import { Button } from '~/components/ui/button.tsx'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '~/components/ui/dropdown-menu.tsx'
 import { cn } from '~/lib/utils.ts'
+import * as GlobalLoading from '~/systems/globalLoading.ts'
 import * as P from '~/systems/player.ts'
 import * as R from '~/systems/room.ts'
 
@@ -41,7 +43,16 @@ export function AppContainer(props: ParentProps) {
 				</div>
 			</nav>
 			<ModalContainer />
-			<div>{props.children}</div>
+			<Switch>
+				<Match when={GlobalLoading.isLoading()}>
+					<ScreenFittingContent class="grid place-items-center">
+						<Spinner />
+					</ScreenFittingContent>
+				</Match>
+				<Match when={!GlobalLoading.isLoading()}>
+					<div>{props.children}</div>
+				</Match>
+			</Switch>
 		</div>
 	)
 }

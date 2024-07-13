@@ -1,11 +1,11 @@
-import { decode, encode } from '@msgpack/msgpack';
-import { until } from '@solid-primitives/promise';
-import { isEqual } from 'lodash-es';
-import { Observable, Subject, Subscription, concatMap, endWith, first, firstValueFrom, merge, mergeAll, share } from 'rxjs';
-import { batch, createSignal, onCleanup } from 'solid-js';
-import { createStore, produce, unwrap } from 'solid-js/store';
-import {API_URL, WS_API_URL} from "../config.ts";
+import { decode, encode } from '@msgpack/msgpack'
+import { until } from '@solid-primitives/promise'
+import { isEqual } from 'lodash-es'
+import { Observable, Subject, Subscription, concatMap, endWith, first, firstValueFrom, merge, mergeAll, share } from 'rxjs'
+import { batch, createEffect, createSignal, onCleanup } from 'solid-js'
+import { createStore, produce, unwrap } from 'solid-js/store'
 
+import { API_URL, WS_API_URL } from '../config.ts'
 
 //#region types
 
@@ -123,6 +123,9 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 ) {
 	//#region statuses
 	const [initialized, setInitialized] = createSignal(false)
+	createEffect(() => {
+		console.log('store initialized for ' + provider.networkId)
+	})
 	const [isLeader, setIsLeader] = createSignal(false)
 	//#endregion
 
@@ -338,7 +341,12 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 					event$.next(action)
 				}
 			} else {
-				console.warn('received mutation with index that is not the next index', receivedAtom.index, appliedTransactions.length, receivedAtom)
+				console.warn(
+					'received mutation with index that is not the next index',
+					receivedAtom.index,
+					appliedTransactions.length,
+					receivedAtom
+				)
 			}
 			return
 			//#endregion
@@ -510,7 +518,7 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 		if (!isLeader()) {
 			await gotStatesPromise
 		}
-		console.log("Initialized shared store for network " + provider.networkId)
+		console.log('Initialized shared store for network ' + provider.networkId)
 		setInitialized(true)
 	})()
 	//#endregion
@@ -580,7 +588,6 @@ function areTransactionsEqual(a: NewSharedStoreTransaction<any>, b: NewSharedSto
 	const _b = { mutations: b.mutations, index: b.index }
 	return isEqual(_a, _b)
 }
-
 
 export class SharedStoreProvider<Event> {
 	public message$: Observable<SharedStoreMessage>
