@@ -4,7 +4,8 @@ import { Accessor } from 'solid-js'
 
 //#region primitives
 
-export const PIECES = ['pawn', 'knight', 'bishop', 'rook', 'queen', 'king', 'duck'] as const export type Piece = (typeof PIECES)[number]
+export const PIECES = ['pawn', 'knight', 'bishop', 'rook', 'queen', 'king', 'duck'] as const
+export type Piece = (typeof PIECES)[number]
 export const PROMOTION_PIECES = ['knight', 'bishop', 'rook', 'queen'] as const
 export type PromotionPiece = (typeof PROMOTION_PIECES)[number]
 export const COLORS = ['white', 'black'] as const
@@ -66,8 +67,8 @@ export type MoveDisambiguation =
 			castling: boolean
 	  }
 
-export function getStartPos(variant: Variant) {
-	if (variant === 'fischer-random') {
+export function getStartPos(config: GameConfig) {
+	if (config.variant === 'fischer-random') {
 		// https://en.wikipedia.org/wiki/Fischer_random_chess_numbering_scheme
 		let lineup: Piece[]
 		//#region generate random lineup
@@ -76,7 +77,7 @@ export function getStartPos(variant: Variant) {
 				return lineup.map((piece, index) => (piece === null ? [index] : [])).flat()
 			}
 
-			let fischerNumber = Math.floor(Math.random() * 960)
+			let fischerNumber = config.fischerRandomSeed
 			const _lineup: (Piece | null)[] = Array(8).fill(null)
 
 			// bishop
@@ -165,6 +166,10 @@ export function getStartPos(variant: Variant) {
 	} as Board
 }
 
+export function getFischerRandomSeed() {
+	return Math.floor(Math.random() * 960)
+}
+
 //#endregion
 
 //#region QUACK
@@ -198,6 +203,7 @@ export type GameConfig = {
 	variant: Variant
 	timeControl: TimeControl
 	increment: Increment
+	fischerRandomSeed: number
 }
 
 export type ParsedGameConfig = {
@@ -210,6 +216,7 @@ export const getDefaultGameConfig = (): GameConfig => ({
 	variant: 'regular',
 	timeControl: '5m',
 	increment: '0',
+	fischerRandomSeed: getFischerRandomSeed(),
 })
 
 export type GameState = {

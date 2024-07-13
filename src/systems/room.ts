@@ -419,7 +419,7 @@ export class Room {
 	get event$() {
 		return this.sharedStore.event$.pipe(
 			concatMap((event) => {
-				let player: RoomMember |undefined = undefined
+				let player: RoomMember | undefined = undefined
 				if (event.type !== 'game-over') {
 					player = this.members.find((p) => p.id === event.playerId)!
 				}
@@ -514,9 +514,13 @@ export class Room {
 
 	//#endregion
 
-	//#region game start
+	//#region game start / config
 	setGameConfig(config: Partial<GL.GameConfig>) {
-		this.sharedStore.setStore({ path: ['gameConfig'], value: config })
+		void this.sharedStore.setStore({ path: ['gameConfig'], value: config })
+	}
+
+	reseedFischerRandom() {
+		void this.sharedStore.setStore({ path: ['gameConfig', 'fischerRandomSeed'], value: GL.getFischerRandomSeed() })
 	}
 
 	toggleReady() {

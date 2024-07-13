@@ -79,7 +79,7 @@ export class Game {
 
 	setupGameState() {
 		const moveHistory = storeToSignal(this.room.rollbackState.moves)
-		const boardHistory = GL.useBoardHistory(moveHistory, GL.getStartPos(this.gameConfig.variant))
+		const boardHistory = GL.useBoardHistory(moveHistory, GL.getStartPos(this.gameConfig))
 		// const [state, setState] = createSignal<GL.GameState>(null as any)
 		// this.stateSignal = state
 
@@ -243,7 +243,7 @@ export class Game {
 			}
 			setAcceptedMove(result.move)
 
-			let mutations: StoreMutation[] = [
+			const mutations: StoreMutation[] = [
 				{
 					path: ['moves', PUSH],
 					value: result.move,
@@ -253,7 +253,7 @@ export class Game {
 				{
 					type: 'make-move',
 					playerId: this.bottomPlayer.id,
-					moveIndex: expectedMoveIndex
+					moveIndex: expectedMoveIndex,
 				},
 			]
 			const newState: GL.GameState = {
@@ -462,7 +462,7 @@ export class Game {
 					if (this.outcome) return
 					const events: R.RoomEvent[] = [{ type: 'game-over' }]
 
-					let mutations: StoreMutation[] = [
+					const mutations: StoreMutation[] = [
 						{
 							path: ['outcome'],
 							value: outcome,

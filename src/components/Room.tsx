@@ -1,5 +1,22 @@
 import QRCode from 'qrcode'
-import { Match, ParentProps, Show, Suspense, Switch, createResource, createSignal, onCleanup, onMount } from 'solid-js'
+import { debounceTime, from as rxFrom, skip } from 'rxjs'
+import {
+	For,
+	JSX,
+	Match,
+	ParentProps,
+	Show,
+	Suspense,
+	Switch,
+	createEffect,
+	createMemo,
+	createResource,
+	createSignal,
+	observable,
+	on,
+	onCleanup,
+	onMount,
+} from 'solid-js'
 import toast from 'solid-toast'
 
 import { ScreenFittingContent } from '~/components/AppContainer.tsx'
@@ -12,15 +29,17 @@ import { Button } from '~/components/ui/button.tsx'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '~/components/ui/card.tsx'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '~/components/ui/hover-card.tsx'
+import { Input } from '~/components/ui/input.tsx'
+import { Label } from '~/components/ui/label.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip.tsx'
 import { Choice, MultiChoiceButton } from '~/components/utils/MultiChoiceButton.tsx'
+import { cn } from '~/lib/utils.ts'
 import * as Audio from '~/systems/audio.ts'
 import * as GL from '~/systems/game/gameLogic.ts'
 import { getPieceSvg } from '~/systems/piece.tsx'
 import * as P from '~/systems/player.ts'
 import * as R from '~/systems/room.ts'
-import {cn} from "~/lib/utils.ts";
 
 export function Room() {
 	const room = R.room()!
@@ -199,6 +218,90 @@ function GameConfigForm() {
 		</div>
 	)
 
+	let fischerRandomConfig: JSX.Element
+	{
+		const cells = createMemo(() => {
+			const pieces: GL.ColoredPiece[] = []
+			const pos = GL.getStartPos(gameConfig())
+
+			if (pos.toMove === 'black') throw new Error('toMove should be white')
+			for (let colIdx = 0; colIdx < 8; colIdx++) {
+				const coord: GL.Coords = { x: colIdx, y: 0 }
+				const piece = pos.pieces[GL.notationFromCoords(coord)]
+				pieces.push(piece)
+			}
+			return pieces
+		})
+
+		// eslint-disable-next-line prefer-const
+		let seedInputRef = null as unknown as HTMLInputElement
+		// state is a string instead of a number because we we're checking if the input is a valid integer via the native html input validations
+		const [randomSeed, setRandomSeed] = createSignal<string>(gameConfig().fischerRandomSeed.toString())
+		const [invalidSeed, setInvalidSeed] = createSignal(false)
+		const sub = rxFrom(observable(randomSeed))
+			.pipe(skip(1), debounceTime(100))
+			.subscribe((seed) => {
+				if (seed === gameConfig().fischerRandomSeed.toString()) return
+				if (!seedInputRef!.reportValidity()) {
+					return
+				}
+				room.setGameConfig({ fischerRandomSeed: parseInt(seed) })
+			})
+
+		createEffect(
+			on(randomSeed, () => {
+				setInvalidSeed(!seedInputRef.checkValidity())
+			})
+		)
+
+		createEffect(
+			on(
+				() => gameConfig().fischerRandomSeed,
+				(seed) => {
+					if (seed.toString() !== randomSeed()) setRandomSeed(seed.toString())
+				}
+			)
+		)
+
+		onCleanup(() => {
+			sub.unsubscribe()
+		})
+
+		fischerRandomConfig = (
+			<div class={cn('space-x-2 flex items-center justify-end', gameConfig().variant !== 'fischer-random' ? 'invisible' : '')}>
+				<For each={cells()}>
+					{(piece) => {
+						const Svg = getPieceSvg(piece)
+						return <Svg class="w-6 h-6" />
+					}}
+				</For>
+				<form class="flex space-x-1 items-center">
+					<Label for="fischer-random-seed">Seed:</Label>
+					<Input
+						id="fischer-random-seed"
+						ref={seedInputRef}
+						type="number"
+						required
+						oninput={(e) => setRandomSeed(e.currentTarget.value)}
+						min={0}
+						max={959}
+						step={1}
+						value={randomSeed()?.toString()}
+						class={cn('max-w-[75px]', invalidSeed() ? 'border-destructive focus:border-destructive' : '')}
+					/>
+				</form>
+				<Tooltip>
+					<TooltipTrigger>
+						<Button onclick={() => room.reseedFischerRandom()} variant="outline" size="icon">
+							<Svgs.Flip />
+						</Button>
+					</TooltipTrigger>
+					<TooltipContent>Reseed</TooltipContent>
+				</Tooltip>
+			</div>
+		)
+	}
+
 	return (
 		<div class="flex flex-col gap-y-1">
 			<MultiChoiceButton
@@ -209,6 +312,7 @@ function GameConfigForm() {
 				onChange={(v) => room!.setGameConfig({ variant: v })}
 				disabled={!room.isPlayerParticipating || room.leftPlayer?.isReadyForGame}
 			/>
+			{fischerRandomConfig}
 			<MultiChoiceButton
 				label={timeControlLabel}
 				listClass="grid grid-rows-1 grid-cols-3 w-full tex-sm space-x-0 gap-1"
@@ -326,7 +430,7 @@ const BlackKingSvg = getPieceSvg({ type: 'king', color: 'black' })
 
 function PlayerColorDisplay(props: { color: GL.Color }) {
 	return (
-		<div class={cn("ml-auto mr-auto flex w-[5rem] items-center justify-center rounded-full", "dark:bg-foreground" )}>
+		<div class={cn('ml-auto mr-auto flex w-[5rem] items-center justify-center rounded-full', 'dark:bg-foreground')}>
 			{props.color === 'white' ? <WhiteKingSvg class="w-full h-full" /> : <BlackKingSvg class="w-full h-full" />}
 		</div>
 	)
