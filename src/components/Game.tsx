@@ -1,6 +1,6 @@
 import { useColorMode } from '@kobalte/core'
 import { createMediaQuery } from '@solid-primitives/media'
-import { isEqual } from 'lodash-es'
+import deepEquals from 'fast-deep-equal'
 import { filter, first, from as rxFrom, skip } from 'rxjs'
 import {
 	For,
@@ -855,7 +855,9 @@ function ResignButton() {
 				<DialogTitle>Confirm Resignation</DialogTitle>
 				<DialogDescription>Are you sure you want to resign?</DialogDescription>
 				<DialogFooter>
-					<Button variant="secondary" onClick={() => setOpen(false)}>Cancel</Button>
+					<Button variant="secondary" onClick={() => setOpen(false)}>
+						Cancel
+					</Button>
 					<Button onClick={() => game.resign()}>Resign</Button>
 				</DialogFooter>
 			</DialogContent>
@@ -1151,7 +1153,7 @@ function renderHighlights(args: RenderHighlightsArgs) {
 	if (
 		args.hoveredSquare &&
 		args.activePieceSquare &&
-		args.legalMovesForActivePiece.some((m) => isEqual(m.to, GL.coordsFromNotation(args.hoveredSquare!)))
+		args.legalMovesForActivePiece.some((m) => deepEquals(m.to, GL.coordsFromNotation(args.hoveredSquare!)))
 	) {
 		// draw empty square in hovered square
 		renderHighlightRect(moveHighlightColor, args.hoveredSquare!)

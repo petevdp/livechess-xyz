@@ -1,5 +1,5 @@
 import { until } from '@solid-primitives/promise'
-import { isEqual } from 'lodash-es'
+import deepEquals from 'fast-deep-equal'
 import { Observable, ReplaySubject, concatMap, distinctUntilChanged, filter, first, from as rxFrom } from 'rxjs'
 import { map } from 'rxjs/operators'
 import { Accessor, createEffect, createMemo, createSignal, getOwner, observable, on, onCleanup } from 'solid-js'
@@ -443,7 +443,7 @@ export class Game {
 						black: clocks.black <= 0,
 					}) as Timeouts
 			),
-			distinctUntilChanged(isEqual)
+			distinctUntilChanged(deepEquals)
 		)
 
 		const sub = timeout$

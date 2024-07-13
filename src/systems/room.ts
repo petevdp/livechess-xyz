@@ -1,6 +1,6 @@
 import { trackDeep, trackStore } from '@solid-primitives/deep'
 import { until } from '@solid-primitives/promise'
-import { isEqual } from 'lodash-es'
+import deepEquals from 'fast-deep-equal'
 import { Observable, concatMap, first, interval, mergeAll, race, from as rxFrom, startWith } from 'rxjs'
 import { map } from 'rxjs/operators'
 import { Owner, createEffect, createMemo, createRoot, createSignal, getOwner, onCleanup, runWithOwner, untrack } from 'solid-js'
@@ -246,7 +246,7 @@ export class Room {
 			const playerIds: string[] = Object.values(this.sharedStore.clientControlledStates).map((s) => s.playerId)
 			const currConnected = this.members.filter((p) => playerIds.includes(p.id) && p.name)
 			// return same object so equality check passes
-			if (isEqual(playerIds, prevConnected)) return prevConnected
+			if (deepEquals(playerIds, prevConnected)) return prevConnected
 			return currConnected
 		})
 

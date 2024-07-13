@@ -1,6 +1,6 @@
 import { decode, encode } from '@msgpack/msgpack'
 import { until } from '@solid-primitives/promise'
-import { isEqual } from 'lodash-es'
+import deepEquals from 'fast-deep-equal'
 import { Observable, Subject, Subscription, concatMap, endWith, first, firstValueFrom, merge, mergeAll, share } from 'rxjs'
 import { batch, createEffect, createSignal, onCleanup } from 'solid-js'
 import { createStore, produce, unwrap } from 'solid-js/store'
@@ -586,7 +586,7 @@ function resolveValue(path: (string | number)[], store: any) {
 function areTransactionsEqual(a: NewSharedStoreTransaction<any>, b: NewSharedStoreTransaction<any>) {
 	const _a = { mutations: a.mutations, index: a.index }
 	const _b = { mutations: b.mutations, index: b.index }
-	return isEqual(_a, _b)
+	return deepEquals(_a, _b)
 }
 
 export class SharedStoreProvider<Event> {

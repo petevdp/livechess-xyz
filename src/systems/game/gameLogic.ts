@@ -1,5 +1,4 @@
-import { isEqual, partition } from 'lodash-es'
-import hash from 'object-hash'
+import deepEquals from 'fast-deep-equal'
 import { Accessor } from 'solid-js'
 
 //#region primitives
@@ -237,7 +236,7 @@ export type Coords = {
 }
 
 function hashMove(move: Move): string {
-	return hash(move)
+	return JSON.stringify(move)
 }
 
 export function useBoardHistory(moves: Accessor<Move[]>, startingBoard: Board) {
@@ -866,7 +865,7 @@ function kingMoves(start: Coords, board: Board, moveHistory: MoveHistory, checkC
 				const square = { x: i, y: rank } satisfies Coords
 				// we can move through the rook
 				if (
-					(board.pieces[notationFromCoords(square)] && !isEqual(square, rook) && !isEqual(square, start)) ||
+					(board.pieces[notationFromCoords(square)] && !deepEquals(square, rook) && !deepEquals(square, start)) ||
 					(!allowSelfChecks && squareAttacked(square, board))
 				) {
 					valid = false
@@ -888,7 +887,7 @@ function kingMoves(start: Coords, board: Board, moveHistory: MoveHistory, checkC
 			rookMovementDirection = rookMovementDirection / Math.abs(rookMovementDirection)
 			for (let i = rook.x; i != newRookSquare.x + rookMovementDirection; i += rookMovementDirection) {
 				const square: Coords = { x: i, y: rank }
-				if (board.pieces[notationFromCoords(square)] && !isEqual(square, start) && !isEqual(square, rook)) {
+				if (board.pieces[notationFromCoords(square)] && !deepEquals(square, start) && !deepEquals(square, rook)) {
 					valid = false
 					break
 				}
@@ -999,7 +998,7 @@ function noMoves(game: GameState) {
 
 //#region misc
 export function hashBoard(board: Board) {
-	return hash.sha1(board) as string
+	return JSON.stringify(board)
 }
 
 export function oppositeColor(color: Color) {
@@ -1076,8 +1075,17 @@ export function getVisibleSquares(game: GameState, color: Color) {
 	const board = getBoard(game)
 
 	let simulated: GameState
+	const playerPieces: [string, ColoredPiece][] = []
+	const opponentPieces: [string, ColoredPiece][] = []
 
-	const [playerPieces, opponentPieces] = partition(Object.entries(board.pieces), ([_, piece]) => piece.color === color)
+	for (const [square, piece] of Object.entries(board.pieces)) {
+		if (piece.color === color) {
+			playerPieces.push([square, piece])
+		} else {
+			opponentPieces.push([square, piece])
+		}
+	}
+
 	if (getBoard(game).toMove === color) {
 		simulated = game
 	} else {
