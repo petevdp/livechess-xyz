@@ -1,17 +1,84 @@
 <!doctype html>
 <html lang="en">
-  <head>
-		<title>LiveChess</title>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<meta name="background-color" content="hsl(0 0% 100%)" media="(prefers-color-scheme: light)">
-		<link rel="icon" href="/favicon.ico">
-		<link rel="apple-touch-icon" href="/apple-touch-icon.png">
-		<link rel="manifest" href="/manifest.json">
-		<meta name="theme-color" content="hsl(221.2 83.2% 53.3%)">
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/index.tsx"></script>
-  </body>
+<head>
+	<title>LiveChess</title>
+	<meta charset="UTF-8"/>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+	<meta name="background-color" content="hsl(0 0% 100%)" media="(prefers-color-scheme: light)">
+	<link rel="icon" href="/favicon.ico">
+	<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+	<link rel="manifest" href="/manifest.json">
+	<meta name="theme-color" content="hsl(221.2 83.2% 53.3%)">
+	<style>
+		html {
+			min-width: 100%;
+			min-height: 100%;
+			display: flex;
+		}
+
+		body {
+			margin: unset;
+			display: flex;
+			min-width: 100%;
+			min-height: 100%;
+		}
+
+		@media screen and (prefers-color-scheme: dark) {
+			body.loading {
+				background-color: hsl(155 30% 0%);
+			}
+		}
+
+		@media screen and (prefers-color-scheme: light) {
+			body.loading {
+				background-color: hsl(0 0% 100%);
+			}
+		}
+
+		.loader {
+			z-index: 100;
+			width: 48px;
+			height: 48px;
+			border-radius: 50%;
+			display: inline-block;
+			border-top: 3px solid hsl(155 58% 29%);
+			border-right: 3px solid transparent;
+			box-sizing: border-box;
+			animation: rotation 1s linear infinite;
+		}
+
+		.loader-initial {
+			position: fixed;
+			left: 50%;
+			top: 50%;
+		}
+
+		#root {
+			z-index: 50;
+			display: flex;
+			flex-direction: column;
+			min-width: 100%;
+			min-height: 100%;
+		}
+
+		#root.hidden {
+			display: none;
+		}
+
+		@keyframes rotation {
+			0% {
+				transform: rotate(0deg);
+			}
+			100% {
+				transform: rotate(360deg);
+			}
+		}
+	</style>
+</head>
+<body class="loading">
+<span id="loader" class="loader loader-initial"></span>
+<div id="root" class="hidden">
+</div>
+<script type="module" src="/src/index.tsx"></script>
+</body>
 </html>

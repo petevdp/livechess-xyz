@@ -1,7 +1,7 @@
 /** @type {import('tailwindcss').Config} */
 export default {
 	darkMode: ['class', '[data-kb-theme="dark"]'],
-	content: ['./src/**/*.{js,jsx,ts,tsx}'],
+	content: ['./src/**/*.{js,jsx,ts,tsx}', './index.html'],
 	theme: {
 		extend: {
 			screens: {

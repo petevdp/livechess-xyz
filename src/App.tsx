@@ -18,6 +18,12 @@ const RoomGuard = lazy(() => import('~/components/RoomGuard.tsx'))
 
 function App() {
 	const [displayedError, setDisplayedError] = createSignal<Errors.FatalError | null>(null)
+	onMount(() => {
+		console.log('remove spinner')
+		document.getElementById('loader')?.remove()
+		document.getElementById('root')?.classList.remove('hidden')
+		document.querySelector('body')?.classList.remove('loading')
+	})
 	createEffect(() => {
 		if (Errors.fatalError()) {
 			setDisplayedError(Errors.fatalError())

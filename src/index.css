@@ -56,15 +56,12 @@
 		@apply border-border;
 		font-family: Roboto, serif;
 	}
-	root {
-		min-height: 100%;
-	}
 
 	body {
-		@apply bg-background text-foreground;
+		@apply text-foreground;
+		font-feature-settings: 'rlig' 1, 'calt' 1;
 		min-height: 100%;
-		font-feature-settings: 'rlig' 1,
-		'calt' 1;
+		min-width: 100%;
 	}
 }
 
@@ -78,4 +75,8 @@
 	.link {
 		@apply text-primary underline;
 	}
+}
+
+body {
+	background-color: hsl(var(--background));
 }

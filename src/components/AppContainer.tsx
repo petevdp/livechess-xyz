@@ -27,7 +27,7 @@ const scrollBarWidth = (() => {
 
 export function AppContainer(props: ParentProps) {
 	return (
-		<div class={`w-[calc(100%_-_${scrollBarWidth}px]`}>
+		<>
 			<nav class="flex w-full justify-between p-[0.25rem] pb-[.5rem]">
 				<A href="/" class="inline-flex p-1 h-10 w-10 items-center justify-center">
 					<Svgs.Logo />
@@ -53,7 +53,7 @@ export function AppContainer(props: ParentProps) {
 					<div>{props.children}</div>
 				</Match>
 			</Switch>
-		</div>
+		</>
 	)
 }
 
