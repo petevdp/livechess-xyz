@@ -74,7 +74,7 @@ export function SettingsDialog() {
 							label="Show Available Moves"
 							checked={P.settings.showAvailablemoves}
 							onChange={(changed) => {
-								return (P.settings.showAvailablemoves = changed)
+								P.settings.showAvailablemoves = changed
 							}}
 						/>
 					</div>

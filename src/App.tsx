@@ -63,7 +63,6 @@ function App() {
 					set: (value: 'light' | 'dark' | 'system') => localStorage.setItem('colorMode', value),
 				}}
 			>
-				<Toaster />
 				<Router>
 					<Route path="/" component={ErrorHandled(Home)} />
 					<Route
@@ -83,7 +82,7 @@ function App() {
 					<Route path="*" component={() => <Navigate href="/404" />} />
 				</Router>
 			</ColorModeProvider>
-			<Toaster />
+			<Toaster position="bottom-left" />
 			<AlertDialog
 				open={!!displayedError()}
 				onOpenChange={(open) => {
