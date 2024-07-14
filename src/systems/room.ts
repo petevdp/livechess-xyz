@@ -9,7 +9,7 @@ import { unwrap } from 'solid-js/store'
 import { createId } from '~/utils/ids.ts'
 import { DELETE, PUSH, SharedStore, SharedStoreProvider, StoreMutation, initSharedStore, newNetwork } from '~/utils/sharedStore.ts'
 
-import { PLAYER_TIMEOUT } from '../config.ts'
+import { API_URL, PLAYER_TIMEOUT } from '../config.ts'
 import * as G from './game/game.ts'
 import * as GL from './game/gameLogic.ts'
 import * as P from './player.ts'
@@ -153,7 +153,7 @@ export function connectToRoom(
 
 		const sub = interval(10000).subscribe(() => {
 			// make sure render's server doesn't spin down while we're in the middle of a game
-			fetch(window.location.protocol + '//' + window.location.host + '/ping')
+			fetch(API_URL + '/ping')
 		})
 
 		disposePrevious = () => {
