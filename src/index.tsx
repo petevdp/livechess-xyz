@@ -15,4 +15,3 @@ console.debug({
 
 const root = document.getElementById('root')!
 render(App, root)
-import('./console.ts')

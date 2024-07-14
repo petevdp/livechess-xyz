@@ -10,10 +10,10 @@ import { Transform } from 'stream'
 import { fileURLToPath } from 'url'
 import * as ws from 'ws'
 
-import { ENV, setupEnv } from '../env.ts'
+import { ENV, ensureSetupEnv } from '../env.ts'
 import * as SSS from './systems/sharedStoreNetworks.ts'
 
-setupEnv()
+ensureSetupEnv()
 
 if (typeof crypto === 'undefined') {
 	import('@peculiar/webcrypto').then(() => {

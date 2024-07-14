@@ -1,2 +1,1 @@
-module 'y-websocket'
-module 'object-hash'
+module 'json-safe-parse'

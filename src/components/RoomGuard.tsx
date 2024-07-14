@@ -3,6 +3,7 @@ import { useNavigate, useParams } from '@solidjs/router'
 import { Subscription } from 'rxjs'
 import { Match, Resource, Show, Switch, createEffect, createResource, createSignal, getOwner, onCleanup } from 'solid-js'
 
+import * as Api from '~/api.ts'
 import adjectives from '~/assets/names_dictionary/adjectives.ts'
 import animals from '~/assets/names_dictionary/animals.ts'
 import { Button } from '~/components/ui/button.tsx'
@@ -15,7 +16,6 @@ import * as GlobalLoading from '~/systems/globalLoading.ts'
 import * as Pieces from '~/systems/piece.tsx'
 import * as P from '~/systems/player.ts'
 import * as R from '~/systems/room.ts'
-import { checkNetworkExists } from '~/utils/sharedStore.ts'
 
 import { AppContainer, ScreenFittingContent } from './AppContainer.tsx'
 import { Room } from './Room.tsx'
@@ -46,7 +46,7 @@ export default function RoomGuard() {
 		navigate('/rooms/' + params.id, { replace: true })
 		;[networkExists] = createResource(() => Promise.resolve(true))
 	} else {
-		;[networkExists] = createResource(() => checkNetworkExists(params.id))
+		;[networkExists] = createResource(() => Api.checkNetworkExists(params.id))
 	}
 
 	createEffect(() => {

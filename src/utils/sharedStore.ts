@@ -1,11 +1,11 @@
-import { decode, encode } from '@msgpack/msgpack'
 import { until } from '@solid-primitives/promise'
 import deepEquals from 'fast-deep-equal'
+import jsonSafeParse from 'json-safe-parse'
 import { Observable, Subject, Subscription, concatMap, endWith, first, firstValueFrom, merge, mergeAll, share } from 'rxjs'
 import { batch, createEffect, createSignal, onCleanup } from 'solid-js'
 import { createStore, produce, unwrap } from 'solid-js/store'
 
-import { API_URL, WS_API_URL } from '../config.ts'
+import { WS_API_URL } from '../config.ts'
 
 //#region types
 
@@ -39,7 +39,7 @@ export type NewNetworkResponse = {
 	networkId: string
 }
 
-export type Base64String = string
+export type Json = string
 
 type ClientControlledState = { [key: string]: any | null } | null
 export type ClientControlledStates<T extends ClientControlledState> = {
@@ -57,7 +57,7 @@ export type SharedStoreMessage =
 	| {
 			type: 'mutation'
 			commit: boolean
-			mutation: Base64String
+			mutation: Json
 	  }
 	| {
 			type: 'order-invariant-mutation-failed'
@@ -65,14 +65,14 @@ export type SharedStoreMessage =
 	  }
 	| {
 			type: 'client-config'
-			config: ClientConfig<Base64String>
+			config: ClientConfig<Json>
 	  }
 	| {
 			type: 'request-state'
 	  }
 	| {
 			type: 'state'
-			state: Base64String
+			state: Json
 			lastMutationIndex: number
 	  }
 	| {
@@ -90,7 +90,7 @@ export type SharedStoreMessage =
 	| {
 			type: 'client-controlled-states'
 			forClient?: string
-			states: Base64String[]
+			states: Json[]
 	  }
 	| SharedStoreTimeoutMessage
 
@@ -426,7 +426,7 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 			await until(initialized)
 			provider.send({
 				type: 'state',
-				state: encodeContent(unwrap(rollbackStore)),
+				state: JSON.stringify(unwrap(rollbackStore)),
 				lastMutationIndex: appliedTransactions.length - 1,
 			})
 		})
@@ -659,7 +659,7 @@ export class SharedStoreProvider<Event> {
 		const message: SharedStoreMessage = {
 			type: 'mutation',
 			commit: false,
-			mutation: encodeContent(transaction),
+			mutation: JSON.stringify(transaction),
 		}
 		this.send(message)
 		if (transaction.index == null) {
@@ -693,7 +693,7 @@ export class SharedStoreProvider<Event> {
 		const message: SharedStoreMessage = {
 			type: 'mutation',
 			commit: true,
-			mutation: encodeContent(atom),
+			mutation: JSON.stringify(atom),
 		}
 		this.send(message)
 	}
@@ -702,7 +702,7 @@ export class SharedStoreProvider<Event> {
 		// we assume all mutations we receive are committed
 		return this.message$.pipe(
 			concatMap((message: SharedStoreMessage) => {
-				if (message.type === 'mutation') return [decodeContent(message.mutation)]
+				if (message.type === 'mutation') return [jsonSafeParse(message.mutation)]
 				return []
 			})
 		)
@@ -747,7 +747,7 @@ export class SharedStoreProvider<Event> {
 	observeClientControlledStates<C extends ClientControlledState>(): Observable<ClientControlledStates<C>> {
 		return this.message$.pipe(
 			concatMap((message: SharedStoreMessage) => {
-				if (message.type === 'client-controlled-states') return [message.states.map((c) => decodeContent(c))]
+				if (message.type === 'client-controlled-states') return [message.states.map((c) => jsonSafeParse(c))]
 				return []
 			}),
 			mergeAll()
@@ -758,7 +758,7 @@ export class SharedStoreProvider<Event> {
 		this.send({
 			type: 'client-controlled-states',
 			states: [
-				encodeContent({
+				JSON.stringify({
 					[this.clientId!]: values,
 				}),
 			],
@@ -774,7 +774,7 @@ export class SharedStoreProvider<Event> {
 						this.clientId = message.config.clientId
 						const config: ClientConfig<T> = {
 							...message.config,
-							initialState: decodeContent(message.config.initialState) as T,
+							initialState: jsonSafeParse(message.config.initialState) as T,
 						}
 						return [config]
 					}
@@ -790,21 +790,6 @@ export class SharedStoreProvider<Event> {
 		console.debug(`${this.clientId} sending message`, message)
 		this.ws.send(JSON.stringify(message))
 	}
-}
-
-export function encodeContent(content: any) {
-	//@ts-expect-error
-	return btoa(String.fromCharCode.apply(null, encode(content)))
-}
-
-function decodeContent(str: Base64String) {
-	const strArr = atob(str).split('') as (string | number)[]
-	// updating in place so we don't need an extra array allocation
-	for (let i = 0; i < strArr.length; i++) {
-		strArr[i] = (strArr[i] as string).charCodeAt(0)
-	}
-	const arr = new Uint8Array(strArr as number[])
-	return decode(arr) as any
 }
 
 export class SharedStoreTransactionBuilder<Event> {
@@ -848,12 +833,4 @@ export async function buildTransaction<Event>(fn: (t: SharedStoreTransactionBuil
 	} catch {
 		transaction.abort()
 	}
-}
-
-export async function newNetwork() {
-	return (await fetch(`${API_URL}/networks`, { method: 'POST' }).then((res) => res.json())) as NewNetworkResponse
-}
-
-export async function checkNetworkExists(networkId: string) {
-	return await fetch(`${API_URL}/networks/${networkId}`, { method: 'HEAD' }).then((res) => res.status === 200)
 }

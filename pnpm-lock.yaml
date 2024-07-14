@@ -20,9 +20,6 @@ importers:
       '@kobalte/core':
         specifier: ^0.12.1
         version: 0.12.6(solid-js@1.8.18)
-      '@msgpack/msgpack':
-        specifier: 3.0.0-beta2
-        version: 3.0.0-beta2
       '@peculiar/webcrypto':
         specifier: ^1.4.4
         version: 1.5.0
@@ -65,6 +62,9 @@ importers:
       highlight.run:
         specifier: ^8.4.0
         version: 8.13.0
+      json-safe-parse:
+        specifier: ^0.0.2
+        version: 0.0.2
       pino:
         specifier: ^8.17.2
         version: 8.21.0
@@ -599,10 +599,6 @@ packages:
   '@lukeed/ms@2.0.2':
     resolution: {integrity: sha512-9I2Zn6+NJLfaGoz9jN3lpwDgAYvfGeNYdbAIjJOqzs4Tpc+VU3Jqq4IofSUBKajiDS8k9fZIg18/z13mpk1bsA==}
     engines: {node: '>=8'}
-
-  '@msgpack/msgpack@3.0.0-beta2':
-    resolution: {integrity: sha512-y+l1PNV0XDyY8sM3YtuMLK5vE3/hkfId+Do8pLo/OPxfxuFAUwcGz3oiiUuV46/aBpwTzZ+mRWVMtlSKbradhw==}
-    engines: {node: '>= 14'}
 
   '@nodelib/fs.scandir@2.1.5':
     resolution: {integrity: sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g==}
@@ -1222,6 +1218,9 @@ packages:
 
   class-variance-authority@0.7.0:
     resolution: {integrity: sha512-jFI8IQw4hczaL4ALINxqLEXQbWcNjoSkloa4IaufXCJr6QawJyw7tuRysRsrE8w2p/4gGaxKIt/hX3qz/IbD1A==}
+
+  cleanse@0.0.3:
+    resolution: {integrity: sha512-GzK1hHVr70UYpQ98nV3UG4cCb09YBm/IyVsnACNnLjgccA5XWBZ0kUaM84cFlKwC0IPmDvmB5+weWBKBP0JiiQ==}
 
   cliui@6.0.0:
     resolution: {integrity: sha512-t6wbgtoCXvAzst7QgXxJYqPt0usEfbgQdftEPbLL/cvv6HPE5VgvqCuAIDR0NgU52ds6rFwqrgakNLrHEjCbrQ==}
@@ -1909,6 +1908,9 @@ packages:
 
   json-buffer@3.0.1:
     resolution: {integrity: sha512-4bV5BfR2mqfQTJm+V5tPPdf+ZpuhiIvTuAB5g8kcrXOZpTT/QwwVRWBywX1ozr6lEuPdbHxwaJlm9G6mI2sfSQ==}
+
+  json-safe-parse@0.0.2:
+    resolution: {integrity: sha512-sjxpx6GyZReN+8DPQoIO4v3eFQEZeOmU2Dbbfbn/cbBFpBkJ73xn16qI3cYzqqRIhINqcKwueWzXajcn19lsAQ==}
 
   json-schema-ref-resolver@1.0.1:
     resolution: {integrity: sha512-EJAj1pgHc1hxF6vo2Z3s69fMjO1INq6eGHXZ8Z6wCQeldCuwxGK9Sxf4/cScGn3FZubCVUehfWtcDM/PLteCQw==}
@@ -3465,8 +3467,6 @@ snapshots:
 
   '@lukeed/ms@2.0.2': {}
 
-  '@msgpack/msgpack@3.0.0-beta2': {}
-
   '@nodelib/fs.scandir@2.1.5':
     dependencies:
       '@nodelib/fs.stat': 2.0.5
@@ -4121,6 +4121,8 @@ snapshots:
   class-variance-authority@0.7.0:
     dependencies:
       clsx: 2.0.0
+
+  cleanse@0.0.3: {}
 
   cliui@6.0.0:
     dependencies:
@@ -4854,6 +4856,10 @@ snapshots:
   jsesc@2.5.2: {}
 
   json-buffer@3.0.1: {}
+
+  json-safe-parse@0.0.2:
+    dependencies:
+      cleanse: 0.0.3
 
   json-schema-ref-resolver@1.0.1:
     dependencies:

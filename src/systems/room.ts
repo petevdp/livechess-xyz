@@ -6,10 +6,11 @@ import { map } from 'rxjs/operators'
 import { Owner, createEffect, createMemo, createRoot, createSignal, getOwner, onCleanup, runWithOwner, untrack } from 'solid-js'
 import { unwrap } from 'solid-js/store'
 
+import * as Api from '~/api.ts'
 import { createId } from '~/utils/ids.ts'
-import { DELETE, PUSH, SharedStore, SharedStoreProvider, StoreMutation, initSharedStore, newNetwork } from '~/utils/sharedStore.ts'
+import { DELETE, PUSH, SharedStore, SharedStoreProvider, StoreMutation, initSharedStore } from '~/utils/sharedStore.ts'
 
-import { API_URL, PLAYER_TIMEOUT } from '../config.ts'
+import { PLAYER_TIMEOUT } from '../config.ts'
 import * as G from './game/game.ts'
 import * as GL from './game/gameLogic.ts'
 import * as P from './player.ts'
@@ -70,7 +71,7 @@ type ClientOwnedState = {
 let disposePrevious = () => {}
 
 export async function createRoom() {
-	return await newNetwork()
+	return await Api.newNetwork()
 }
 
 export type ConnectionState =
@@ -151,16 +152,12 @@ export function connectToRoom(
 		//#endregion
 		instanceOwner = getOwner()!
 
-		const sub = interval(10000).subscribe(() => {
-			// make sure render's server doesn't spin down while we're in the middle of a game
-			fetch(API_URL + '/ping')
-		})
+		Api.keepServerAlive()
 
 		disposePrevious = () => {
 			window.removeEventListener('beforeunload', unloadListener)
 			setRoom(null)
 			_dispose()
-			sub.unsubscribe()
 		}
 	})
 

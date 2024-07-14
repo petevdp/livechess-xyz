@@ -7,8 +7,12 @@ import { z } from 'zod'
 function exec(cmd: string) {
 	return execSync(cmd).toString().trimEnd()
 }
+export function ensureSetupEnv() {
+	if (ENV) return
+	_setupEnv()
+}
 
-export function setupEnv() {
+function _setupEnv() {
 	if (typeof window !== 'undefined') throw new Error("Don't call this function or load this module on the client")
 	dotenv.config()
 	const rawEnv = process.env
@@ -47,7 +51,7 @@ export function setupEnv() {
 	return env
 }
 
-export let ENV: ReturnType<typeof setupEnv>
+export let ENV: ReturnType<typeof _setupEnv>
 
 export type ClientEnv = typeof ENV & {
 	PROD: boolean

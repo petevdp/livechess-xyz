@@ -1,6 +1,5 @@
 // @ts-ignore
 import { execSync } from 'child_process'
-import dotenv from 'dotenv'
 import devtools from 'solid-devtools/vite'
 import { defineConfig } from 'vite'
 import solid from 'vite-plugin-solid'
@@ -8,13 +7,11 @@ import solidSvg from 'vite-plugin-solid-svg'
 import tsconfigPaths from 'vite-tsconfig-paths'
 
 //@ts-expect-error dumb typescript stuff, clashing includes in tsconfig.json and tsconfig.node.json
-import { ENV, setupEnv } from './src/env'
-
-dotenv.config()
+import { ENV, ensureSetupEnv } from './src/env'
 
 // noinspection JSUnusedGlobalSymbols
 export default defineConfig(() => {
-	setupEnv()
+	ensureSetupEnv()
 
 	const httpTarget = `http://${ENV.HOSTNAME}:${ENV.PORT}`
 	const wsTarget = `ws://${ENV.HOSTNAME}:${ENV.PORT}`

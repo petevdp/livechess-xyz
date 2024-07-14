@@ -18,7 +18,7 @@ import {
 import * as ws from 'ws'
 
 import { createId } from '~/utils/ids.ts'
-import { Base64String, ClientConfig, NewNetworkResponse, SharedStoreMessage, encodeContent } from '~/utils/sharedStore.ts'
+import { type ClientConfig, type Json, type NewNetworkResponse, type SharedStoreMessage } from '~/utils/sharedStore.ts'
 
 const NO_LEADER_MSG_WHITELIST = ['ack-promote-to-leader', 'promote-to-leader'] as SharedStoreMessage['type'][]
 const NO_ACTIVITY_TIMEOUT = 1000 * 60 * 20
@@ -179,11 +179,11 @@ export function handleNewConnection(socket: ws.WebSocket, networkId: string, log
 		}
 
 		//#region get config for new client
-		let initialState: Base64String
+		let initialState: Json
 		let lastMutationIndex: number
 		if (network.leader?.clientId === client.clientId) {
 			// if we're the leader and we're just connecting, it means we're the first client
-			initialState = encodeContent({})
+			initialState = JSON.stringify({})
 			lastMutationIndex = -1
 		} else {
 			const stateResponsePromise = firstValueFrom(
@@ -203,7 +203,7 @@ export function handleNewConnection(socket: ws.WebSocket, networkId: string, log
 			lastMutationIndex = stateResponse.lastMutationIndex
 			initialState = stateResponse.state
 		}
-		const config: ClientConfig<Base64String> = {
+		const config: ClientConfig<Json> = {
 			clientId: client.clientId,
 			initialState,
 			leader: network.leader?.clientId === client.clientId,
@@ -233,7 +233,7 @@ export function handleNewConnection(socket: ws.WebSocket, networkId: string, log
 				})
 			}
 
-			const states = (await Promise.all(statePromises)).filter((s) => s).map((s) => encodeContent(s))
+			const states = (await Promise.all(statePromises)).filter((s) => s).map((s) => JSON.stringify(s))
 			client.send({ type: 'client-controlled-states', states })
 		}
 
@@ -322,7 +322,7 @@ export function handleNewConnection(socket: ws.WebSocket, networkId: string, log
 	}
 
 	const subscription = client.message$.subscribe(async (message) => {
-		handleMessageFromClient(message, client)
+		void handleMessageFromClient(message, client)
 	})
 	//#endregion
 
@@ -348,7 +348,7 @@ export function handleNewConnection(socket: ws.WebSocket, networkId: string, log
 			// wait for the new leader to be elected, otherwise we may throw off userspace logic that depends on a leader being set at all times
 			await firstValueFrom(network.leader$.pipe(first((l) => !!l)))
 			log.info(`nulling out client-controlled-states for disconnected client %s`, client.clientId)
-			const states = [encodeContent({ [client.clientId]: null })]
+			const states = [JSON.stringify({ [client.clientId]: null })]
 			const message: SharedStoreMessage = {
 				type: 'client-controlled-states',
 				states,
