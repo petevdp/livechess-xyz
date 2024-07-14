@@ -60,14 +60,3 @@ export function setupPlayerSystem() {
 		document.addEventListener('touchstart', touchListener)
 	}
 }
-
-// add any settings migration logic here
-const previousProperties = ['settings', 'playerId']
-
-for (const property of previousProperties) {
-	// if we need to migrate a property, add that logic here
-	const previousValue = localStorage.getItem(property)
-	if (previousValue) {
-		localStorage.removeItem(property)
-	}
-}
