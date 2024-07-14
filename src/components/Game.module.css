@@ -42,22 +42,22 @@
 		grid-template-columns: 1fr max-content max-content 1fr;
 		grid-template-rows: min-content auto min-content repeat(3, auto);
 		grid-template-areas:
-				'top-left-actions    opponent        opponent        clock-opponent'
-				'board               board           board           board'
-				'bottom-left-actions player          player          clock-player'
-				'captured-pieces     captured-pieces captured-pieces captured-pieces'
-				'move-nav            move-nav        move-nav        move-nav'
-				'move-history        move-history    move-history    move-history';
+			'top-left-actions    opponent        opponent        clock-opponent'
+			'board               board           board           board'
+			'bottom-left-actions player          player          clock-player'
+			'captured-pieces     captured-pieces captured-pieces captured-pieces'
+			'move-nav            move-nav        move-nav        move-nav'
+			'move-history        move-history    move-history    move-history';
 	}
 
 	.boardContainer.hideHistory {
 		grid-template-columns: 1fr max-content 1fr max-content;
 		grid-template-rows: min-content auto min-content auto;
 		grid-template-areas:
-				'top-left-actions    opponent        opponent        clock-opponent'
-				'board               board           board           board'
-				'bottom-left-actions player          player          clock-player'
-				'captured-pieces     captured-pieces captured-pieces captured-pieces';
+			'top-left-actions    opponent        opponent        clock-opponent'
+			'board               board           board           board'
+			'bottom-left-actions player          player          clock-player'
+			'captured-pieces     captured-pieces captured-pieces captured-pieces';
 	}
 }
 

@@ -1,4 +1,4 @@
-import { createEffect, createRoot, createSignal } from 'solid-js'
+import { createSignal } from 'solid-js'
 
 const [handles, setHandles] = createSignal(new Set<string>(), { equals: false })
 export const HANDLES = ['connect-to-room'] as const

@@ -41,7 +41,6 @@ export function vibrate() {
 	}
 }
 
-
 export function playSoundEffectForMove(move: GL.Move, isClientPlayer: boolean, isVisible: boolean) {
 	if (move.duck && isClientPlayer) {
 		playSound('quack')
