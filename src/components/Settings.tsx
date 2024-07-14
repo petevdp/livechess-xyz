@@ -69,6 +69,15 @@ export function SettingsDialog() {
 							/>
 						</form>
 					</div>
+					<div>
+						<Switch
+							label="Show Available Moves"
+							checked={P.settings.showAvailablemoves}
+							onChange={(changed) => {
+								return (P.settings.showAvailablemoves = changed)
+							}}
+						/>
+					</div>
 					<Show when={P.settings.usingTouch}>
 						<div class="flex w-full items-center justify-between space-x-2">
 							<Label class="text-right">Touch Offset Direction</Label>

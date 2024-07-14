@@ -1,7 +1,7 @@
-import { makePersisted } from '@solid-primitives/storage'
-import { createEffect, createSignal } from 'solid-js'
+import { createEffect } from 'solid-js'
 
 import { createId } from '~/utils/ids.ts'
+import { makePersisted } from '~/utils/makePersisted.ts'
 
 import * as R from './room.ts'
 
@@ -17,6 +17,7 @@ export type PlayerSettings = {
 	usingTouch: boolean
 	dismissMultipleClientsWarning: boolean
 	vibrate: boolean
+	showAvailablemoves: boolean
 }
 
 const defaultSettings: PlayerSettings = {
@@ -26,6 +27,7 @@ const defaultSettings: PlayerSettings = {
 	usingTouch: false,
 	dismissMultipleClientsWarning: false,
 	vibrate: true,
+	showAvailablemoves: true,
 }
 
 // getters and setters for player settings
@@ -33,14 +35,11 @@ const defaultSettings: PlayerSettings = {
 export const settings: { [key in keyof PlayerSettings]: PlayerSettings[key] } = {}
 
 for (const [key, value] of Object.entries(defaultSettings)) {
-	const [get, set] = makePersisted(createSignal(value), { name: key, storage: localStorage })
+	const [get, set] = makePersisted(key, value)
 	Object.defineProperty(settings, key, { get, set })
 }
 
-const [_playerId, setPlayerId] = makePersisted(createSignal(null as string | null), {
-	name: 'playerId:v2',
-	storage: localStorage,
-})
+const [_playerId, setPlayerId] = makePersisted('playerId:v2', null as string | null)
 export const playerId = _playerId
 
 export function setupPlayerSystem() {

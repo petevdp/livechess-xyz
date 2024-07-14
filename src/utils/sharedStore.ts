@@ -124,7 +124,7 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 	//#region statuses
 	const [initialized, setInitialized] = createSignal(false)
 	createEffect(() => {
-		console.log('store initialized for ' + provider.networkId)
+		console.debug('store initialized for ' + provider.networkId)
 	})
 	const [isLeader, setIsLeader] = createSignal(false)
 	//#endregion
@@ -518,7 +518,7 @@ export function initSharedStore<S extends object, CCS extends ClientControlledSt
 		if (!isLeader()) {
 			await gotStatesPromise
 		}
-		console.log('Initialized shared store for network ' + provider.networkId)
+		console.debug('Initialized shared store for network ' + provider.networkId)
 		setInitialized(true)
 	})()
 	//#endregion

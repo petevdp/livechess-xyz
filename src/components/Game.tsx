@@ -1118,20 +1118,22 @@ function renderHighlights(args: RenderHighlightsArgs) {
 	//#region draw legal move highlights
 	const dotColor = '#f2f2f2'
 	const captureHighlightColor = '#fc3c3c'
-	for (const move of args.legalMovesForActivePiece) {
-		// draw dot in center of move end
-		const [x, y] = boardCoordsToDisplayCoords(move.to, args.boardFlipped, args.squareSize)
-		const piece = args.boardView.board.pieces[GL.notationFromCoords(move.to)]
-		// we need to check if the piece is our color we visually move pieces in the current board view while we're placing a duck and promoting
-		if (piece && piece.type !== 'duck' && piece.color !== args.playerColor) {
-			ctx.fillStyle = captureHighlightColor
-			ctx.fillRect(x, y, args.squareSize, args.squareSize)
-		} else {
-			ctx.fillStyle = dotColor
-			ctx.beginPath()
-			ctx.arc(x + args.squareSize / 2, y + args.squareSize / 2, args.squareSize / 10, 0, 2 * Math.PI)
-			ctx.fill()
-			ctx.closePath()
+	if (P.settings.showAvailablemoves) {
+		for (const move of args.legalMovesForActivePiece) {
+			// draw dot in center of move end
+			const [x, y] = boardCoordsToDisplayCoords(move.to, args.boardFlipped, args.squareSize)
+			const piece = args.boardView.board.pieces[GL.notationFromCoords(move.to)]
+			// we need to check if the piece is our color we visually move pieces in the current board view while we're placing a duck and promoting
+			if (piece && piece.type !== 'duck' && piece.color !== args.playerColor) {
+				ctx.fillStyle = captureHighlightColor
+				ctx.fillRect(x, y, args.squareSize, args.squareSize)
+			} else {
+				ctx.fillStyle = dotColor
+				ctx.beginPath()
+				ctx.arc(x + args.squareSize / 2, y + args.squareSize / 2, args.squareSize / 10, 0, 2 * Math.PI)
+				ctx.fill()
+				ctx.closePath()
+			}
 		}
 	}
 

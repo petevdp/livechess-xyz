@@ -85,10 +85,9 @@ export default function RoomGuard() {
 	createEffect(() => {
 		if ((!R.room() || R.room()!.roomId !== params.id) && P.playerId() && networkExists()) {
 			setConnectionStatus('connecting')
-			console.log('connecting to room', params.id)
+			console.debug('connecting to room', params.id)
 
 			connectionSub = R.connectToRoom(params.id, P.playerId()!, initPlayer, owner).subscribe((state) => {
-				console.log(state)
 				switch (state.status) {
 					case 'connecting':
 						setConnectionStatus('connecting')
@@ -121,7 +120,7 @@ export default function RoomGuard() {
 	//#endregion
 
 	createEffect(() => {
-		console.log('connection status:', connectionStatus())
+		console.debug('connection status:', connectionStatus())
 	})
 
 	return (

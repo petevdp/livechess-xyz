@@ -277,7 +277,7 @@ export class Room {
 						this.sharedStore.setStoreWithRetries((state) => {
 							const playerIndex = state.members.findIndex((p) => p.id === player.id)
 							if (playerIndex === -1) return []
-							console.log('player disconnected', player.id, 'at', disconnectedAt, 'state', state)
+							console.debug('player disconnected', player.id, 'at', disconnectedAt, 'state', state)
 							return {
 								events: [],
 								mutations: [
