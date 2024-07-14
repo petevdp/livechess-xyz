@@ -2,8 +2,7 @@ import { Signal, createSignal } from 'solid-js'
 
 export function makePersisted<T>(key: string, defaultValue: T) {
 	const storedRaw = localStorage.getItem(key)
-	const stored = (storedRaw ? JSON.parse(storedRaw) : null) as T | null
-	const [get, set] = createSignal(stored === null ? defaultValue : stored)
+	const [get, set] = createSignal(storedRaw === null ? defaultValue : JSON.parse(storedRaw))
 
 	return [
 		() => get(),
