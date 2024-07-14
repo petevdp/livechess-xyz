@@ -1,5 +1,4 @@
 import { makePersisted } from '@solid-primitives/storage'
-import { H } from 'highlight.run'
 import { createEffect, createSignal } from 'solid-js'
 
 import { createId } from '~/utils/ids.ts'
@@ -61,10 +60,6 @@ export function setupPlayerSystem() {
 
 		document.addEventListener('touchstart', touchListener)
 	}
-
-	H.identify(playerId()!, {
-		username: settings.name || '__no_nickname__',
-	})
 }
 
 // add any settings migration logic here

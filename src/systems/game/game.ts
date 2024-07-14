@@ -259,7 +259,7 @@ export class Game {
 			const newState: GL.GameState = {
 				players: this.state.players,
 				moveHistory: [...state.moveHistory, result.move],
-				boardHistory: [...state.boardHistory, { board: result.board, hash: GL.hashBoard(result.board) }],
+				boardHistory: [...state.boardHistory, { board: result.board }],
 			}
 			const outcome = GL.getGameOutcome(newState, this.parsedGameConfig)
 			if (outcome) {

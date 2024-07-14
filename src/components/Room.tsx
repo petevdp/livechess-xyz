@@ -1,4 +1,3 @@
-import QRCode from 'qrcode'
 import { debounceTime, from as rxFrom, skip } from 'rxjs'
 import {
 	For,
@@ -10,7 +9,6 @@ import {
 	Switch,
 	createEffect,
 	createMemo,
-	createResource,
 	createSignal,
 	observable,
 	on,
@@ -26,7 +24,7 @@ import * as Svgs from '~/components/Svgs.tsx'
 import { VariantInfoDialog } from '~/components/VariantInfoDialog.tsx'
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogTitle } from '~/components/ui/alert-dialog.tsx'
 import { Button } from '~/components/ui/button.tsx'
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '~/components/ui/card.tsx'
+import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card.tsx'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '~/components/ui/hover-card.tsx'
 import { Input } from '~/components/ui/input.tsx'
@@ -159,7 +157,7 @@ function Lobby() {
 }
 
 function QrCodeDialog() {
-	const [dataUrl] = createResource(() => QRCode.toDataURL(window.location.href, { scale: 12 }))
+	const room = R.room()!
 	return (
 		<Dialog>
 			<DialogTrigger>
@@ -170,7 +168,7 @@ function QrCodeDialog() {
 			<DialogContent>
 				<DialogHeader>
 					<DialogTitle>Scan to Join LiveChess Room</DialogTitle>
-					<img alt="QR Code for Room" class="aspect-square" src={dataUrl()!} />
+					<img alt="QR Code for Room" class="aspect-square" src={`/api/qrcodes/${room.roomId!}.png`} />
 				</DialogHeader>
 			</DialogContent>
 		</Dialog>

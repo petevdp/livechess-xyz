@@ -5,10 +5,12 @@ import { Crypto } from '@peculiar/webcrypto'
 import Fastify from 'fastify'
 import * as fs from 'node:fs'
 import path from 'node:path'
+import QRCode from 'qrcode'
+import { Transform } from 'stream'
 import { fileURLToPath } from 'url'
 import * as ws from 'ws'
 
-import { ENV, setupEnv } from '../environment.ts'
+import { ENV, setupEnv } from '../env.ts'
 import * as SSS from './systems/sharedStoreNetworks.ts'
 
 setupEnv()
@@ -111,16 +113,37 @@ server.head('/api/networks/:networkId', (req, res) => {
 		res.status(404).send()
 	}
 })
+
 server.get('/rooms/:networkId', (_, res) => {
 	// serve index.html
 	return res.sendFile('index.html')
+})
+
+server.get('/api/qrcodes/:filename', async (req, res) => {
+	//@ts-expect-error
+	const filename: string = req.params.filename
+	if (!filename.endsWith('.png')) {
+		return res.status(404).send('file not found')
+	}
+	if (!SSS.getNetwork(filename.split('.')[0])) {
+		return res.status(404).send('network not found')
+	}
+
+	const inoutStream = new Transform({
+		transform(chunk, _, callback) {
+			this.push(chunk)
+			callback()
+		},
+	})
+	void QRCode.toFileStream(inoutStream, `http://${ENV.EXTERNAL_ORIGIN}:${ENV.PORT}/rooms/${filename}`, { scale: 12 })
+	return res.type('image/png').header('Cache-Control', 'public, max-age=31536000, immutable').send(inoutStream)
 })
 
 //
 
 SSS.setupSharedStoreSystem(server.log)
 
-server.listen({ port: ENV.PORT, host: ENV.HOSTNAME }, (err, address) => {
+server.listen({ port: ENV.PORT, host: ENV.HOSTNAME }, (err) => {
 	if (err) {
 		server.log.error(err)
 		process.exit(1)

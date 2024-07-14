@@ -13,7 +13,7 @@ export function SettingsDialog() {
 	const [nickname, setNickname] = createSignal(P.settings.name ?? '')
 	const [open, setOpen] = createSignal(false)
 	// eslint-disable-next-line prefer-const
-	let nickFormRef: HTMLFormElement | null = null
+	let nickFormRef: HTMLFormElement = null as unknown as HTMLFormElement
 
 	function close() {
 		if (nickFormRef?.reportValidity()) {

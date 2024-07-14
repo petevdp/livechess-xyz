@@ -229,7 +229,7 @@ export type Board = {
 	toMove: Color
 }
 export type MoveHistory = Move[]
-export type BoardHistoryEntry = { hash: string; board: Board }
+export type BoardHistoryEntry = { board: Board }
 export type Coords = {
 	x: number
 	y: number
@@ -241,7 +241,7 @@ function hashMove(move: Move): string {
 
 export function useBoardHistory(moves: Accessor<Move[]>, startingBoard: Board) {
 	let moveHashes: string[] = []
-	let boardHistory: BoardHistoryEntry[] = [{ hash: hashBoard(startingBoard), board: startingBoard }]
+	let boardHistory: BoardHistoryEntry[] = [{ board: startingBoard }]
 	return () => getBoardHistory(moves())
 
 	function getBoardHistory(moves: Move[]) {
@@ -272,7 +272,7 @@ export function useBoardHistory(moves: Accessor<Move[]>, startingBoard: Board) {
 			const lastBoard = boardHistory[boardHistory.length - 1].board
 			const [newBoard] = applyMoveToBoard(move, lastBoard)
 			moveHashes.push(moveHash)
-			boardHistory.push({ board: newBoard, hash: hashBoard(newBoard) })
+			boardHistory.push({ board: newBoard })
 		}
 		return boardHistory
 	}
@@ -345,8 +345,8 @@ function stalemated(game: GameState) {
 
 function threefoldRepetition(game: GameState) {
 	if (game.boardHistory.length === 0) return false
-	const currentHash = game.boardHistory[game.boardHistory.length - 1].hash
-	const dupeCount = game.boardHistory.filter(({ hash }) => hash === currentHash).length
+	const currentBoard = game.boardHistory[game.boardHistory.length - 1].board
+	const dupeCount = game.boardHistory.filter(({ board }) => deepEquals(board, currentBoard)).length
 	return dupeCount == 3
 }
 
@@ -1103,10 +1103,7 @@ export function getVisibleSquares(game: GameState, color: Color) {
 		} satisfies CandidateMove
 		const [newBoard] = applyMoveToBoard(candidateMove, getBoard(game))
 
-		simulated.boardHistory.push({
-			board: newBoard,
-			hash: hashBoard(newBoard),
-		})
+		simulated.boardHistory.push({ board: newBoard })
 		simulated.moveHistory.push(candidateMoveToMove(candidateMove))
 	}
 

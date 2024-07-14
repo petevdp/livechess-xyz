@@ -1,3 +1,4 @@
+// @ts-ignore
 import { execSync } from 'child_process'
 import dotenv from 'dotenv'
 import devtools from 'solid-devtools/vite'
@@ -6,7 +7,8 @@ import solid from 'vite-plugin-solid'
 import solidSvg from 'vite-plugin-solid-svg'
 import tsconfigPaths from 'vite-tsconfig-paths'
 
-import { ENV, setupEnv } from './src/environment'
+//@ts-expect-error dumb typescript stuff, clashing includes in tsconfig.json and tsconfig.node.json
+import { ENV, setupEnv } from './src/env'
 
 dotenv.config()
 

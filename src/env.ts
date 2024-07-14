@@ -24,6 +24,7 @@ export function setupEnv() {
 		clientPrefix: 'VITE_',
 		server: {
 			HOSTNAME: z.string().ip(),
+			EXTERNAL_ORIGIN: z.string().url(),
 			PORT: z
 				.string()
 				.transform((port) => parseInt(port))
