@@ -22,9 +22,3 @@ export function isLoading() {
 export function clear() {
 	setHandles(new Set<string>())
 }
-
-createRoot(() => {
-	createEffect(() => {
-		console.log('GlobalLoading:', handles())
-	})
-})
