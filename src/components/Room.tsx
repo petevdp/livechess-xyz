@@ -10,6 +10,7 @@ import {
 	createEffect,
 	createMemo,
 	createSignal,
+	lazy,
 	observable,
 	on,
 	onCleanup,
@@ -18,7 +19,6 @@ import {
 import toast from 'solid-toast'
 
 import { ScreenFittingContent } from '~/components/AppContainer.tsx'
-import Game from '~/components/Game.tsx'
 import { Spinner } from '~/components/Spinner.tsx'
 import * as Svgs from '~/components/Svgs.tsx'
 import { VariantInfoDialog } from '~/components/VariantInfoDialog.tsx'
@@ -38,6 +38,8 @@ import * as GL from '~/systems/game/gameLogic.ts'
 import { getPieceSvg } from '~/systems/piece.tsx'
 import * as P from '~/systems/player.ts'
 import * as R from '~/systems/room.ts'
+
+const GameLazy = lazy(() => import('./Game.tsx'))
 
 export function Room() {
 	const room = R.room()!
@@ -99,7 +101,7 @@ export function Room() {
 							</ScreenFittingContent>
 						}
 					>
-						<Game gameId={room.rollbackState.activeGameId!} />
+						<GameLazy gameId={room.rollbackState.activeGameId!} />
 					</Suspense>
 				</Match>
 			</Switch>
