@@ -5,7 +5,7 @@ import { map } from 'rxjs/operators'
 import { Accessor, createEffect, createMemo, createSignal, getOwner, observable, on, onCleanup } from 'solid-js'
 import { unwrap } from 'solid-js/store'
 
-import { PUSH, StoreMutation } from '~/utils/sharedStore.ts'
+import { PUSH, StoreMutation } from '~/sharedStore/sharedStore.ts'
 import { storeToSignal } from '~/utils/solid.ts'
 import { unit } from '~/utils/unit.ts'
 

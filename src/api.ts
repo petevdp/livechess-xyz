@@ -1,8 +1,8 @@
 import { interval } from 'rxjs'
 import { onCleanup } from 'solid-js'
 
-import { API_URL } from '~/config.ts'
-import { NewNetworkResponse } from '~/utils/sharedStore.ts'
+import { API_URL } from './config.ts'
+import { type NewNetworkResponse } from './sharedStore/sharedStore.ts'
 
 export async function newNetwork() {
 	return (await fetch(`${API_URL}/networks`, { method: 'POST' }).then((res) => res.json())) as NewNetworkResponse

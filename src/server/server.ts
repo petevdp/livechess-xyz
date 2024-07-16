@@ -100,8 +100,8 @@ server.get('/api/ping', () => {
 	return 'pong\n'
 })
 
-server.post('/api/networks', () => {
-	return SSS.createNetwork()
+server.post('/api/networks', (req) => {
+	return SSS.createNetwork(req.log)
 })
 
 server.head('/api/networks/:networkId', (req, res) => {

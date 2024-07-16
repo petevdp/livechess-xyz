@@ -7,10 +7,10 @@ import { Owner, createEffect, createMemo, createRoot, createSignal, getOwner, on
 import { unwrap } from 'solid-js/store'
 
 import * as Api from '~/api.ts'
+import { PLAYER_TIMEOUT } from '~/config.ts'
+import * as SS from '~/sharedStore/sharedStore.ts'
 import { createId } from '~/utils/ids.ts'
-import { DELETE, PUSH, SharedStore, SharedStoreProvider, StoreMutation, initSharedStore } from '~/utils/sharedStore.ts'
 
-import { PLAYER_TIMEOUT } from '../config.ts'
 import * as G from './game/game.ts'
 import * as GL from './game/gameLogic.ts'
 import * as P from './player.ts'
@@ -95,7 +95,7 @@ export function connectToRoom(
 	initPlayer: (numPlayers: number) => Promise<{ player: P.Player; isSpectating: boolean }>,
 	parentOwner: Owner
 ): Observable<ConnectionState> {
-	const provider = new SharedStoreProvider<RoomEvent>(roomId)
+	const provider = new SS.TransportHelpers<RoomEvent>(new SS.WsTransport(roomId))
 
 	// will only be used if the room is new
 	let state: RoomState
@@ -119,18 +119,18 @@ export function connectToRoom(
 	}
 
 	const disconnected$: Observable<ConnectionState> = race(
-		provider.disconnected$.then(() => ({ status: 'lost' }) satisfies ConnectionState),
+		provider.disposed$.then(() => ({ status: 'lost' }) satisfies ConnectionState),
 		provider.timedOut$.pipe(
 			first(),
 			map((idleTime) => ({ status: 'timeout', idleTime }) satisfies ConnectionState)
 		)
 	)
 
-	let store = null as unknown as SharedStore<RoomState, ClientOwnedState, RoomEvent>
+	let store = null as unknown as SS.SharedStore<RoomState, ClientOwnedState, RoomEvent>
 	let instanceOwner = null as unknown as Owner
 	disposePrevious()
 	createRoot((_dispose) => {
-		store = initSharedStore<RoomState, ClientOwnedState, RoomEvent>(provider, { playerId }, state)
+		store = SS.initFollowerStore<RoomState, ClientOwnedState, RoomEvent>(provider, { playerId }, state)
 
 		//#region try to take state snapshot on page unload
 		createEffect(() => {
@@ -172,9 +172,9 @@ export function connectToRoom(
 			await store.setStoreWithRetries((state) => {
 				// leader will report player reconnection
 				if (state.members.some((p) => p.id === playerId)) return []
-				const mutations: StoreMutation[] = [
+				const mutations: SS.StoreMutation[] = [
 					{
-						path: ['members', PUSH],
+						path: ['members', SS.PUSH],
 						value: player satisfies RoomMember,
 					},
 				]
@@ -227,8 +227,8 @@ export class Room {
 	}
 
 	constructor(
-		public sharedStore: SharedStore<RoomState, ClientOwnedState, RoomEvent>,
-		public provider: SharedStoreProvider<RoomEvent>,
+		public sharedStore: SS.SharedStore<RoomState, ClientOwnedState, RoomEvent>,
+		public provider: SS.TransportHelpers<RoomEvent>,
 		public player: RoomMember
 	) {
 		this.setupPlayerEventTracking()
@@ -308,7 +308,7 @@ export class Room {
 							mutations: [
 								{
 									path: ['gameParticipants', participant.color],
-									value: DELETE,
+									value: SS.DELETE,
 								},
 							],
 						}
@@ -396,7 +396,7 @@ export class Room {
 	//#region helpers
 
 	get roomId() {
-		return this.provider.networkId
+		return this.provider.transport.networkId
 	}
 
 	get rollbackState() {
@@ -448,7 +448,7 @@ export class Room {
 							path: ['gameParticipants', this.leftPlayer!.color],
 							value: undefined,
 						},
-					] satisfies StoreMutation[],
+					] satisfies SS.StoreMutation[],
 				}
 			}
 
@@ -471,7 +471,7 @@ export class Room {
 		})
 	}
 
-	getPieceSwapMutation(): StoreMutation[] {
+	getPieceSwapMutation(): SS.StoreMutation[] {
 		return [
 			{
 				path: ['gameParticipants', this.leftPlayer!.color],
@@ -544,7 +544,7 @@ export class Room {
 							{ path: ['drawOffers'], value: { white: null, black: null } },
 							{ path: ['activeGameId'], value: createId(6) },
 							{ path: ['outcome'], value: undefined },
-						] satisfies StoreMutation[],
+						] satisfies SS.StoreMutation[],
 					}
 				} else {
 					return [
