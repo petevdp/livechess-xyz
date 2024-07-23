@@ -3,15 +3,16 @@ import { Observable, Subject, Subscription, delay, endWith, filter, first, first
 import { createRoot } from 'solid-js'
 import * as ws from 'ws'
 
+import { initServerSideRoomLogic } from '~/server/serverSideRoomLogic.ts'
 import {
 	ClientConfig,
-	ClientControlledState,
 	type NewNetworkResponse,
 	SharedStore,
 	type SharedStoreMessage,
 	Transport,
 	initLeaderStore,
 } from '~/sharedStore/sharedStore.ts'
+import * as R from '~/systems/room.ts'
 import { createId } from '~/utils/ids.ts'
 
 const NO_ACTIVITY_TIMEOUT = 1000 * 60 * 20
@@ -19,11 +20,11 @@ const NO_ACTIVITY_TIMEOUT = 1000 * 60 * 20
 const networks = new Map<string, Network<Msg>>()
 
 type Event = unknown
-type State = object
-type CCS = ClientControlledState
-type Msg = SharedStoreMessage<Event, State, CCS>
+type State = R.RoomState
+type CCS = R.ClientOwnedState
+type Msg = R.RoomMessage
 
-type Network<Msg extends SharedStoreMessage<unknown, object>> = {
+type Network<Msg extends R.RoomMessage> = {
 	id: string
 	timeoutAt: number | null
 	message$: Subject<Msg>
@@ -117,7 +118,8 @@ export function createNetwork(log: FastifyBaseLogger) {
 			},
 			disposed$: firstValueFrom(disposed$),
 		}
-		const store = initLeaderStore(leaderTransport)
+		const store = initLeaderStore(leaderTransport) as R.RoomStore
+		initServerSideRoomLogic(store, leaderTransport)
 		networks.set(networkId, {
 			id: networkId,
 			message$,
@@ -206,7 +208,7 @@ export function handleNewConnection(socket: ws.WebSocket, networkId: string, log
 
 	const config: ClientConfig<State, CCS> = {
 		clientId: client.clientId,
-		initialState: network.store.lockstepStore,
+		initialState: network.store.lockstepState,
 		lastMutationIndex: network.store.lastMutationIndex,
 		clientControlledStates: network.store.clientControlled.states,
 	}

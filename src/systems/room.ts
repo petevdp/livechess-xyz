@@ -1,14 +1,13 @@
-import { trackDeep, trackStore } from '@solid-primitives/deep'
 import { until } from '@solid-primitives/promise'
-import deepEquals from 'fast-deep-equal'
-import { Observable, concatMap, first, interval, mergeAll, race, from as rxFrom, startWith } from 'rxjs'
+import { Observable, concatMap, mergeAll, race, from as rxFrom, startWith } from 'rxjs'
 import { map } from 'rxjs/operators'
-import { Owner, createEffect, createMemo, createRoot, createSignal, getOwner, onCleanup, runWithOwner, untrack } from 'solid-js'
+import { Owner, createRoot, createSignal, getOwner, onCleanup, runWithOwner } from 'solid-js'
 import { unwrap } from 'solid-js/store'
 
 import * as Api from '~/api.ts'
 import { PLAYER_TIMEOUT } from '~/config.ts'
 import * as SS from '~/sharedStore/sharedStore.ts'
+import { WsTransport } from '~/sharedStore/wsTransport.ts'
 import { createId } from '~/utils/ids.ts'
 
 import * as G from './game/game.ts'
@@ -63,7 +62,7 @@ export type RoomState = {
 	activeGameId?: string
 }
 
-type ClientOwnedState = {
+export type ClientOwnedState = {
 	playerId: string
 }
 //#endregion
@@ -89,73 +88,33 @@ export type ConnectionState =
 			status: 'lost'
 	  }
 
+export type RoomMessage = SS.SharedStoreMessage<RoomEvent, RoomState, ClientOwnedState>
+
+export type RoomStore = SS.SharedStore<RoomState, ClientOwnedState, RoomEvent>
+
 export function connectToRoom(
 	roomId: string,
 	playerId: string,
 	initPlayer: (numPlayers: number) => Promise<{ player: P.Player; isSpectating: boolean }>,
 	parentOwner: Owner
 ): Observable<ConnectionState> {
-	const provider = new SS.TransportHelpers<RoomEvent>(new SS.WsTransport(roomId))
-
-	// will only be used if the room is new
-	let state: RoomState
-
-	// we always keep/track snapshots because we never know when we're going to become the leader. It may happen after a reconnect or w/e.
-	let lastSnaphotTs: number = -1
-	const snapshot = localStorage.getItem(`roomSnapshot`)
-	const snapshotRoomId = localStorage.getItem(`roomSnapshot:roomId`)
-	if (snapshot && snapshotRoomId === roomId) {
-		state = JSON.parse(snapshot)
-		lastSnaphotTs = Date.now()
-	} else {
-		state = {
-			members: [],
-			status: 'pregame',
-			gameParticipants: {} as RoomState['gameParticipants'],
-			gameConfig: GL.getDefaultGameConfig(),
-			drawOffers: {} as RoomState['drawOffers'],
-			moves: [],
-		}
-	}
+	const transport = new WsTransport<RoomMessage>(roomId)
 
 	const disconnected$: Observable<ConnectionState> = race(
-		provider.disposed$.then(() => ({ status: 'lost' }) satisfies ConnectionState),
-		provider.timedOut$.pipe(
-			first(),
-			map((idleTime) => ({ status: 'timeout', idleTime }) satisfies ConnectionState)
-		)
+		transport.disposed$.then(() => ({ status: 'lost' }) satisfies ConnectionState),
+		SS.observeTimedOut(transport).pipe(map((idleTime) => ({ status: 'timeout', idleTime }) satisfies ConnectionState))
 	)
 
-	let store = null as unknown as SS.SharedStore<RoomState, ClientOwnedState, RoomEvent>
+	let store = null as unknown as RoomStore
 	let instanceOwner = null as unknown as Owner
 	disposePrevious()
 	createRoot((_dispose) => {
-		store = SS.initFollowerStore<RoomState, ClientOwnedState, RoomEvent>(provider, { playerId }, state)
-
-		//#region try to take state snapshot on page unload
-		createEffect(() => {
-			trackStore(store.lockstepStore)
-			const now = Date.now()
-			if (lastSnaphotTs === -1 || now - lastSnaphotTs > 5000) {
-				localStorage.setItem(`roomSnapshot:roomId`, roomId)
-				localStorage.setItem(`roomSnapshot`, JSON.stringify(store.lockstepStore))
-				lastSnaphotTs = now
-			}
-		})
-
-		function unloadListener() {
-			localStorage.setItem(`roomSnapshot`, JSON.stringify(store.lockstepStore))
-			localStorage.setItem(`roomSnapshot:roomId`, roomId)
-		}
-
-		window.addEventListener('beforeunload', unloadListener)
-		//#endregion
+		store = SS.initFollowerStore<RoomState, ClientOwnedState, RoomEvent>(transport, { playerId })
 		instanceOwner = getOwner()!
 
 		Api.keepServerAlive()
 
 		disposePrevious = () => {
-			window.removeEventListener('beforeunload', unloadListener)
 			setRoom(null)
 			_dispose()
 		}
@@ -166,8 +125,8 @@ export function connectToRoom(
 	})
 
 	const connected$ = until(() => store.initialized()).then(async () => {
-		if (!store.rollbackStore.members.some((p) => p.id === playerId)) {
-			const { player, isSpectating } = await initPlayer(Object.values(store.rollbackStore.gameParticipants).length)
+		if (!store.rollbackState.members.some((p) => p.id === playerId)) {
+			const { player, isSpectating } = await initPlayer(Object.values(store.rollbackState.gameParticipants).length)
 			//#region connect player
 			await store.setStoreWithRetries((state) => {
 				// leader will report player reconnection
@@ -210,7 +169,7 @@ export function connectToRoom(
 			})
 		}
 
-		const room = runWithOwner(instanceOwner, () => new Room(store, provider, store.rollbackStore.members.find((p) => playerId === p.id)!))!
+		const room = runWithOwner(instanceOwner, () => new Room(store, transport, store.rollbackState.members.find((p) => playerId === p.id)!))!
 		setRoom(room)
 	})
 	//#endregion
@@ -220,108 +179,38 @@ export function connectToRoom(
 	)
 }
 
-export class Room {
-	get canStartGame() {
-		// check both states because reasons
-		return this.rollbackState.status === 'pregame' && this.leftPlayer?.id === this.player.id && !!this.rightPlayer?.isReadyForGame
-	}
-
+export class RoomStoreHelpers {
 	constructor(
-		public sharedStore: SS.SharedStore<RoomState, ClientOwnedState, RoomEvent>,
-		public provider: SS.TransportHelpers<RoomEvent>,
-		public player: RoomMember
-	) {
-		this.setupPlayerEventTracking()
+		public sharedStore: RoomStore,
+		private transport: SS.Transport<RoomMessage>
+	) {}
+
+	get roomId() {
+		return this.transport.networkId
 	}
 
-	//#region members(players + spectators)
-
-	setupPlayerEventTracking() {
-		const prevConnected: RoomMember[] = []
-		const connectedPlayers = createMemo(() => {
-			trackDeep(this.sharedStore.clientControlledStates)
-			const playerIds: string[] = Object.values(this.sharedStore.clientControlledStates).map((s) => s.playerId)
-			const currConnected = this.members.filter((p) => playerIds.includes(p.id) && p.name)
-			// return same object so equality check passes
-			if (deepEquals(playerIds, prevConnected)) return prevConnected
-			return currConnected
-		})
-
-		//#region track reconnects and disconnects
-		const previouslyConnected = new Set<string>()
-		createEffect(() => {
-			const _connectedPlayers = unwrap(connectedPlayers())
-			untrack(() => {
-				for (const player of this.members) {
-					const isConnected = _connectedPlayers.some((p) => p.id === player.id)
-					if (!previouslyConnected.has(player.id) && isConnected) {
-						previouslyConnected.add(player.id)
-						if (!this.sharedStore.isLeader()) return
-						this.sharedStore.setStoreWithRetries((state) => {
-							const playerIndex = state.members.findIndex((p) => p.id === player.id)
-							if (playerIndex === -1 || !player.disconnectedAt) return []
-							return {
-								events: [{ type: 'player-reconnected', playerId: player.id }],
-								mutations: [
-									{
-										path: ['members', playerIndex, 'disconnectedAt'],
-										value: undefined,
-									},
-								],
-							}
-						})
-					} else if (previouslyConnected.has(player.id) && !isConnected) {
-						const disconnectedAt = Date.now()
-						previouslyConnected.delete(player.id)
-						if (!this.sharedStore.isLeader()) return
-						this.sharedStore.setStoreWithRetries((state) => {
-							const playerIndex = state.members.findIndex((p) => p.id === player.id)
-							if (playerIndex === -1) return []
-							console.debug('player disconnected', player.id, 'at', disconnectedAt, 'state', state)
-							return {
-								events: [],
-								mutations: [
-									{
-										path: ['members', playerIndex, 'disconnectedAt'],
-										value: disconnectedAt,
-									},
-								],
-							}
-						})
-					}
-				}
-			})
-		})
-		interval(PLAYER_TIMEOUT / 4).subscribe(() => {
-			if (!this.sharedStore.isLeader()) return
-			for (const id of previouslyConnected) {
-				const member = this.members.find((p) => p.id === id)!
-				if (member.disconnectedAt !== undefined && Date.now() - member.disconnectedAt) {
-					this.sharedStore.setStoreWithRetries(() => {
-						const participant = this.participants.find((p) => p.id === id)!
-						if (!participant) return
-						if (this.state.status !== 'pregame') {
-							return { events: [{ type: 'player-disconnected', playerId: id }], mutations: [] }
-						}
-						return {
-							events: [{ type: 'player-disconnected', playerId: id }],
-							mutations: [
-								{
-									path: ['gameParticipants', participant.color],
-									value: SS.DELETE,
-								},
-							],
-						}
-					})
-				}
-			}
-		})
-		//#endregion
+	get rollbackState() {
+		return this.sharedStore.rollbackState
 	}
 
-	// the implementation here could potentially lead to bugs in multiple client per user scenarios where player details change on one client but not another. need to do something more clever for that
+	get state() {
+		return this.sharedStore.lockstepState
+	}
+
+	playerColor(playerId: string) {
+		if (!playerId) throw new Error('playerId is missing')
+		if (this.rollbackState.gameParticipants.white?.id === playerId) return 'white'
+		if (this.rollbackState.gameParticipants.black?.id === playerId) return 'black'
+		return null
+	}
+
 	get members() {
-		return this.sharedStore.rollbackStore.members
+		return this.sharedStore.rollbackState.members
+	}
+
+	// players that are connected, or have been disconnected for less than the timeout window
+	get activePlayers() {
+		return this.members.filter((p) => !p.disconnectedAt || Date.now() - p.disconnectedAt < PLAYER_TIMEOUT)
 	}
 
 	get participants(): GameParticipant[] {
@@ -340,6 +229,38 @@ export class Room {
 			.flat()
 	}
 
+	get event$() {
+		return this.sharedStore.event$.pipe(
+			concatMap((event) => {
+				let player: RoomMember | undefined = undefined
+				if (event.type !== 'game-over') {
+					player = this.members.find((p) => p.id === event.playerId)!
+				}
+				return [
+					{
+						...event,
+						player: unwrap(player),
+					},
+				]
+			})
+		)
+	}
+}
+
+export class Room extends RoomStoreHelpers {
+	get canStartGame() {
+		// check both states because reasons
+		return this.rollbackState.status === 'pregame' && this.leftPlayer?.id === this.player.id && !!this.rightPlayer?.isReadyForGame
+	}
+
+	constructor(
+		public sharedStore: RoomStore,
+		transport: SS.Transport<RoomMessage>,
+		public player: RoomMember
+	) {
+		super(sharedStore, transport)
+	}
+
 	get isPlayerParticipating() {
 		return this.player.id === this.leftPlayer?.id
 	}
@@ -356,18 +277,6 @@ export class Room {
 		const participant = this.participants.find((p) => p.id === this.player.id)
 		if (participant) return participant
 		return this.participants.find((p) => p.id !== this.player.id && p.id !== this.rightPlayer?.id) || null
-	}
-
-	// players that are connected, or have been disconnected for less than the timeout window
-	get activePlayers() {
-		return this.members.filter((p) => !p.disconnectedAt || Date.now() - p.disconnectedAt < PLAYER_TIMEOUT)
-	}
-
-	playerColor(playerId: string) {
-		if (!playerId) throw new Error('playerId is missing')
-		if (this.rollbackState.gameParticipants.white?.id === playerId) return 'white'
-		if (this.rollbackState.gameParticipants.black?.id === playerId) return 'black'
-		return null
 	}
 
 	async setCurrentPlayerName(name: string) {
@@ -393,41 +302,8 @@ export class Room {
 
 	//#endregion
 
-	//#region helpers
-
-	get roomId() {
-		return this.provider.transport.networkId
-	}
-
-	get rollbackState() {
-		return this.sharedStore.rollbackStore
-	}
-
-	get state() {
-		return this.sharedStore.lockstepStore
-	}
-
 	get playerHasMultipleClients() {
-		return Object.values(this.sharedStore.clientControlledStates).filter((v) => v.playerId === this.player.id).length > 1
-	}
-
-	//#endregion
-
-	get event$() {
-		return this.sharedStore.event$.pipe(
-			concatMap((event) => {
-				let player: RoomMember | undefined = undefined
-				if (event.type !== 'game-over') {
-					player = this.members.find((p) => p.id === event.playerId)!
-				}
-				return [
-					{
-						...event,
-						player: unwrap(player),
-					},
-				]
-			})
-		)
+		return Object.values(this.sharedStore.clientControlled.states).filter((v) => v.playerId === this.player.id).length > 1
 	}
 
 	//#region piece swapping

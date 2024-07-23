@@ -45,12 +45,12 @@ describe('network provider/shared store', () => {
 		await until(() => store1.initialized())
 		await until(() => store2.initialized())
 		await store1.setStore({ path: ['ayy'], value: 'ayy' })
-		expect(store1.lockstepStore.ayy).toBe('ayy')
-		expect(store1.rollbackStore.ayy).toBe('ayy')
+		expect(store1.lockstepState.ayy).toBe('ayy')
+		expect(store1.rollbackState.ayy).toBe('ayy')
 
-		await until(() => store2.lockstepStore.ayy === 'ayy')
-		expect(store2.lockstepStore.ayy).toBe('ayy')
-		expect(store2.rollbackStore.ayy).toBe('ayy')
+		await until(() => store2.lockstepState.ayy === 'ayy')
+		expect(store2.lockstepState.ayy).toBe('ayy')
+		expect(store2.rollbackState.ayy).toBe('ayy')
 
 		toDispose.forEach((d) => d())
 	})
@@ -84,11 +84,11 @@ describe('network provider/shared store', () => {
 		const [f1set, f2set] = await Promise.all([follower1SetPromise, follower2SetPromise])
 		// whether follower1 or follower2 wins is nondeterministic
 		if (f1set) {
-			expect(follower2.lockstepStore.ayy).toEqual('follower1 was here')
-			expect(follower1.lockstepStore.ayy).toEqual('follower1 was here')
+			expect(follower2.lockstepState.ayy).toEqual('follower1 was here')
+			expect(follower1.lockstepState.ayy).toEqual('follower1 was here')
 		} else if (f2set) {
-			expect(follower2.lockstepStore.ayy).toEqual('follower2 was here')
-			expect(follower1.lockstepStore.ayy).toEqual('follower2 was here')
+			expect(follower2.lockstepState.ayy).toEqual('follower2 was here')
+			expect(follower1.lockstepState.ayy).toEqual('follower2 was here')
 		} else {
 			throw new Error('neither transaction succeeded')
 		}
@@ -118,7 +118,7 @@ describe('network provider/shared store', () => {
 		})
 
 		await until(() => lateStore.initialized())
-		expect(lateStore.lockstepStore.ayy).toBe('lmao')
+		expect(lateStore.lockstepState.ayy).toBe('lmao')
 		toDispose.forEach((d) => d())
 	})
 	//
@@ -144,11 +144,11 @@ describe('network provider/shared store', () => {
 			void store2.setStore({ path: ['ayy'], value: 'dawg' }, t)
 		})
 
-		await until(() => store1.lockstepStore.lmao === 'ayy')
+		await until(() => store1.lockstepState.lmao === 'ayy')
 
-		expect(store1.lockstepStore.lmao).toBe('ayy')
-		expect(store1.lockstepStore.whew).toBe('lad')
-		expect(store1.lockstepStore.ayy).toBe('dawg')
+		expect(store1.lockstepState.lmao).toBe('ayy')
+		expect(store1.lockstepState.whew).toBe('lad')
+		expect(store1.lockstepState.ayy).toBe('dawg')
 
 		dispose()
 	})
@@ -198,7 +198,7 @@ describe('network provider/shared store', () => {
 		})
 		await until(() => f1.initialized() && f2.initialized())
 		await f2.setStore({ path: ['arr'], value: [] })
-		await until(() => f1.lockstepStore.arr?.length === 0 && f2.lockstepStore.arr?.length === 0)
+		await until(() => f1.lockstepState.arr?.length === 0 && f2.lockstepState.arr?.length === 0)
 		let tryCount = 0
 		let lastRetry = null as string | null
 		const f1Res = f1.setStoreWithRetries((s) => {
@@ -223,7 +223,7 @@ describe('network provider/shared store', () => {
 		})
 		await Promise.all([f1Res, f2Res])
 		expect(tryCount).toBe(3)
-		expect(f1.lockstepStore.arr).toEqual(lastRetry === 'f1' ? ['lmao', 'ayy'] : ['ayy', 'lmao'])
+		expect(f1.lockstepState.arr).toEqual(lastRetry === 'f1' ? ['lmao', 'ayy'] : ['ayy', 'lmao'])
 		dispose()
 	})
 	//
@@ -316,15 +316,15 @@ describe('network provider/shared store', () => {
 		await until(() => s2.initialized() && s1.initialized())
 
 		await s1.setStore({ path: ['a'], value: [1, 2, 3] })
-		await until(() => s2.lockstepStore.a?.length === 3)
+		await until(() => s2.lockstepState.a?.length === 3)
 
 		void s2.setStoreWithRetries(() => {
 			return [{ path: ['a', 1], value: DELETE }]
 		})
 
-		await until(() => s2.lockstepStore.a.length === 2)
-		expect(s2.lockstepStore.a).toEqual([1, 3])
-		expect(s1.lockstepStore.a).toEqual([1, 3])
+		await until(() => s2.lockstepState.a.length === 2)
+		expect(s2.lockstepState.a).toEqual([1, 3])
+		expect(s1.lockstepState.a).toEqual([1, 3])
 		dispose()
 	})
 	//

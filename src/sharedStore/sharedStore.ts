@@ -4,6 +4,8 @@ import { Observable, Subject, Subscription, concatMap, endWith, filter, first, f
 import { Accessor, batch, createSignal, onCleanup } from 'solid-js'
 import { createStore, produce, unwrap } from 'solid-js/store'
 
+import { ClientOwnedState } from '~/systems/room.ts'
+
 //#region types
 
 // TODO: strong typing for paths and values like in solid's setStore
@@ -32,9 +34,13 @@ export type NewNetworkResponse = {
 
 export type Json = string
 
-export type ClientControlledState = { [key: string]: any | null } | null
+export type ClientControlledState = { [key: string]: any | null }
 export type ClientControlledStates<T extends ClientControlledState> = {
 	[key: string]: T
+}
+
+export type ClientControlledStatesUpdate<S extends ClientControlledState> = {
+	[key: string]: null | S
 }
 
 export type ClientConfig<T, CCS extends ClientControlledState> = {
@@ -47,7 +53,6 @@ export type ClientConfig<T, CCS extends ClientControlledState> = {
 export type SharedStoreMessage<Event, State = any, CCS extends ClientControlledState = ClientControlledState> =
 	| {
 			type: 'mutation'
-			commit: boolean
 			mutation: SharedStoreTransaction<Event>
 	  }
 	| {
@@ -66,7 +71,7 @@ export type SharedStoreMessage<Event, State = any, CCS extends ClientControlledS
 	| {
 			type: 'client-controlled-states'
 			forClient?: string
-			states: ClientControlledStates<CCS>
+			states: ClientControlledStatesUpdate<CCS>
 	  }
 	| SharedStoreTimeoutMessage
 
@@ -78,8 +83,8 @@ type SharedStoreTimeoutMessage = {
 export type ClientControlledStateNode<CCS extends ClientControlledState> = ReturnType<typeof initClientControlledStateNode<CCS>>
 
 export interface SharedStore<State extends object, CCS extends ClientControlledState = ClientControlledState, Event = any> {
-	lockstepStore: State
-	rollbackStore: State
+	lockstepState: State
+	rollbackState: State
 	clientControlled: ClientControlledStateNode<CCS>
 	setStore(
 		mutation: StoreMutation,
@@ -269,7 +274,6 @@ export function initLeaderStore<State extends object, CCS extends ClientControll
 		nextAtomId++
 		const message: SharedStoreMessage<Event, State, CCS> = {
 			type: 'mutation',
-			commit: true,
 			mutation: atom,
 		}
 		transport.send(message)
@@ -322,8 +326,8 @@ export function initLeaderStore<State extends object, CCS extends ClientControll
 	return {
 		setStore,
 		setStoreWithRetries: _setStoreWithRetries,
-		lockstepStore: store,
-		rollbackStore: store,
+		lockstepState: store,
+		rollbackState: store,
 		event$,
 		config: () => config,
 		clientControlled: clientControlled,
@@ -355,7 +359,7 @@ function initClientControlledStateNode<CCS extends ClientControlledState>(
 	}
 
 	const updateAllLocalClientControlledState =
-		(newStates: ClientControlledStates<CCS>): ((states: ClientControlledStates<CCS>) => void) =>
+		(newStates: ClientControlledStatesUpdate<CCS>): ((states: ClientControlledStates<CCS>) => void) =>
 		(states: ClientControlledStates<CCS>) => {
 			if (!newStates) return
 			for (const [clientId, state] of Object.entries(newStates)) {
@@ -363,20 +367,22 @@ function initClientControlledStateNode<CCS extends ClientControlledState>(
 			}
 		}
 
-	const updateLocalClientControlledState = (clientId: string, newState: ClientControlledState) => (states: ClientControlledStates<any>) => {
-		if (newState == null) {
-			delete states[clientId]
-			return
-		}
-		for (const [key, value] of Object.entries(newState)) {
-			if (value == null && states[clientId]) {
-				delete states[clientId]![key]
-			} else {
-				states[clientId] ||= {}
-				states[clientId]![key] = value
+	const updateLocalClientControlledState =
+		(clientId: string, newState: ClientControlledState | null) => (states: ClientControlledStates<any>) => {
+			if (newState == null) {
+				delete states[clientId]
+				return
+			}
+			for (const [key, value] of Object.entries(newState)) {
+				if (value == null && states[clientId]) {
+					delete states[clientId]![key]
+				} else {
+					states[clientId] ||= {}
+					states[clientId]![key] = value
+				}
 			}
 		}
-	}
+
 	subscription.add(
 		transport.message$.subscribe({
 			next: (msg) => {
@@ -524,7 +530,6 @@ export function initFollowerStore<State extends object, CCS extends ClientContro
 		nextAtomId++
 		const message: SharedStoreMessage<Event, State, CCS> = {
 			type: 'mutation',
-			commit: false,
 			mutation: transaction,
 		}
 		transport.send(message)
@@ -651,8 +656,8 @@ export function initFollowerStore<State extends object, CCS extends ClientContro
 	})
 
 	return {
-		rollbackStore,
-		lockstepStore,
+		rollbackState: rollbackStore,
+		lockstepState: lockstepStore,
 		setStore,
 		setStoreWithRetries: _setStoreWithRetries,
 		clientControlled: ccs,
