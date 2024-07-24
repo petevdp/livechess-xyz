@@ -7,7 +7,7 @@
     "dev": "vite",
     "test": "vitest",
     "build": "vite build",
-    "visualize-build": "pnpx vite-bundle-visualizer",
+    "build:visualize": "pnpx vite-bundle-visualizer",
     "check": "tsc",
     "preview": "vite preview",
     "server": "NODE_ENV=production tsx src/server/server.ts",

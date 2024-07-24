@@ -1,7 +1,7 @@
 import { until } from '@solid-primitives/promise'
 import { useNavigate, useParams } from '@solidjs/router'
 import { Subscription } from 'rxjs'
-import { Match, Resource, Show, Switch, createEffect, createResource, createSignal, getOwner, onCleanup } from 'solid-js'
+import { Match, Show, Switch, createEffect, createResource, createSignal, getOwner, onCleanup } from 'solid-js'
 
 import * as Api from '~/api.ts'
 import adjectives from '~/assets/names_dictionary/adjectives.ts'
@@ -40,14 +40,7 @@ export default function RoomGuard() {
 		state: 'hidden',
 	})
 
-	let networkExists: Resource<boolean>
-	if (params.createdRoom) {
-		// remove param from url
-		navigate('/rooms/' + params.id, { replace: true })
-		;[networkExists] = createResource(() => Promise.resolve(true))
-	} else {
-		;[networkExists] = createResource(() => Api.checkNetworkExists(params.id))
-	}
+	const [networkExists] = createResource(() => Api.checkNetworkExists(params.id))
 
 	createEffect(() => {
 		if (networkExists() === false) {
@@ -202,9 +195,6 @@ export function PlayerForm(props: PlayerFormProps) {
 		</ScreenFittingContent>
 	)
 }
-
-// @ts-expect-error
-window.genName = genName
 
 function genName() {
 	let adj = adjectives[Math.floor(Math.random() * adjectives.length)]
