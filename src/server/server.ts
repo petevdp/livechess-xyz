@@ -125,7 +125,8 @@ server.get('/api/qrcodes/:filename', async (req, res) => {
 	if (!filename.endsWith('.png')) {
 		return res.status(404).send('file not found')
 	}
-	if (!SSS.getNetwork(filename.split('.')[0])) {
+	const network = SSS.getNetwork(filename.split('.')[0])
+	if (!network) {
 		return res.status(404).send('network not found')
 	}
 
@@ -135,7 +136,7 @@ server.get('/api/qrcodes/:filename', async (req, res) => {
 			callback()
 		},
 	})
-	void QRCode.toFileStream(inoutStream, `http://${ENV.EXTERNAL_ORIGIN}:${ENV.PORT}/rooms/${filename}`, { scale: 12 })
+	void QRCode.toFileStream(inoutStream, `${ENV.EXTERNAL_ORIGIN}/rooms/${network.id}`, { scale: 12 })
 	return res.type('image/png').header('Cache-Control', 'public, max-age=31536000, immutable').send(inoutStream)
 })
 
