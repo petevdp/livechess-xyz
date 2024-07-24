@@ -270,7 +270,7 @@ export function useBoardHistory(moves: Accessor<Move[]>, startingBoard: Board) {
 				moveHash = hashMove(move)
 			}
 			const lastBoard = boardHistory[boardHistory.length - 1].board
-			const [newBoard] = applyMoveToBoard(move, lastBoard)
+			const [newBoard] = applyMoveToBoard(move, lastBoard, move.duck)
 			moveHashes.push(moveHash)
 			boardHistory.push({ board: newBoard })
 		}
@@ -447,16 +447,8 @@ export function validateAndPlayMove(
 	})
 	const candidate = candidates[0]
 	const isCapture = !!getBoard(game).pieces[to] || candidate.enPassant
-	const [newBoard] = applyMoveToBoard(candidate, getBoard(game))
+	const [newBoard] = applyMoveToBoard(candidate, getBoard(game), duck)
 	const move = candidateMoveToMove(candidate, undefined, isCapture, inCheck(newBoard), duck)
-	if (duck) {
-		if (!validateDuckPlacement(duck, newBoard)) {
-			return
-		}
-		// we're doing this here because placing the duck is a distinct step and would be hard to jam into applyMoveToBoard0 while validating the placement
-		newBoard.pieces[duck] = DUCK
-	}
-
 	return {
 		board: newBoard,
 		move,
@@ -469,7 +461,7 @@ export function validateDuckPlacement(duck: string, board: Board) {
 }
 
 // Uncritically apply a move to the board. Does not mutate input.
-function applyMoveToBoard(move: CandidateMove | Move, board: Board) {
+function applyMoveToBoard(move: CandidateMove | Move, board: Board, duckSquare?: string) {
 	const _move = (typeof move.from === 'string' ? moveToCandidateMove(move as Move) : move) as CandidateMove
 	const piece = board.pieces[notationFromCoords(_move.from)]
 	const newBoard = JSON.parse(JSON.stringify(board)) as Board
@@ -479,10 +471,12 @@ function applyMoveToBoard(move: CandidateMove | Move, board: Board) {
 	delete newBoard.pieces[moveFromCoords]
 	newBoard.pieces[moveToCoords] = piece
 
-	for (const [square, piece] of Object.entries(newBoard.pieces)) {
-		if (piece.type === 'duck') {
-			delete newBoard.pieces[square]
-			break
+	if (duckSquare) {
+		for (const [square, piece] of Object.entries(newBoard.pieces)) {
+			if (piece.type === 'duck') {
+				delete newBoard.pieces[square]
+				break
+			}
 		}
 	}
 
@@ -521,6 +515,17 @@ function applyMoveToBoard(move: CandidateMove | Move, board: Board) {
 		promoted = true
 	}
 
+	if (duckSquare) {
+		for (const [square, piece] of Object.entries(newBoard.pieces)) {
+			if (piece.type === 'duck') {
+				delete newBoard.pieces[square]
+				break
+			}
+		}
+	}
+	if (duckSquare && !newBoard.pieces[duckSquare]) {
+		newBoard.pieces[duckSquare] = DUCK
+	}
 	newBoard.toMove = board.toMove === 'white' ? 'black' : 'white'
 	return [newBoard, promoted] as const
 }

@@ -4,8 +4,6 @@ import { Observable, Subject, Subscription, concatMap, endWith, filter, first, f
 import { Accessor, batch, createSignal, onCleanup } from 'solid-js'
 import { createStore, produce, unwrap } from 'solid-js/store'
 
-import { ClientOwnedState } from '~/systems/room.ts'
-
 //#region types
 
 // TODO: strong typing for paths and values like in solid's setStore
@@ -479,13 +477,6 @@ export function initFollowerStore<State extends object, CCS extends ClientContro
 			console.debug(`dispatching action: ${action}`)
 		})
 	)
-
-	/**
-	 * Dispatches action with no attached mutations
-	 */
-	function dispatchEvents(events: Event[]) {
-		return _setStoreWithRetries(() => ({ events: events, mutations: [] }))
-	}
 
 	//#endregion
 

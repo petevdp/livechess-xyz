@@ -223,7 +223,6 @@ export class Game {
 		const [acceptedMove, setAcceptedMove] = createSignal(null as null | GL.Move)
 		void this.room.sharedStore.setStoreWithRetries(() => {
 			if (!this.isActiveGame) return
-			if (!this.isActiveGame) return
 			const state = unwrap(this.state)
 			if (this.viewedMoveIndex() !== state.moveHistory.length - 1 || this.outcome) return
 			// check that we're still on the same currentMove
