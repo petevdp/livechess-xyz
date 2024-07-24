@@ -6,6 +6,7 @@ import { Match, Show, Switch, createEffect, createResource, createSignal, getOwn
 import * as Api from '~/api.ts'
 import adjectives from '~/assets/names_dictionary/adjectives.ts'
 import animals from '~/assets/names_dictionary/animals.ts'
+import NotFound from '~/components/NotFound.tsx'
 import { Button } from '~/components/ui/button.tsx'
 import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card.tsx'
 import { Checkbox } from '~/components/ui/checkbox.tsx'
@@ -41,12 +42,6 @@ export default function RoomGuard() {
 	})
 
 	const [networkExists] = createResource(() => Api.checkNetworkExists(params.id))
-
-	createEffect(() => {
-		if (networkExists() === false) {
-			navigate('/404')
-		}
-	})
 
 	async function initPlayer(numPlayers: number): Promise<{ player: P.Player; isSpectating: boolean }> {
 		GlobalLoading.unsetLoading('connect-to-room')
@@ -119,6 +114,9 @@ export default function RoomGuard() {
 	return (
 		<AppContainer>
 			<Switch>
+				<Match when={networkExists() === false}>
+					<NotFound />
+				</Match>
 				<Match when={playerFormState().state === 'visible'}>
 					{/* @ts-expect-error fuck it */}
 					<PlayerForm {...playerFormState().props} />

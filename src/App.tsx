@@ -1,9 +1,8 @@
 import { ColorMode, ColorModeProvider, ColorModeScript } from '@kobalte/core'
-import { Navigate, Route, Router } from '@solidjs/router'
+import { Route, Router } from '@solidjs/router'
 import { ErrorBoundary, JSXElement, Show, Suspense, createEffect, createSignal, lazy, onMount } from 'solid-js'
 import { Toaster } from 'solid-toast'
 
-import NotFound from '~/components/404.tsx'
 import { AppContainer, ScreenFittingContent } from '~/components/AppContainer.tsx'
 import { Spinner } from '~/components/Spinner.tsx'
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogTitle } from '~/components/ui/alert-dialog.tsx'
@@ -72,13 +71,6 @@ function App() {
 							</Suspense>
 						))}
 					/>
-					<Route
-						path="/404"
-						component={ErrorHandled(() => (
-							<NotFound />
-						))}
-					/>
-					<Route path="*" component={() => <Navigate href="/404" />} />
 				</Router>
 			</ColorModeProvider>
 			<Toaster position="bottom-left" />
