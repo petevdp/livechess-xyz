@@ -9,6 +9,7 @@ import { PLAYER_TIMEOUT } from '~/config.ts'
 import * as SS from '~/sharedStore/sharedStore.ts'
 import { WsTransport } from '~/sharedStore/wsTransport.ts'
 import { createId } from '~/utils/ids.ts'
+import { deepClone } from '~/utils/obj.ts'
 
 import * as G from './game/game.ts'
 import * as GL from './game/gameLogic.ts'
@@ -19,14 +20,7 @@ export type RoomMember = P.Player & {
 	disconnectedAt?: number
 }
 
-type GameParticipantDetails = {
-	// just playerid
-	id: string
-	isReadyForGame: boolean
-	agreePieceSwap: boolean
-}
-
-export type GameParticipant = RoomMember & GameParticipantDetails & { color: GL.Color }
+export type RoomGameParticipant = RoomMember & G.GameParticipant & { agreePieceSwap: boolean; isReadyForGame: boolean }
 
 // not exhaustive of all state mutations, just the ones we want to name for convenience
 export type RoomEvent =
@@ -38,24 +32,15 @@ export type RoomEvent =
 				| 'player-connected'
 				| 'player-disconnected'
 				| 'player-reconnected'
-				| 'new-game'
-				| G.DrawEventType
 			playerId: string
 	  }
-	| {
-			type: 'make-move'
-			playerId: string
-			moveIndex: number
-	  }
-	| {
-			type: 'game-over'
-	  }
+	| G.GameEvent
 
 export type RoomState = {
 	members: RoomMember[]
 	status: 'pregame' | 'playing' | 'postgame'
 	gameConfig: GL.GameConfig
-	gameParticipants: Record<GL.Color, GameParticipantDetails>
+	gameParticipants: Record<GL.Color, RoomGameParticipant>
 	drawOffers: Record<GL.Color, number | undefined>
 	moves: GL.Move[]
 	outcome?: GL.GameOutcome
@@ -143,23 +128,20 @@ export function connectToRoom(
 						id: playerId,
 						isReadyForGame: false,
 						agreePieceSwap: false,
-					} satisfies GameParticipantDetails
+						disconnectedAt: undefined,
+						name: player.name,
+					} as RoomGameParticipant
 					if (state.gameParticipants.white) {
-						mutations.push({
-							path: ['gameParticipants', 'black'],
-							value: gameParticipant,
-						})
+						gameParticipant.color = 'black'
 					} else if (state.gameParticipants.black) {
-						mutations.push({
-							path: ['gameParticipants', 'white'],
-							value: gameParticipant,
-						})
+						gameParticipant.color = 'white'
 					} else {
-						mutations.push({
-							path: ['gameParticipants', Math.random() < 0.5 ? 'white' : 'black'],
-							value: gameParticipant,
-						})
+						gameParticipant.color = Math.random() < 0.5 ? 'white' : 'black'
 					}
+					mutations.push({
+						path: ['gameParticipants', gameParticipant.color],
+						value: gameParticipant,
+					})
 				}
 
 				return {
@@ -213,9 +195,9 @@ export class RoomStoreHelpers {
 		return this.members.filter((p) => !p.disconnectedAt || Date.now() - p.disconnectedAt < PLAYER_TIMEOUT)
 	}
 
-	get participants(): GameParticipant[] {
+	get participants(): RoomGameParticipant[] {
 		return this.members
-			.map((player): GameParticipant[] => {
+			.map((player): RoomGameParticipant[] => {
 				const gameParticipant = Object.values(this.rollbackState.gameParticipants).find((gp) => gp.id === player.id)
 				if (!gameParticipant) return []
 				return [
@@ -223,7 +205,7 @@ export class RoomStoreHelpers {
 						...player,
 						...gameParticipant,
 						color: this.playerColor(gameParticipant.id)!,
-					},
+					} as RoomGameParticipant,
 				]
 			})
 			.flat()
@@ -234,7 +216,10 @@ export class RoomStoreHelpers {
 			concatMap((event) => {
 				let player: RoomMember | undefined = undefined
 				if (event.type !== 'game-over') {
-					player = this.members.find((p) => p.id === event.playerId)!
+					player = this.members.find((p) => {
+						//@ts-expect-error
+						return p.id === event.playerId
+					})!
 				}
 				return [
 					{
@@ -269,11 +254,11 @@ export class Room extends RoomStoreHelpers {
 		return this.members.filter((p) => Object.values(this.rollbackState.gameParticipants).some((gp) => gp.id === p.id))
 	}
 
-	get rightPlayer() {
+	get rightPlayer(): RoomGameParticipant | null {
 		return this.participants.find((p) => p.id !== this.player.id) || null
 	}
 
-	get leftPlayer() {
+	get leftPlayer(): RoomGameParticipant | null {
 		const participant = this.participants.find((p) => p.id === this.player.id)
 		if (participant) return participant
 		return this.participants.find((p) => p.id !== this.player.id && p.id !== this.rightPlayer?.id) || null
@@ -313,11 +298,12 @@ export class Room extends RoomStoreHelpers {
 			if (!this.rightPlayer) {
 				const participant = { ...this.rollbackState.gameParticipants[this.leftPlayer!.color] }
 				participant.agreePieceSwap = false
+				participant.color = GL.oppositeColor(this.leftPlayer!.color)
 				return {
 					events: [{ type: 'agree-piece-swap', playerId: this.player.id }],
 					mutations: [
 						{
-							path: ['gameParticipants', GL.oppositeColor(this.leftPlayer!.color)],
+							path: ['gameParticipants', participant.color],
 							value: participant,
 						},
 						{
@@ -348,21 +334,21 @@ export class Room extends RoomStoreHelpers {
 	}
 
 	getPieceSwapMutation(): SS.StoreMutation[] {
+		const leftParticipant = deepClone(this.leftPlayer!)
+		const rightParticipant = deepClone(this.rightPlayer!)
+		const prevLeft = leftParticipant.color
+		leftParticipant.color = rightParticipant.color
+		leftParticipant.agreePieceSwap = false
+		rightParticipant.color = prevLeft
+		rightParticipant.agreePieceSwap = false
 		return [
 			{
-				path: ['gameParticipants', this.leftPlayer!.color],
-				value: {
-					...this.rollbackState.gameParticipants[this.rightPlayer!.color],
-					agreePieceSwap: false,
-				},
+				path: ['gameParticipants', leftParticipant.color],
+				value: leftParticipant,
 			},
 			{
-				path: ['gameParticipants', this.rightPlayer!.color],
-				// always clone because this object will have been mutated by the previous mutation
-				value: {
-					...this.rollbackState.gameParticipants[this.leftPlayer!.color],
-					agreePieceSwap: false,
-				},
+				path: ['gameParticipants', rightParticipant.color],
+				value: rightParticipant,
 			},
 		]
 	}

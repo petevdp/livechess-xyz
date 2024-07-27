@@ -5,12 +5,12 @@ import { map } from 'rxjs/operators'
 import { Accessor, createEffect, createMemo, createSignal, getOwner, observable, on, onCleanup } from 'solid-js'
 import { unwrap } from 'solid-js/store'
 
+import * as SS from '~/sharedStore/sharedStore.ts'
 import { PUSH, StoreMutation } from '~/sharedStore/sharedStore.ts'
 import { storeToSignal } from '~/utils/solid.ts'
 import { unit } from '~/utils/unit.ts'
 
 import * as P from '../player.ts'
-import * as R from '../room.ts'
 import * as GL from './gameLogic.ts'
 import { Color } from './gameLogic.ts'
 
@@ -24,8 +24,24 @@ export type BoardView = {
 }
 const DRAW_EVENTS = ['draw-offered', 'draw-accepted', 'draw-declined', 'draw-canceled'] as const
 export type DrawEventType = (typeof DRAW_EVENTS)[number]
-export type DrawEvent = { type: DrawEventType; participant: R.GameParticipant }
-export type MoveEvent = { type: 'make-move'; participant: R.GameParticipant; moveIndex: number }
+export type DrawEventWithDetails = { type: DrawEventType; participant: GameParticipantWithDetails }
+export type MoveEventWithDetails = { type: 'make-move'; participant: GameParticipantWithDetails; moveIndex: number }
+
+export type GameEventWithDetails = DrawEventWithDetails | MoveEventWithDetails | { type: 'game-over' }
+
+export type GameEvent =
+	| {
+			type: 'make-move'
+			playerId: string
+			moveIndex: number
+	  }
+	| {
+			type: 'game-over' | 'new-game'
+	  }
+	| {
+			type: DrawEventType
+			playerId: string
+	  }
 
 export type MakeMoveResult =
 	| { type: 'invalid' }
@@ -44,6 +60,33 @@ export type MoveAmbiguity =
 			options: GL.CandidateMove[]
 	  }
 
+export type GameParticipant = {
+	id: string
+	color: GL.Color
+}
+
+export type GameParticipantWithDetails = GameParticipant & { name: string }
+
+export type RootGameState = {
+	// TODO eventually just make this an array, it's just easier that way
+	gameParticipants: { [key in GL.Color]: GameParticipant }
+	gameConfig: GL.GameConfig
+	moves: GL.Move[]
+	outcome?: GL.GameOutcome
+	activeGameId?: string
+	drawOffers: { [key in GL.Color]: number }
+}
+
+export interface RootGameContext {
+	state: RootGameState
+	sharedStore: SS.SharedStore<RootGameState, object, GameEvent>
+	rollbackState: RootGameState
+	members: P.Player[]
+	configureNewGame(): void
+	player: P.Player
+	event$: Observable<GameEventWithDetails>
+}
+
 //#endregion
 
 /**
@@ -54,7 +97,7 @@ export class Game {
 
 	constructor(
 		public gameId: string,
-		public room: R.Room,
+		public gameContext: RootGameContext,
 		gameConfig: GL.GameConfig
 	) {
 		if (!getOwner()) throw new Error('Game constructor must be called in reactive context')
@@ -68,7 +111,7 @@ export class Game {
 
 	//#region game state / board
 	get isActiveGame() {
-		return this.room.rollbackState.activeGameId === this.gameId
+		return this.gameContext.rollbackState.activeGameId === this.gameId
 	}
 
 	stateSignal = unit as unknown as Accessor<GL.GameState>
@@ -78,7 +121,7 @@ export class Game {
 	}
 
 	setupGameState() {
-		const moveHistory = storeToSignal(this.room.rollbackState.moves)
+		const moveHistory = storeToSignal(this.gameContext.rollbackState.moves)
 		const boardHistory = GL.useBoardHistory(moveHistory, GL.getStartPos(this.gameConfig))
 		// const [state, setState] = createSignal<GL.GameState>(null as any)
 		// this.stateSignal = state
@@ -90,8 +133,8 @@ export class Game {
 					boardHistory: boardHistory,
 					moveHistory: moveHistory(),
 					players: {
-						[this.room.state.gameParticipants.white.id]: 'white',
-						[this.room.state.gameParticipants.black.id]: 'black',
+						[this.gameContext.rollbackState.gameParticipants.white.id]: 'white',
+						[this.gameContext.rollbackState.gameParticipants.black.id]: 'black',
 					}!,
 				}
 				return state
@@ -105,11 +148,16 @@ export class Game {
 
 	currentMove = unit as unknown as Accessor<GL.SelectedMove | null>
 	setCurrentMove = unit as (move: GL.SelectedMove | null) => void
-	setCurrentDisambiguation = unit as (disambiguation: null | GL.MoveDisambiguation) => void
 	placingDuck = unit as unknown as Accessor<false>
 	setPlacingDuck = unit as (placing: boolean) => void
-	currentDuckPlacement: string | null = null
-	private currentDisambiguation = unit as unknown as Accessor<null | GL.MoveDisambiguation>
+	currentDuckPlacement() {
+		return this.currentMove()?.duck
+	}
+	setCurrentDisambiguation(disambiguation?: undefined | GL.MoveDisambiguation) {
+		const currentMove = this.currentMove()
+		if (!currentMove) return
+		this.setCurrentMove({ ...currentMove, disambiguation })
+	}
 	private boardWithCurrentMove = unit as unknown as Accessor<null | GL.Board>
 	setBoardWithCurrentMove = unit as (board: null | GL.Board) => void
 	private _candidateMovesForSelected = unit as unknown as Accessor<any[] | GL.CandidateMove[]>
@@ -117,7 +165,6 @@ export class Game {
 	setupMoveSelectionAndValidation() {
 		;[this.currentMove, this.setCurrentMove] = createSignal(null as null | GL.SelectedMove)
 		;[this.boardWithCurrentMove, this.setBoardWithCurrentMove] = createSignal(null as null | GL.Board)
-		;[this.currentDisambiguation, this.setCurrentDisambiguation] = createSignal(null as null | GL.MoveDisambiguation)
 		;[this.placingDuck, this.setPlacingDuck] = createSignal(false)
 
 		this._candidateMovesForSelected = () => {
@@ -129,7 +176,7 @@ export class Game {
 
 	get currentMoveAmbiguity(): MoveAmbiguity | null {
 		const currentMove = this.currentMove()
-		if (!currentMove || this.currentDisambiguation()) return null
+		if (!currentMove || this.currentMove()?.disambiguation) return null
 		const candidateMoves = this.candidateMovesFromSelected
 		if (candidateMoves.length <= 1) return null
 		if (candidateMoves.some((move) => move.promotion)) {
@@ -154,11 +201,18 @@ export class Game {
 
 	getLegalMovesForSquare(startingSquare: string) {
 		if (!this.board.pieces[startingSquare]) return []
-		return GL.getLegalMoves(
-			[GL.coordsFromNotation(startingSquare)],
-			this.stateSignal(),
-			GL.VARIANTS_ALLOWING_SELF_CHECKS.includes(this.gameConfig.variant)
-		)
+		return GL.getLegalMoves([GL.coordsFromNotation(startingSquare)], this.stateSignal(), this.gameConfig.variant)
+	}
+
+	makeMoveProgrammatic(move: GL.SelectedMove) {
+		const result = GL.validateAndPlayMove(move, this.stateSignal(), this.gameConfig.variant)
+		if (!result) throw new Error(`invalid move: ${JSON.stringify(result)}`)
+		const expectedMoveIndex = this.state.moveHistory.length
+		void this.gameContext.sharedStore.setStoreWithRetries(() => {
+			if (!this.isActiveGame) return
+			if (this.state.moveHistory.length !== expectedMoveIndex) return
+			return this.getMoveTransaction(result, this.state)
+		})
 	}
 
 	async tryMakeMove(move?: GL.SelectedMove): Promise<MakeMoveResult> {
@@ -166,15 +220,7 @@ export class Game {
 		if (move) this.setCurrentMove(move)
 		if (this.outcome || !this.currentMove) return { type: 'invalid' }
 		const currentMove = this.currentMove()!
-		const getResult = () =>
-			GL.validateAndPlayMove(
-				currentMove.from,
-				currentMove.to,
-				this.stateSignal(),
-				GL.VARIANTS_ALLOWING_SELF_CHECKS.includes(this.gameConfig.variant),
-				this.currentDisambiguation() || undefined,
-				this.currentDuckPlacement || undefined
-			)
+		const getResult = () => GL.validateAndPlayMove(currentMove, this.stateSignal(), this.gameConfig.variant)
 
 		if (this.currentMoveAmbiguity) {
 			const result = getResult()
@@ -212,16 +258,12 @@ export class Game {
 			}
 		}
 
-		const disambiguation = this.currentDisambiguation()
-		this.setCurrentDisambiguation(null)
 		const expectedMoveIndex = this.state.moveHistory.length
-		const currentDuckPlacement = this.currentDuckPlacement
 		this.setCurrentMove(null)
-		this.currentDuckPlacement = null
 		this.setPlacingDuck(false)
 		this.setBoardWithCurrentMove(null)
 		const [acceptedMove, setAcceptedMove] = createSignal(null as null | GL.Move)
-		void this.room.sharedStore.setStoreWithRetries(() => {
+		void this.gameContext.sharedStore.setStoreWithRetries(() => {
 			if (!this.isActiveGame) return
 			const state = unwrap(this.state)
 			if (this.viewedMoveIndex() !== state.moveHistory.length - 1 || this.outcome) return
@@ -229,63 +271,60 @@ export class Game {
 			if (this.state.moveHistory.length !== expectedMoveIndex) return
 			const board = GL.getBoard(state)
 			if (!GL.isPlayerTurn(board, this.bottomPlayer.color) || !board.pieces[currentMove.from]) return
-			const result = GL.validateAndPlayMove(
-				currentMove.from,
-				currentMove.to,
-				state,
-				GL.VARIANTS_ALLOWING_SELF_CHECKS.includes(this.gameConfig.variant),
-				disambiguation || undefined,
-				currentDuckPlacement || undefined
-			)
+			const result = GL.validateAndPlayMove(currentMove, state, this.gameConfig.variant)
 			if (!result) {
 				return
 			}
 			setAcceptedMove(result.move)
-
-			const mutations: StoreMutation[] = [
-				{
-					path: ['moves', PUSH],
-					value: result.move,
-				},
-			]
-			const events: R.RoomEvent[] = [
-				{
-					type: 'make-move',
-					playerId: this.bottomPlayer.id,
-					moveIndex: expectedMoveIndex,
-				},
-			]
-			const newState: GL.GameState = {
-				players: this.state.players,
-				moveHistory: [...state.moveHistory, result.move],
-				boardHistory: [...state.boardHistory, { board: result.board }],
-			}
-			const outcome = GL.getGameOutcome(newState, this.parsedGameConfig)
-			if (outcome) {
-				mutations.push({
-					path: ['outcome'],
-					value: outcome,
-				})
-				events.push({
-					type: 'game-over',
-				})
-			}
-
-			if (this.drawIsOfferedBy) {
-				mutations.push({ path: ['drawOfferedBy'], value: null })
-				if (this.drawIsOfferedBy === this.bottomPlayer.color) {
-					events.push({ type: 'draw-canceled', playerId: this.bottomPlayer.id })
-				} else {
-					events.push({ type: 'draw-declined', playerId: this.bottomPlayer.id })
-				}
-			}
-
-			return {
-				events,
-				mutations,
-			}
+			return this.getMoveTransaction(result, state)
 		})
 		return { type: 'accepted', move: await until(() => acceptedMove()) }
+	}
+
+	private getMoveTransaction(_result: ReturnType<typeof GL.validateAndPlayMove>, state: GL.GameState) {
+		const result = _result!
+		const mutations: StoreMutation[] = [
+			{
+				path: ['moves', PUSH],
+				value: result.move,
+			},
+		]
+		const events: GameEvent[] = [
+			{
+				type: 'make-move',
+				playerId: this.bottomPlayer.id,
+				moveIndex: state.moveHistory.length,
+			},
+		]
+		const newState: GL.GameState = {
+			players: this.state.players,
+			moveHistory: [...state.moveHistory, result.move],
+			boardHistory: [...state.boardHistory, { board: result.board }],
+		}
+		const outcome = GL.getGameOutcome(newState, this.parsedGameConfig)
+		if (outcome) {
+			mutations.push({
+				path: ['outcome'],
+				value: outcome,
+			})
+			events.push({
+				type: 'game-over',
+			})
+		}
+
+		if (this.drawIsOfferedBy) {
+			mutations.push({ path: ['drawOfferedBy'], value: null })
+			if (this.drawIsOfferedBy === this.bottomPlayer.color) {
+				events.push({ type: 'draw-canceled', playerId: this.bottomPlayer.id })
+			} else {
+				events.push({ type: 'draw-declined', playerId: this.bottomPlayer.id })
+			}
+		}
+
+		return {
+			events,
+			mutations,
+		}
 	}
 
 	//#endregion
@@ -339,7 +378,7 @@ export class Game {
 			},
 		} as BoardView
 
-		this.getMoveHistoryAsNotation = createMemo(() => getMoveHistoryAsNotation(this.stateSignal()))
+		this.getMoveHistoryAsNotation = createMemo(() => getMoveHistoryAsNotation(this.stateSignal(), this.gameConfig.variant))
 
 		let prevMoveCount = this.state.moveHistory.length
 		createEffect(() => {
@@ -355,15 +394,20 @@ export class Game {
 	}
 
 	get moveEvent$() {
-		return this.room.event$.pipe(
-			concatMap((event): MoveEvent[] => {
+		return this.gameContext.event$.pipe(
+			concatMap((event): MoveEventWithDetails[] => {
 				if (event.type !== 'make-move') return []
-				const participant = this.room.participants.find((p) => p.id === event.player?.id)
+				const participant = Object.values(unwrap(this.gameContext.rollbackState.gameParticipants)).find(
+					(p) => p.id === event.participant.id
+				)
 				if (!participant) return []
 				return [
 					{
 						type: 'make-move',
-						participant: participant,
+						participant: {
+							...participant,
+							name: this.gameContext.members.find((m) => m.id === participant.id)!.name,
+						},
 						moveIndex: event.moveIndex,
 					},
 				]
@@ -456,10 +500,10 @@ export class Game {
 					winner: timeouts.white ? 'black' : 'white',
 					reason: 'flagged',
 				}
-				void this.room.sharedStore.setStoreWithRetries(() => {
+				void this.gameContext.sharedStore.setStoreWithRetries(() => {
 					if (!this.isActiveGame) return
 					if (this.outcome) return
-					const events: R.RoomEvent[] = [{ type: 'game-over' }]
+					const events: GameEvent[] = [{ type: 'game-over' }]
 
 					const mutations: StoreMutation[] = [
 						{
@@ -484,11 +528,11 @@ export class Game {
 	}
 
 	get outcome() {
-		return this.room.state.outcome
+		return this.gameContext.state.outcome
 	}
 
 	get outcome$() {
-		return this.room.event$.pipe(
+		return this.gameContext.event$.pipe(
 			filter((e) => e.type === 'game-over'),
 			map(() => this.outcome)
 		)
@@ -498,15 +542,22 @@ export class Game {
 
 	//#region draws and resignation
 	get drawEvent$() {
-		return this.room.event$.pipe(
-			concatMap((action): DrawEvent[] => {
-				if (!action.player) return []
-				const participant = this.room.participants.find((p) => p.id === action.player!.id)
+		return this.gameContext.event$.pipe(
+			concatMap((action): DrawEventWithDetails[] => {
+				const type = action.type as DrawEventType
+				if (!DRAW_EVENTS.includes(type)) return []
+				const drawEvent = action as DrawEventWithDetails
+				const state = unwrap(this.gameContext.rollbackState.gameParticipants)
+				const participant = Object.values(state).find((p) => p.id === drawEvent.participant!.id)
 				if (!DRAW_EVENTS.includes(action.type as DrawEventType) || !participant) return []
+				const participantWithDetails = {
+					...participant,
+					name: this.gameContext.members.find((m) => m.id === participant.id)!.name,
+				}
 				return [
 					{
 						type: action.type as DrawEventType,
-						participant: participant,
+						participant: participantWithDetails,
 					},
 				]
 			})
@@ -517,7 +568,7 @@ export class Game {
 		if (!this.isClientPlayerParticipating) return
 		const moveOffered = this.state.moveHistory.length
 		const offerTime = Date.now()
-		void this.room.sharedStore.setStoreWithRetries(() => {
+		void this.gameContext.sharedStore.setStoreWithRetries(() => {
 			if (!this.isActiveGame) return
 			if (!this.state || this.state.moveHistory.length !== moveOffered || this.drawIsOfferedBy === this.bottomPlayer.color) return
 			if (this.drawIsOfferedBy) {
@@ -551,10 +602,10 @@ export class Game {
 	declineOrCancelDraw() {
 		if (!this.isClientPlayerParticipating) return
 		const moveOffered = this.state.moveHistory.length
-		void this.room.sharedStore.setStoreWithRetries(() => {
+		void this.gameContext.sharedStore.setStoreWithRetries(() => {
 			if (!this.isActiveGame) return
 			if (!this.state || this.state.moveHistory.length !== moveOffered || GL.getGameOutcome(this.state, this.parsedGameConfig)) return
-			const drawIsOfferedBy = getDrawIsOfferedBy(this.room.state.drawOffers)
+			const drawIsOfferedBy = getDrawIsOfferedBy(this.gameContext.state.drawOffers)
 			if (!this.drawIsOfferedBy) return
 			if (drawIsOfferedBy === this.bottomPlayer.color) {
 				return {
@@ -581,7 +632,7 @@ export class Game {
 	}
 
 	resign() {
-		void this.room.sharedStore.setStoreWithRetries(() => {
+		void this.gameContext.sharedStore.setStoreWithRetries(() => {
 			if (!this.isActiveGame) return
 			if (!this.isClientPlayerParticipating || this.outcome) return
 			const outcome: GL.GameOutcome = {
@@ -601,7 +652,7 @@ export class Game {
 	}
 
 	get drawIsOfferedBy() {
-		return getDrawIsOfferedBy(this.room.rollbackState.drawOffers)
+		return getDrawIsOfferedBy(this.gameContext.rollbackState.drawOffers)
 	}
 
 	//#endregion
@@ -613,24 +664,24 @@ export class Game {
 	}
 
 	get players() {
-		return this.room.members.map((p) => ({
-			...p,
-			color: this.state.players[p.id],
+		return Object.entries(this.gameContext.state.gameParticipants).map(([color, p]) => ({
+			...this.gameContext.members.find((m) => m.id === p.id)!,
+			color: color as GL.Color,
 		}))
 	}
 
 	get isClientPlayerParticipating() {
-		return Object.keys(this.state.players).includes(this.room.player.id)
+		return Object.keys(this.state.players).includes(this.gameContext.player.id)
 	}
 
 	// either the client player or white if the client player is spectating
 	get bottomPlayer() {
-		if (this.isClientPlayerParticipating) return this.players.find((p) => p.id === this.room.player.id)!
+		if (this.isClientPlayerParticipating) return this.players.find((p) => p.id === this.gameContext.player.id)!
 		return this.players.find((p) => p.color === 'white')!
 	}
 
 	get topPlayer() {
-		if (this.isClientPlayerParticipating) return this.players.find((p) => p.id !== this.room.player.id)!
+		if (this.isClientPlayerParticipating) return this.players.find((p) => p.id !== this.gameContext.player.id)!
 		return this.players.find((p) => p.color === 'black')!
 	}
 
@@ -725,21 +776,21 @@ function useClock(move$: Observable<GL.Move>, gameConfig: GL.ParsedGameConfig, g
 	return clocks
 }
 
-function getMoveHistoryAsNotation(state: GL.GameState) {
+function getMoveHistoryAsNotation(state: GL.GameState, variant: GL.Variant) {
 	const moves: [string, string | null][] = []
 	for (let i = 0; i < Math.ceil(state.moveHistory.length / 2); i++) {
-		const whiteMove = GL.moveToAlgebraicNotation(i * 2, state)
+		const whiteMove = GL.moveToAlgebraicNotation(i * 2, state, variant)
 		if (i * 2 + 1 >= state.moveHistory.length) {
 			moves.push([whiteMove, null])
 			break
 		}
-		const blackMove = GL.moveToAlgebraicNotation(i * 2 + 1, state)
+		const blackMove = GL.moveToAlgebraicNotation(i * 2 + 1, state, variant)
 		moves.push([whiteMove, blackMove])
 	}
 	return moves
 }
 
-export function getDrawIsOfferedBy(offers: R.RoomState['drawOffers']) {
+export function getDrawIsOfferedBy(offers: RootGameState['drawOffers']) {
 	for (const [color, draw] of Object.entries(offers)) {
 		if (draw !== null) return color as Color
 	}

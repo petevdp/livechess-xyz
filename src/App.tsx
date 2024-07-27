@@ -5,6 +5,7 @@ import { Toaster } from 'solid-toast'
 
 import { AppContainer, ScreenFittingContent } from '~/components/AppContainer.tsx'
 import { Spinner } from '~/components/Spinner.tsx'
+import { VsBot } from '~/components/VsBot.tsx'
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogTitle } from '~/components/ui/alert-dialog.tsx'
 import { Button } from '~/components/ui/button.tsx'
 import { Callout, CalloutContent, CalloutTitle } from '~/components/ui/callout.tsx'
@@ -68,6 +69,14 @@ function App() {
 						component={ErrorHandled(() => (
 							<Suspense fallback={spinner}>
 								<RoomGuard />
+							</Suspense>
+						))}
+					/>
+					<Route
+						path="/bot"
+						component={ErrorHandled(() => (
+							<Suspense fallback={spinner}>
+								<VsBot />
 							</Suspense>
 						))}
 					/>

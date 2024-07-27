@@ -20,6 +20,8 @@ type Timestamp = number
 export type SelectedMove = {
 	from: string
 	to: string
+	disambiguation?: MoveDisambiguation
+	duck?: string
 }
 
 // TODO type declarations here should be deduped
@@ -292,19 +294,27 @@ export function notationFromCoords(coords: Coords) {
 	return String.fromCharCode('a'.charCodeAt(0) + coords.x) + (coords.y + 1)
 }
 
-function candidateMoveToMove(
-	candidateMove: CandidateMove,
-	promotion?: PromotionPiece,
-	capture?: boolean,
-	check?: boolean,
-	duck?: string
-): Move {
+export function candidateMoveToSelectedMove(move: CandidateMove): SelectedMove {
+	let disambiguation: MoveDisambiguation | undefined
+	if (move.promotion) {
+		disambiguation = { type: 'promotion', piece: move.promotion }
+	} else if (move.castle) {
+		disambiguation = { type: 'castle', castling: true }
+	}
+	return {
+		from: notationFromCoords(move.from),
+		to: notationFromCoords(move.to),
+		disambiguation,
+	} satisfies SelectedMove
+}
+
+function candidateMoveToMove(candidateMove: CandidateMove, capture?: boolean, check?: boolean, duck?: string): Move {
 	return {
 		from: notationFromCoords(candidateMove.from),
 		to: notationFromCoords(candidateMove.to),
 		piece: candidateMove.piece,
 		castle: candidateMove.castle,
-		promotion: promotion,
+		promotion: candidateMove.promotion,
 		enPassant: candidateMove.enPassant,
 		ts: Date.now(),
 		capture: capture || false,
@@ -330,8 +340,8 @@ function moveToCandidateMove(move: Move): CandidateMove {
 
 //#region game status
 
-export function checkmated(game: GameState) {
-	return inCheck(getBoard(game)) && noMoves(game)
+export function checkmated(game: GameState, variant: Variant) {
+	return inCheck(getBoard(game)) && noMoves(game, variant)
 }
 
 export function kingCaptured(board: Board) {
@@ -339,8 +349,8 @@ export function kingCaptured(board: Board) {
 	return !findPiece(piece, board)
 }
 
-function stalemated(game: GameState) {
-	return !inCheck(getBoard(game)) && noMoves(game)
+function stalemated(game: GameState, variant: Variant) {
+	return !inCheck(getBoard(game)) && noMoves(game, variant)
 }
 
 function threefoldRepetition(game: GameState) {
@@ -390,13 +400,13 @@ export function getBoard(game: GameState) {
 export function getGameOutcome(state: GameState, config: ParsedGameConfig) {
 	let winner: GameOutcome['winner']
 	let reason: GameOutcome['reason']
-	if (!VARIANTS_ALLOWING_SELF_CHECKS.includes(config.variant) && checkmated(state)) {
+	if (!VARIANTS_ALLOWING_SELF_CHECKS.includes(config.variant) && checkmated(state, config.variant)) {
 		winner = oppositeColor(getBoard(state).toMove)
 		reason = 'checkmate'
 	} else if (VARIANTS_ALLOWING_SELF_CHECKS.includes(config.variant) && kingCaptured(getBoard(state))) {
 		winner = oppositeColor(getBoard(state).toMove)
 		reason = 'king-captured'
-	} else if (stalemated(state)) {
+	} else if (stalemated(state, config.variant)) {
 		winner = null
 		reason = 'stalemate'
 	} else if (insufficientMaterial(state)) {
@@ -417,41 +427,33 @@ export function getGameOutcome(state: GameState, config: ParsedGameConfig) {
 //#region move application
 
 // returns new board and  returns null if move is invalid
-export function validateAndPlayMove(
-	from: string,
-	to: string,
-	game: GameState,
-	allowSelfChecks: boolean,
-	moveDisambiguation?: MoveDisambiguation,
-	duck?: string
-) {
-	if (!getBoard(game).pieces[from] || getBoard(game).pieces[from].color !== getBoard(game).toMove) {
+export function validateAndPlayMove(move: SelectedMove, game: GameState, variant: Variant) {
+	if (!getBoard(game).pieces[move.from] || getBoard(game).pieces[move.from].color !== getBoard(game).toMove) {
 		return
 	}
 
-	if (from === to) {
+	if (move.from === move.to) {
 		return
 	}
 
-	const candidateMoves = getLegalMoves([coordsFromNotation(from)], game, allowSelfChecks)
+	const candidateMoves = getLegalMoves([coordsFromNotation(move.from)], game, variant)
 	// handle cases where multiple moves match a from/to square pairing
 	const candidates = candidateMoves.filter((m) => {
-		if (notationFromCoords(m.to) !== to) return false
-		if (moveDisambiguation?.type === 'promotion') {
-			return m.promotion === moveDisambiguation.piece
+		if (notationFromCoords(m.to) !== move.to) return false
+		if (move.disambiguation?.type === 'promotion') {
+			return m.promotion === move.disambiguation.piece
 		}
-		if (moveDisambiguation?.type === 'castle') {
-			return !!m.castle === moveDisambiguation.castling
+		if (move.disambiguation?.type === 'castle') {
+			return !!m.castle === move.disambiguation.castling
 		}
 		return true
 	})
 	const candidate = candidates[0]
-	const isCapture = !!getBoard(game).pieces[to] || candidate.enPassant
-	const [newBoard] = applyMoveToBoard(candidate, getBoard(game), duck)
-	const move = candidateMoveToMove(candidate, undefined, isCapture, inCheck(newBoard), duck)
+	const isCapture = !!getBoard(game).pieces[move.to] || candidate.enPassant
+	const [newBoard] = applyMoveToBoard(candidate, getBoard(game))
 	return {
 		board: newBoard,
-		move,
+		move: candidateMoveToMove(candidate, isCapture, inCheck(newBoard), move.duck),
 	}
 }
 
@@ -534,8 +536,9 @@ function applyMoveToBoard(move: CandidateMove | Move, board: Board, duckSquare?:
 
 //#region move generation
 
-export function getLegalMoves(piecePositions: Coords[], game: GameState, allowSelfChecks = false): CandidateMove[] {
+export function getLegalMoves(piecePositions: Coords[], game: GameState, variant: Variant): CandidateMove[] {
 	let candidateMoves: CandidateMove[] = []
+	const allowSelfChecks = VARIANTS_ALLOWING_SELF_CHECKS.includes(variant)
 
 	for (const start of piecePositions) {
 		const piece = getBoard(game).pieces[notationFromCoords(start)]
@@ -991,11 +994,16 @@ function squareAttacked(square: Coords, board: Board) {
 	return false
 }
 
-function noMoves(game: GameState) {
-	const legalMoves = getLegalMoves(
+export function getAllLegalMoves(game: GameState, variant: Variant) {
+	return getLegalMoves(
 		Object.keys(getBoard(game).pieces).map((n) => coordsFromNotation(n)),
-		game
+		game,
+		variant
 	)
+}
+
+function noMoves(game: GameState, variant: Variant) {
+	const legalMoves = getAllLegalMoves(game, variant)
 	return legalMoves.length === 0
 }
 
@@ -1046,14 +1054,14 @@ function toShortPieceName(piece: Piece) {
 }
 
 // https://en.wikipedia.org/wiki/Algebraic_notation_(chess)
-export function moveToAlgebraicNotation(moveIndex: number, state: GameState): string {
+export function moveToAlgebraicNotation(moveIndex: number, state: GameState, variant: Variant): string {
 	const move = state.moveHistory[moveIndex]
 	const piece = move.piece === 'pawn' ? '' : toShortPieceName(move.piece)
 	const capture = move.capture ? 'x' : ''
 	const to = move.to
 	const promotion = move.promotion ? '=' + move.promotion.toUpperCase() : ''
 	const check = inCheck(getBoard(state)) ? '+' : ''
-	const checkmate = check && checkmated(state) ? '#' : ''
+	const checkmate = check && checkmated(state, variant) ? '#' : ''
 
 	if (move.castle) {
 		return move.castle === 'queen' ? 'O-O-O' : 'O-O'
@@ -1117,7 +1125,7 @@ export function getVisibleSquares(game: GameState, color: Color) {
 		visibleSquares.add(notation)
 	}
 	const coords = playerPieces.map(([notation]) => coordsFromNotation(notation))
-	const candidateMoves = getLegalMoves(coords, simulated, true)
+	const candidateMoves = getLegalMoves(coords, simulated, 'fog-of-war')
 	for (const move of candidateMoves) {
 		visibleSquares.add(notationFromCoords(move.to))
 		if (move.enPassant) {

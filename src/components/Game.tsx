@@ -38,7 +38,6 @@ import * as G from '~/systems/game/game.ts'
 import * as GL from '~/systems/game/gameLogic.ts'
 import * as Pieces from '~/systems/piece.tsx'
 import * as P from '~/systems/player.ts'
-import * as R from '~/systems/room.ts'
 
 import styles from './Game.module.css'
 import { Button } from './ui/button.tsx'
@@ -47,8 +46,7 @@ import * as Modal from './utils/Modal.tsx'
 //TODO component duplicates on reload sometimes for some reason
 
 export default function Game(props: { gameId: string }) {
-	const game = new G.Game(props.gameId, R.room()!, R.room()!.rollbackState.gameConfig)
-	G.setGame(game)
+	const game = G.game()!
 
 	//#region calc board sizes
 	// let BOARD_SIZE = 600
@@ -192,6 +190,7 @@ export default function Game(props: { gameId: string }) {
 
 	//#region render pieces
 	createEffect(() => {
+		if (!Pieces.initialized()) return
 		const args: RenderPiecesArgs = {
 			squareSize: squareSize(),
 			boardFlipped: boardFlipped(),
@@ -358,7 +357,7 @@ export default function Game(props: { gameId: string }) {
 			const mouseSquare = getSquareFromDisplayCoords(x, y)
 			batch(() => {
 				if (game.placingDuck()) {
-					game.currentDuckPlacement = mouseSquare
+					game.setCurrentMove({ ...game.currentMove()!, duck: mouseSquare })
 					makeMove()
 					return
 				}
@@ -521,7 +520,7 @@ export default function Game(props: { gameId: string }) {
 	//#region draw offer events
 	{
 		const sub = game.drawEvent$.subscribe((event) => {
-			if (event.participant.id === game.room.player.id) {
+			if (event.participant.id === game.gameContext.player.id) {
 				switch (event.type) {
 					case 'draw-offered':
 						toast('Draw offered')
@@ -586,9 +585,9 @@ export default function Game(props: { gameId: string }) {
 	//#region sound effects for incoming moves
 	{
 		const sub = game.moveEvent$.subscribe(async (event) => {
-			const moveIsFromOpponent = event.participant.id !== game.room.player.id
+			const moveIsFromOpponent = event.participant.id !== game.gameContext.player.id
 			if (moveIsFromOpponent) {
-				const move = game.room.state.moves[event.moveIndex]
+				const move = game.gameContext.state.moves[event.moveIndex]
 				const isVisible = game.gameConfig.variant !== 'fog-of-war' || game.currentBoardView.visibleSquares.has(move.to)
 				Audio.playSoundEffectForMove(move, false, isVisible)
 				Audio.vibrate()
@@ -719,7 +718,7 @@ function GameOutcomeDialog() {
 				</DialogHeader>
 				<DialogDescription>{showGameOutcome(game.outcome!)[1]}</DialogDescription>
 				<div class="flex justify-center space-x-1">
-					<Button onclick={() => game.room.configureNewGame()}>New Game</Button>
+					<Button onclick={() => game.gameContext.configureNewGame()}>New Game</Button>
 					<Button variant="secondary" onclick={() => setOpen(false)}>
 						Continue
 					</Button>
@@ -766,7 +765,6 @@ function Player(props: { player: G.PlayerWithColor; class: string }) {
 							size="sm"
 							onclick={() => {
 								game.setPlacingDuck(false)
-								game.currentDuckPlacement = null
 								game.setBoardWithCurrentMove(null)
 								game.setCurrentMove(null)
 							}}
@@ -831,7 +829,7 @@ function ActionsPanel(props: { class: string; placingDuck: boolean }) {
 					</DrawHoverCard>
 				</Match>
 				<Match when={game.outcome}>
-					<Button size="sm" onclick={() => game.room.configureNewGame()}>
+					<Button size="sm" onclick={() => game.gameContext.configureNewGame()}>
 						New Game
 					</Button>
 				</Match>

@@ -34,6 +34,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip
 import { Choice, MultiChoiceButton } from '~/components/utils/MultiChoiceButton.tsx'
 import { cn } from '~/lib/utils.ts'
 import * as Audio from '~/systems/audio.ts'
+import * as G from '~/systems/game/game.ts'
 import * as GL from '~/systems/game/gameLogic.ts'
 import { getPieceSvg } from '~/systems/piece.tsx'
 import * as P from '~/systems/player.ts'
@@ -86,6 +87,21 @@ export function Room() {
 			setDismissedMultipleClientsWarning(false)
 		}
 	})
+	let gameId: string | undefined
+
+	createEffect(
+		on(
+			() => room.rollbackState.activeGameId,
+			(newGameId) => {
+				if (!newGameId) {
+					return
+				}
+				if (newGameId === gameId) return
+				const game = new G.Game(newGameId, room as G.RootGameContext, room.rollbackState.gameConfig)
+				G.setGame(game)
+			}
+		)
+	)
 
 	return (
 		<>
@@ -467,7 +483,7 @@ function SwapButton(props: { initiatePieceSwap: () => void; alreadySwapping: boo
 }
 
 function PlayerConfigDisplay(props: {
-	player: R.GameParticipant
+	player: R.RoomGameParticipant
 	color: GL.Color
 	toggleReady: () => void
 	cancelPieceSwap: () => void
@@ -491,7 +507,7 @@ function PlayerConfigDisplay(props: {
 }
 
 function OpponentConfigDisplay(props: {
-	opponent: R.GameParticipant
+	opponent: R.RoomGameParticipant
 	color: GL.Color
 	agreePieceSwap: () => void
 	declinePieceSwap: () => void
