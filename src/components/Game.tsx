@@ -711,7 +711,7 @@ function GameOutcomeDialog() {
 		}
 	})
 	return (
-		<Dialog open={open()}>
+		<Dialog open={open()} onOpenChange={setOpen}>
 			<DialogContent class="w-max">
 				<DialogHeader>
 					<span class="mt-1">{showGameOutcome(game.outcome!)[0]}</span>

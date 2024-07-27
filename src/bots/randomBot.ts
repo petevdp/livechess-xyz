@@ -1,5 +1,5 @@
-import { type Bot } from '../vsBot.ts'
-import * as GL from './gameLogic.ts'
+import * as GL from '../systems/game/gameLogic.ts'
+import { type Bot } from '../systems/vsBot.ts'
 
 export class RandomBot implements Bot {
 	constructor(
@@ -14,5 +14,8 @@ export class RandomBot implements Bot {
 		const moves = GL.getAllLegalMoves(state, this.variant)
 		const candidateMove = moves[Math.floor(Math.random() * moves.length)]
 		return GL.candidateMoveToSelectedMove(candidateMove)
+	}
+	dispose() {
+		// nothing to do
 	}
 }

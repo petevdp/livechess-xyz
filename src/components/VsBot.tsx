@@ -14,7 +14,6 @@ export function VsBot() {
 
 	return (
 		<AppContainer>
-			<h2>Vs Bot</h2>
 			<Game gameId={gameId} />
 		</AppContainer>
 	)

@@ -204,14 +204,16 @@ export class Game {
 		return GL.getLegalMoves([GL.coordsFromNotation(startingSquare)], this.stateSignal(), this.gameConfig.variant)
 	}
 
-	makeMoveProgrammatic(move: GL.SelectedMove) {
+	makeMoveProgrammatic(move: GL.SelectedMove, playerId: string) {
 		const result = GL.validateAndPlayMove(move, this.stateSignal(), this.gameConfig.variant)
-		if (!result) throw new Error(`invalid move: ${JSON.stringify(result)}`)
+		if (!result) {
+			throw new Error(`invalid move: ${JSON.stringify(result)}`)
+		}
 		const expectedMoveIndex = this.state.moveHistory.length
 		void this.gameContext.sharedStore.setStoreWithRetries(() => {
 			if (!this.isActiveGame) return
 			if (this.state.moveHistory.length !== expectedMoveIndex) return
-			return this.getMoveTransaction(result, this.state)
+			return this.getMoveTransaction(result, this.state, playerId)
 		})
 	}
 
@@ -276,12 +278,12 @@ export class Game {
 				return
 			}
 			setAcceptedMove(result.move)
-			return this.getMoveTransaction(result, state)
+			return this.getMoveTransaction(result, state, this.bottomPlayer.id)
 		})
 		return { type: 'accepted', move: await until(() => acceptedMove()) }
 	}
 
-	private getMoveTransaction(_result: ReturnType<typeof GL.validateAndPlayMove>, state: GL.GameState) {
+	private getMoveTransaction(_result: ReturnType<typeof GL.validateAndPlayMove>, state: GL.GameState, playerId: string) {
 		const result = _result!
 		const mutations: StoreMutation[] = [
 			{
@@ -292,7 +294,7 @@ export class Game {
 		const events: GameEvent[] = [
 			{
 				type: 'make-move',
-				playerId: this.bottomPlayer.id,
+				playerId: playerId,
 				moveIndex: state.moveHistory.length,
 			},
 		]
@@ -315,9 +317,9 @@ export class Game {
 		if (this.drawIsOfferedBy) {
 			mutations.push({ path: ['drawOfferedBy'], value: null })
 			if (this.drawIsOfferedBy === this.bottomPlayer.color) {
-				events.push({ type: 'draw-canceled', playerId: this.bottomPlayer.id })
+				events.push({ type: 'draw-canceled', playerId: playerId })
 			} else {
-				events.push({ type: 'draw-declined', playerId: this.bottomPlayer.id })
+				events.push({ type: 'draw-declined', playerId: playerId })
 			}
 		}
 

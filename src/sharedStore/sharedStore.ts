@@ -84,20 +84,24 @@ export interface SharedStore<State extends object, CCS extends ClientControlledS
 	lockstepState: State
 	rollbackState: State
 	clientControlled: ClientControlledStateNode<CCS>
+
 	setStore(
 		mutation: StoreMutation,
 		transactionBuilder?: SharedStoreTransactionBuilder<Event>,
 		events?: Event[]
 	): Promise<boolean | undefined>
+
 	setStoreWithRetries(
 		fn: (s: State) => StoreMutation[] | { mutations: StoreMutation[]; events: Event[] } | void,
 		numRetries?: number
 	): Promise<boolean>
+
 	event$: Observable<Event>
 	initialized: Accessor<boolean>
 	config: Accessor<ClientConfig<State, CCS> | null>
 	lastMutationIndex: number
 }
+
 //#endregion
 
 function applyMutationsToStore(mutations: StoreMutation[], setStore: (...args: any[]) => any, store: any) {
@@ -193,7 +197,7 @@ export function initLeaderStore<State extends object, CCS extends ClientControll
 	subscription.add(event$)
 	subscription.add(
 		event$.subscribe((event) => {
-			console.debug(`dispatching action: ${event}`)
+			console.debug('dispatching action: ', event)
 		})
 	)
 
@@ -714,6 +718,7 @@ export interface Transport<Msg extends SharedStoreMessage<unknown>> {
 
 	disposed$: Promise<void>
 }
+
 function observeIncomingMutations<Event>(transport: Transport<SharedStoreMessage<Event>>) {
 	return new Observable<SharedStoreTransaction<Event>>((subscriber) => {
 		const subscription = transport.message$.subscribe((message) => {

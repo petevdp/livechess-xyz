@@ -2,8 +2,9 @@ import { NEVER, Observable, Subscription, concatMap } from 'rxjs'
 import { createEffect, getOwner, on } from 'solid-js'
 import { unwrap } from 'solid-js/store'
 
+// import { RandomBot } from '~/bots/randomBot.ts'
+import { StockfishBot } from '~/bots/stockfish.ts'
 import * as SS from '~/sharedStore/sharedStore.ts'
-import { RandomBot } from '~/systems/game/randomBot.ts'
 import { createId } from '~/utils/ids.ts'
 import { unit } from '~/utils/unit.ts'
 
@@ -16,6 +17,7 @@ export interface Bot {
 	setDifficulty: (difficulty: number) => void
 
 	makeMove(state: GL.GameState): Promise<GL.SelectedMove>
+	dispose(): void
 }
 
 type GameMessage = SS.SharedStoreMessage<G.GameEvent, G.RootGameState, object>
@@ -61,14 +63,16 @@ export function setupVsBot() {
 		},
 	}
 	const store = SS.initLeaderStore<G.RootGameState, object, G.GameEvent>(transport, startingState)
-	const bot = new RandomBot(1, startingState.gameConfig.variant)
+	const bot = new StockfishBot()
+	void bot.initialize()
+
 	const context = new VsAIContext(store, bot)
 	const game = new G.Game(gameId, context, startingState.gameConfig)
 	G.setGame(game)
 
 	if (context.botParticipant.color === 'white') {
 		bot.makeMove(game.state).then((candidateMove) => {
-			game.makeMoveProgrammatic(candidateMove)
+			game.makeMoveProgrammatic(candidateMove, BOT_ID)
 		})
 	}
 
@@ -79,7 +83,7 @@ export function setupVsBot() {
 				const board = GL.getBoard(state)
 				if (board.toMove !== context.botParticipant.color || game.outcome) return
 				bot.makeMove(state).then((candidateMove) => {
-					game.makeMoveProgrammatic(candidateMove)
+					game.makeMoveProgrammatic(candidateMove, BOT_ID)
 				})
 			}
 		)

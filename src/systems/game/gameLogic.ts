@@ -4,7 +4,9 @@ import { Accessor } from 'solid-js'
 //#region primitives
 
 export const PIECES = ['pawn', 'knight', 'bishop', 'rook', 'queen', 'king', 'duck'] as const
+export const PIECES_NO_DUCK = ['pawn', 'knight', 'bishop', 'rook', 'queen', 'king'] as const
 export type Piece = (typeof PIECES)[number]
+export type PieceNoDuck = (typeof PIECES_NO_DUCK)[number]
 export const PROMOTION_PIECES = ['knight', 'bishop', 'rook', 'queen'] as const
 export type PromotionPiece = (typeof PROMOTION_PIECES)[number]
 export const COLORS = ['white', 'black'] as const
@@ -1046,11 +1048,24 @@ export function parseGameConfig(config: GameConfig): ParsedGameConfig {
 
 //#endregion
 
-function toShortPieceName(piece: Piece) {
+export function toShortPieceName(piece: Piece) {
 	if (piece === 'knight') {
 		return 'N'
 	}
 	return piece[0].toUpperCase()
+}
+
+const shortToLong: Record<string, PieceNoDuck> = {
+	N: 'knight',
+	K: 'king',
+	Q: 'queen',
+	R: 'rook',
+	B: 'bishop',
+	P: 'pawn',
+}
+
+export function toLongPieceName(piece: string) {
+	return shortToLong[piece]
 }
 
 // https://en.wikipedia.org/wiki/Algebraic_notation_(chess)
