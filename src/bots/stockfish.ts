@@ -20,27 +20,41 @@ export class StockfishBot implements Bot {
 	static codeLoaded?: Promise<void>
 	name = 'Stockfish'
 	sf: any
-	sub = new Subscription()
-	msg$: Observable<UCIFromEngineMsg>
+	sub?: Subscription
+	msg$?: Observable<UCIFromEngineMsg>
 	engineReady: Accessor<false>
 	setEngineReady: (ready: boolean) => void
 
-	constructor() {
+	constructor(private difficulty: number) {
 		;[this.engineReady, this.setEngineReady] = createSignal(false)
 	}
 
-	setDifficulty(difficulty: number) {}
+	async setDifficulty(difficulty?: number) {
+		if (difficulty !== undefined) this.difficulty = difficulty
+		if (!this.engineReady()) return
+		if (this.difficulty < 0 || this.difficulty > 20) throw new Error('Invalid difficulty')
+		this.postMessage('setoption name Skill Level value ' + difficulty)
+		const skill = this.difficulty
+		/// Level 0 starts at 1
+		const errProb = Math.round(skill * 6.35 + 1)
+		/// Level 0 starts at 10
+		const maxErr = Math.round(skill * -0.5 + 10)
+		this.postMessage(`setoption name Skill Level Maximum Error value ${maxErr}`)
+		this.postMessage(`setoption name Skill Level Probability value ${errProb}`)
+	}
 
 	async initialize() {
 		if (!StockfishBot.codeLoaded) {
+			if (!wasmThreadsSupported()) {
+				// TODO handle gracefully
+				throw new Error('WASM threads not supported')
+			}
 			StockfishBot.codeLoaded = loadScript('/stockfish.js')
 		}
 		await StockfishBot.codeLoaded
-		if (!wasmThreadsSupported()) {
-			// TODO handle gracefully
-			throw new Error('WASM threads not supported')
-		}
 		this.sf = await window.Stockfish()
+		this.sub?.unsubscribe()
+		this.sub = new Subscription()
 		this.msg$ = new Observable<UCIFromEngineMsg>((sub) => {
 			this.sf.addMessageListener(msgListener)
 
@@ -70,6 +84,9 @@ export class StockfishBot implements Bot {
 		)
 		this.postMessage('uci')
 		const msg = await msgPromise
+
+		// set difficulty
+		this?.setDifficulty()
 		if (!msg) throw new Error('UCI setup failed')
 		this.setEngineReady(true)
 	}
@@ -86,9 +103,9 @@ export class StockfishBot implements Bot {
 			serializedMoves += ' ' + toLongForm(m)
 		}
 		this.postMessage(`position startpos moves${serializedMoves}`)
-		this.postMessage('go depth 20')
+		this.postMessage('go depth 17')
 		const res = await firstValueFrom(
-			this.msg$.pipe(
+			this.msg$!.pipe(
 				filter((msg) => msg.type === 'bestmove'),
 				endWith(null)
 			)
@@ -98,7 +115,7 @@ export class StockfishBot implements Bot {
 	}
 
 	dispose() {
-		this.sub.unsubscribe()
+		this.sub?.unsubscribe()
 	}
 }
 

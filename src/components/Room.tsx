@@ -1,37 +1,16 @@
-import { debounceTime, from as rxFrom, skip } from 'rxjs'
-import {
-	For,
-	JSX,
-	Match,
-	ParentProps,
-	Show,
-	Suspense,
-	Switch,
-	createEffect,
-	createMemo,
-	createSignal,
-	lazy,
-	observable,
-	on,
-	onCleanup,
-	onMount,
-} from 'solid-js'
+import { Match, ParentProps, Show, Suspense, Switch, createEffect, createSignal, lazy, on, onCleanup, onMount } from 'solid-js'
 import toast from 'solid-toast'
 
 import { ScreenFittingContent } from '~/components/AppContainer.tsx'
+import { GameConfig } from '~/components/GameConfig.tsx'
 import { Spinner } from '~/components/Spinner.tsx'
 import * as Svgs from '~/components/Svgs.tsx'
-import { VariantInfoDialog } from '~/components/VariantInfoDialog.tsx'
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogTitle } from '~/components/ui/alert-dialog.tsx'
 import { Button } from '~/components/ui/button.tsx'
 import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card.tsx'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '~/components/ui/hover-card.tsx'
-import { Input } from '~/components/ui/input.tsx'
-import { Label } from '~/components/ui/label.tsx'
-import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip.tsx'
-import { Choice, MultiChoiceButton } from '~/components/utils/MultiChoiceButton.tsx'
 import { cn } from '~/lib/utils.ts'
 import * as Audio from '~/systems/audio.ts'
 import * as G from '~/systems/game/game.ts'
@@ -157,17 +136,15 @@ function Lobby() {
 				<CardHeader class="p-2">
 					<CardTitle class="text-center">Configure Game</CardTitle>
 				</CardHeader>
-				<CardContent class="p-1 space-y-4">
-					<div class="flex flex-col space-y-2">
-						<PlayerAwareness />
-						<div class="flex justify-center space-x-1">
-							<QrCodeDialog />
-							<Button variant="secondary" size="sm" onclick={copyInviteLink}>
-								Copy Invite Link
-							</Button>
-						</div>
+				<CardContent class="p-1 flex flex-col space-y-2">
+					<PlayerAwareness />
+					<div class="flex justify-center space-x-1">
+						<QrCodeDialog />
+						<Button variant="secondary" size="sm" onclick={copyInviteLink}>
+							Copy Invite Link
+						</Button>
 					</div>
-					<GameConfigForm />
+					<GameConfig ctx={room.gameConfigContext} />
 				</CardContent>
 			</Card>
 		</ScreenFittingContent>
@@ -190,180 +167,6 @@ function QrCodeDialog() {
 				</DialogHeader>
 			</DialogContent>
 		</Dialog>
-	)
-}
-
-function GameConfigForm() {
-	const room = R.room()!
-	if (!room) throw new Error('room is not initialized')
-	const gameConfig = () => room!.rollbackState.gameConfig
-	const QuestionMark = () => <span class={`p-1 leading-[24px] text-md text-primary underline cursor-pointer`}>?</span>
-	const helpCardLabel = (
-		<div class="flex justify-center items-center text-inherit">
-			<VariantInfoDialog variant={room.rollbackState.gameConfig.variant}>
-				<label>
-					Variant <QuestionMark />
-				</label>
-			</VariantInfoDialog>
-		</div>
-	)
-
-	const timeControlLabel = (
-		<div class="flex justify-center items-center text-inherit">
-			<Popover>
-				<PopoverTrigger>
-					<label>
-						Time Control <QuestionMark />
-					</label>
-				</PopoverTrigger>
-				<PopoverContent>
-					<div class="flex flex-col space-y-1">
-						<span>Each player gets the set amount of time at the start of the game.</span>
-						<span>When you run out of time, you lose.</span>
-					</div>
-				</PopoverContent>
-			</Popover>
-		</div>
-	)
-
-	const incrementLabel = (
-		<div class="flex justify-center items-center text-inherit">
-			<Popover>
-				<PopoverTrigger>
-					<label>
-						Increment <QuestionMark />
-					</label>
-				</PopoverTrigger>
-				<PopoverContent>
-					<div class="flex flex-col space-y-1">
-						<span>Each time you make a move, you gain the set amount of time.</span>
-					</div>
-				</PopoverContent>
-			</Popover>
-		</div>
-	)
-
-	let fischerRandomConfig: JSX.Element
-	{
-		const cells = createMemo(() => {
-			const pieces: GL.ColoredPiece[] = []
-			const pos = GL.getStartPos(gameConfig())
-
-			if (pos.toMove === 'black') throw new Error('toMove should be white')
-			for (let colIdx = 0; colIdx < 8; colIdx++) {
-				const coord: GL.Coords = { x: colIdx, y: 0 }
-				const piece = pos.pieces[GL.notationFromCoords(coord)]
-				pieces.push(piece)
-			}
-			return pieces
-		})
-
-		// eslint-disable-next-line prefer-const
-		let seedInputRef = null as unknown as HTMLInputElement
-		// state is a string instead of a number because we we're checking if the input is a valid integer via the native html input validations
-		const [randomSeed, setRandomSeed] = createSignal<string>(gameConfig().fischerRandomSeed.toString())
-		const [invalidSeed, setInvalidSeed] = createSignal(false)
-		const sub = rxFrom(observable(randomSeed))
-			.pipe(skip(1), debounceTime(100))
-			.subscribe((seed) => {
-				if (seed === gameConfig().fischerRandomSeed.toString()) return
-				if (!seedInputRef!.reportValidity()) {
-					return
-				}
-				room.setGameConfig({ fischerRandomSeed: parseInt(seed) })
-			})
-
-		createEffect(
-			on(randomSeed, () => {
-				setInvalidSeed(!seedInputRef.checkValidity())
-			})
-		)
-
-		createEffect(
-			on(
-				() => gameConfig().fischerRandomSeed,
-				(seed) => {
-					if (seed.toString() !== randomSeed()) setRandomSeed(seed.toString())
-				}
-			)
-		)
-
-		onCleanup(() => {
-			sub.unsubscribe()
-		})
-
-		fischerRandomConfig = (
-			<div class={cn('space-x-2 flex items-center justify-end', gameConfig().variant !== 'fischer-random' ? 'invisible' : '')}>
-				<For each={cells()}>
-					{(piece) => {
-						const Svg = getPieceSvg(piece)
-						return <Svg class="w-6 h-6" />
-					}}
-				</For>
-				<form class="flex space-x-1 items-center">
-					<Label for="fischer-random-seed">Seed:</Label>
-					<Input
-						id="fischer-random-seed"
-						ref={seedInputRef}
-						type="number"
-						required
-						oninput={(e) => setRandomSeed(e.currentTarget.value)}
-						min={0}
-						max={959}
-						step={1}
-						value={randomSeed()?.toString()}
-						class={cn('max-w-[75px]', invalidSeed() ? 'border-destructive focus:border-destructive' : '')}
-					/>
-				</form>
-				<Tooltip>
-					<TooltipTrigger>
-						<Button onclick={() => room.reseedFischerRandom()} variant="outline" size="icon">
-							<Svgs.Flip />
-						</Button>
-					</TooltipTrigger>
-					<TooltipContent>Reseed</TooltipContent>
-				</Tooltip>
-			</div>
-		)
-	}
-
-	return (
-		<div class="flex flex-col gap-y-1">
-			<MultiChoiceButton
-				label={helpCardLabel}
-				listClass="grid grid-cols-2 md:grid-cols-4 text-sm space-x-0 gap-1"
-				choices={GL.VARIANTS.map((c) => ({ label: c, id: c }) satisfies Choice<GL.Variant>)}
-				selected={gameConfig().variant}
-				onChange={(v) => room!.setGameConfig({ variant: v })}
-				disabled={!room.isPlayerParticipating || room.leftPlayer?.isReadyForGame}
-			/>
-			{fischerRandomConfig}
-			<MultiChoiceButton
-				label={timeControlLabel}
-				listClass="grid grid-rows-1 grid-cols-3 w-full tex-sm space-x-0 gap-1"
-				choices={GL.TIME_CONTROLS.map((tc) => ({ label: tc, id: tc }) satisfies Choice<GL.TimeControl>)}
-				selected={gameConfig().timeControl}
-				onChange={(v): void => {
-					if (v === 'unlimited') {
-						room!.setGameConfig({ increment: '0', timeControl: v })
-					} else {
-						room!.setGameConfig({ timeControl: v })
-					}
-				}}
-				disabled={!room.isPlayerParticipating || room.leftPlayer?.isReadyForGame}
-			/>
-			<MultiChoiceButton
-				label={incrementLabel}
-				listClass="grid  grid-cols-4 text-sm"
-				choices={GL.INCREMENTS.map((i) => ({ label: `${i}s`, id: i }) satisfies Choice<GL.Increment>)}
-				selected={gameConfig().increment}
-				onChange={(v) => {
-					if (gameConfig().timeControl === 'unlimited') return
-					room!.setGameConfig({ increment: v })
-				}}
-				disabled={!room.isPlayerParticipating || room.leftPlayer?.isReadyForGame || gameConfig().timeControl === 'unlimited'}
-			/>
-		</div>
 	)
 }
 

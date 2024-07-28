@@ -7,6 +7,7 @@ import { unwrap } from 'solid-js/store'
 
 import * as SS from '~/sharedStore/sharedStore.ts'
 import { PUSH, StoreMutation } from '~/sharedStore/sharedStore.ts'
+import { createId } from '~/utils/ids.ts'
 import { storeToSignal } from '~/utils/solid.ts'
 import { unit } from '~/utils/unit.ts'
 
@@ -27,7 +28,11 @@ export type DrawEventType = (typeof DRAW_EVENTS)[number]
 export type DrawEventWithDetails = { type: DrawEventType; participant: GameParticipantWithDetails }
 export type MoveEventWithDetails = { type: 'make-move'; participant: GameParticipantWithDetails; moveIndex: number }
 
-export type GameEventWithDetails = DrawEventWithDetails | MoveEventWithDetails | { type: 'game-over' }
+export type GameEventWithDetails =
+	| DrawEventWithDetails
+	| MoveEventWithDetails
+	| { type: 'game-over' }
+	| { type: 'new-game'; participant: GameParticipantWithDetails }
 
 export type GameEvent =
 	| {
@@ -36,10 +41,10 @@ export type GameEvent =
 			moveIndex: number
 	  }
 	| {
-			type: 'game-over' | 'new-game'
+			type: 'game-over'
 	  }
 	| {
-			type: DrawEventType
+			type: DrawEventType | 'new-game'
 			playerId: string
 	  }
 
@@ -82,9 +87,22 @@ export interface RootGameContext {
 	sharedStore: SS.SharedStore<RootGameState, object, GameEvent>
 	rollbackState: RootGameState
 	members: P.Player[]
+
 	configureNewGame(): void
+
 	player: P.Player
 	event$: Observable<GameEventWithDetails>
+}
+
+export interface GameConfigContext {
+	gameConfig: GL.GameConfig
+	vsBot: boolean
+
+	setGameConfig(config: Partial<GL.GameConfig>): void
+
+	reseedFischerRandom(): void
+
+	editingConfigDisabled: Accessor<boolean>
 }
 
 //#endregion
@@ -150,14 +168,17 @@ export class Game {
 	setCurrentMove = unit as (move: GL.SelectedMove | null) => void
 	placingDuck = unit as unknown as Accessor<false>
 	setPlacingDuck = unit as (placing: boolean) => void
+
 	currentDuckPlacement() {
 		return this.currentMove()?.duck
 	}
+
 	setCurrentDisambiguation(disambiguation?: undefined | GL.MoveDisambiguation) {
 		const currentMove = this.currentMove()
 		if (!currentMove) return
 		this.setCurrentMove({ ...currentMove, disambiguation })
 	}
+
 	private boardWithCurrentMove = unit as unknown as Accessor<null | GL.Board>
 	setBoardWithCurrentMove = unit as (board: null | GL.Board) => void
 	private _candidateMovesForSelected = unit as unknown as Accessor<any[] | GL.CandidateMove[]>
@@ -797,6 +818,19 @@ export function getDrawIsOfferedBy(offers: RootGameState['drawOffers']) {
 		if (draw !== null) return color as Color
 	}
 	return null
+}
+
+export function getNewGameTransaction(playerId: string): { mutations: SS.StoreMutation[]; events: GameEvent[] } {
+	return {
+		events: [{ type: 'new-game', playerId }],
+		mutations: [
+			{ path: ['status'], value: 'playing' },
+			{ path: ['moves'], value: [] },
+			{ path: ['drawOffers'], value: { white: null, black: null } },
+			{ path: ['activeGameId'], value: createId(6) },
+			{ path: ['outcome'], value: undefined },
+		],
+	}
 }
 
 //#endregion

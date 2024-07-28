@@ -207,6 +207,9 @@ export type GameConfig = {
 	timeControl: TimeControl
 	increment: Increment
 	fischerRandomSeed: number
+	bot?: {
+		difficulty: number
+	}
 }
 
 export type ParsedGameConfig = {
@@ -1158,5 +1161,4 @@ export function getVisibleSquares(game: GameState, color: Color) {
 	}
 	return visibleSquares
 }
-
 //#endregion

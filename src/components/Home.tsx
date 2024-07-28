@@ -31,7 +31,7 @@ export function Home() {
 					<CardContent>
 						<p>Play chess with your friends, on desktop or mobile.</p>
 					</CardContent>
-					<CardFooter>
+					<CardFooter class="space-x-1">
 						<Button variant="default" onclick={createRoom}>
 							Host New Game
 						</Button>

@@ -217,7 +217,6 @@ export class RoomStoreHelpers {
 				let player: RoomMember | undefined = undefined
 				if (event.type !== 'game-over') {
 					player = this.members.find((p) => {
-						//@ts-expect-error
 						return p.id === event.playerId
 					})!
 				}
@@ -238,12 +237,27 @@ export class Room extends RoomStoreHelpers {
 		return this.rollbackState.status === 'pregame' && this.leftPlayer?.id === this.player.id && !!this.rightPlayer?.isReadyForGame
 	}
 
+	gameConfigContext: G.GameConfigContext
+
 	constructor(
 		public sharedStore: RoomStore,
 		transport: SS.Transport<RoomMessage>,
 		public player: RoomMember
 	) {
 		super(sharedStore, transport)
+		this.gameConfigContext = {
+			gameConfig: this.rollbackState.gameConfig,
+			vsBot: false,
+			editingConfigDisabled: () => {
+				return !this.isPlayerParticipating || !!this.leftPlayer?.isReadyForGame
+			},
+			setGameConfig: (config: Partial<GL.GameConfig>) => {
+				void this.sharedStore.setStore({ path: ['gameConfig'], value: config })
+			},
+			reseedFischerRandom: () => {
+				void this.sharedStore.setStore({ path: ['gameConfig', 'fischerRandomSeed'], value: GL.getFischerRandomSeed() })
+			},
+		}
 	}
 
 	get isPlayerParticipating() {
