@@ -69,7 +69,7 @@ export function setupVsBot() {
 		},
 	}
 	const store = SS.initLeaderStore<G.RootGameState, object, G.GameEvent>(transport, startingState)
-	const bot = new StockfishBot(store.lockstepState.gameConfig.bot!.difficulty)
+	const bot = new StockfishBot(store.lockstepState.gameConfig.bot!.difficulty, store.lockstepState.gameConfig)
 
 	const sub = new Subscription()
 	const vsAiContext = new VsAIContext(store, bot)

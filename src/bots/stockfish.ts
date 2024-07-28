@@ -2,6 +2,7 @@ import { until } from '@solid-primitives/promise'
 import { Observable, Subscription, endWith, filter, firstValueFrom, share } from 'rxjs'
 import { Accessor, createSignal } from 'solid-js'
 
+import * as G from '~/systems/game/game.ts'
 import * as GL from '~/systems/game/gameLogic.ts'
 import { SelectedMove } from '~/systems/game/gameLogic.ts'
 import { type Bot } from '~/systems/vsBot.ts'
@@ -25,7 +26,10 @@ export class StockfishBot implements Bot {
 	engineReady: Accessor<false>
 	setEngineReady: (ready: boolean) => void
 
-	constructor(private difficulty: number) {
+	constructor(
+		private difficulty: number,
+		private gameConfig
+	) {
 		;[this.engineReady, this.setEngineReady] = createSignal(false)
 	}
 
@@ -96,14 +100,19 @@ export class StockfishBot implements Bot {
 		this.sf.postMessage(msg)
 	}
 
-	async makeMove(state: GL.GameState): Promise<GL.SelectedMove> {
+	async makeMove(state: GL.GameState, clock?: G.Game['clock']): Promise<GL.SelectedMove> {
 		await until(this.engineReady)
 		let serializedMoves = ''
 		for (const m of state.moveHistory) {
 			serializedMoves += ' ' + toLongForm(m)
 		}
 		this.postMessage(`position startpos moves${serializedMoves}`)
-		this.postMessage('go depth 17')
+		let msg = 'go depth 18'
+		if (clock) {
+			const increment = parseInt(this.gameConfig.increment) * 1000
+			msg += ` wtime ${clock.white} btime ${clock.black} winc ${increment} binc ${increment}`
+		}
+		this.postMessage(msg)
 		const res = await firstValueFrom(
 			this.msg$!.pipe(
 				filter((msg) => msg.type === 'bestmove'),

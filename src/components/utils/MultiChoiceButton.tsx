@@ -25,10 +25,21 @@ export function MultiChoiceButton<T extends string>(props: {
 				<label class="col-span-full text-center">{props.label}</label>
 			</Show>
 			<Show when={props.label && typeof props.label !== 'string'}>{props.label}</Show>
-			<ToggleGroup value={props.selected} class={cn('space-x-1', props.listClass || '')} classList={props.classList}>
+			<ToggleGroup
+				value={props.selected}
+				disabled={props.disabled}
+				class={cn('space-x-1', props.listClass || '')}
+				classList={props.classList}
+			>
 				<For each={props.choices}>
 					{(choice) => (
-						<ToggleGroupItem type="button" disabled={props.disabled} onClick={() => props.onChange(choice.id)} value={choice.id}>
+						<ToggleGroupItem
+							class={cn(props.disabled ? 'text-lime-500' : '')}
+							type="button"
+							disabled={props.disabled}
+							onClick={() => props.onChange(choice.id)}
+							value={choice.id}
+						>
 							{choice.label}
 						</ToggleGroupItem>
 					)}

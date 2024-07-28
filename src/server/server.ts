@@ -82,7 +82,12 @@ server.register(fastifyCors, () => {
 const PROJECT_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../dist')
 server.register(fastifyStatic, {
 	root: PROJECT_ROOT,
+	setHeaders: (res) => {
+		res.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
+		res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp')
+	},
 })
+
 //#region websocket routes
 server.register(async function () {
 	server.get('/api/networks/:networkId', { websocket: true }, (connection, request) => {
@@ -116,7 +121,18 @@ server.head('/api/networks/:networkId', (req, res) => {
 
 server.get('/rooms/:networkId', (_, res) => {
 	// serve index.html
-	return res.sendFile('index.html')
+	return res
+		.sendFile('index.html')
+		.header('Cross-Origin-Opener-Policy', 'same-origin')
+		.header('Cross-Origin-Embedder-Policy', 'require-corp')
+})
+
+server.get('/bot', (_, res) => {
+	// serve index.html
+	return res
+		.sendFile('index.html')
+		.header('Cross-Origin-Opener-Policy', 'same-origin')
+		.header('Cross-Origin-Embedder-Policy', 'require-corp')
 })
 
 server.get('/api/qrcodes/:filename', async (req, res) => {
