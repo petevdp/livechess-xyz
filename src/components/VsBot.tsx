@@ -1,4 +1,4 @@
-import { Match, Switch } from 'solid-js'
+import { Match, Switch, createEffect, on } from 'solid-js'
 import * as G from 'systems/game/game.ts'
 import * as P from 'systems/player.ts'
 import * as VB from 'systems/vsBot.ts'
@@ -8,12 +8,24 @@ import Game from '~/components/Game.tsx'
 import { GameConfig } from '~/components/GameConfig.tsx'
 import { Button } from '~/components/ui/button.tsx'
 import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card.tsx'
+import * as Audio from '~/systems/audio.ts'
+import * as GlobalLoading from '~/systems/globalLoading.ts'
 import * as Pieces from '~/systems/piece.tsx'
 
-export function VsBot() {
+export default function VsBot() {
 	P.ensurePlayerSystemSetup()
 	Pieces.ensureSetupPieceSystem()
 	VB.setupVsBot()
+	GlobalLoading.clear()
+	createEffect(
+		on(
+			() => VB.vsBotContext()?.rollbackState.activeGameId,
+			(id) => {
+				if (!id) return
+				Audio.playSound('gameStart')
+			}
+		)
+	)
 	return (
 		<AppContainer>
 			<Switch>

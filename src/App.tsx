@@ -5,7 +5,6 @@ import { Toaster } from 'solid-toast'
 
 import { AppContainer, ScreenFittingContent } from '~/components/AppContainer.tsx'
 import { Spinner } from '~/components/Spinner.tsx'
-import { VsBot } from '~/components/VsBot.tsx'
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogTitle } from '~/components/ui/alert-dialog.tsx'
 import { Button } from '~/components/ui/button.tsx'
 import { Callout, CalloutContent, CalloutTitle } from '~/components/ui/callout.tsx'
@@ -15,6 +14,7 @@ import * as GlobalLoading from '~/systems/globalLoading.ts'
 import { Home } from './components/Home.tsx'
 
 const RoomGuard = lazy(() => import('~/components/RoomGuard.tsx'))
+const VsBot = lazy(() => import('~/components/VsBot.tsx'))
 
 function App() {
 	const [displayedError, setDisplayedError] = createSignal<Errors.FatalError | null>(null)
@@ -106,8 +106,8 @@ function GenericErrorScreen(props: { error: Error }) {
 	const [showError, setShowError] = createSignal(false)
 	onMount(() => {
 		console.error(props.error)
-		GlobalLoading.clear()
 	})
+	GlobalLoading.clear()
 	return (
 		<AppContainer>
 			<ScreenFittingContent class="grid place-items-center">

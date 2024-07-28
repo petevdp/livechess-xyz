@@ -15,6 +15,8 @@ export function Home() {
 		navigate(`/rooms/${res.networkId}`)
 	}
 
+	GlobalLoading.clear()
+
 	return (
 		<AppContainer>
 			<ScreenFittingContent class="grid place-items-center">
