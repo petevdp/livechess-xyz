@@ -8,6 +8,10 @@ import * as R from './room.ts'
 export type Player = {
 	id: string
 	name: string
+	ai?: {
+		type: 'random'
+		difficulty: number
+	}
 }
 
 export type PlayerSettings = {
@@ -42,7 +46,10 @@ for (const [key, value] of Object.entries(defaultSettings)) {
 const [_playerId, setPlayerId] = makePersisted('playerId:v2', null as string | null)
 export const playerId = _playerId
 
-export function setupPlayerSystem() {
+let setup = false
+export function ensurePlayerSystemSetup() {
+	if (setup) return
+	setup = true
 	if (!playerId()) setPlayerId(createId(6))
 	createEffect(() => {
 		const playerName = settings.name

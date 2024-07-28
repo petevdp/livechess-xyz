@@ -1,41 +1,66 @@
-import { Alert as AlertPrimitive } from '@kobalte/core'
-import type { VariantProps } from 'class-variance-authority'
-import { cva } from 'class-variance-authority'
-import type { Component, ComponentProps } from 'solid-js'
-import { splitProps } from 'solid-js'
+import { cn } from "@/libs/cn";
+import type { AlertRootProps } from "@kobalte/core/alert";
+import { Alert as AlertPrimitive } from "@kobalte/core/alert";
+import type { PolymorphicProps } from "@kobalte/core/polymorphic";
+import type { VariantProps } from "class-variance-authority";
+import { cva } from "class-variance-authority";
+import type { ComponentProps, ValidComponent } from "solid-js";
+import { splitProps } from "solid-js";
 
-import { cn } from '~/lib/utils.ts'
-
-const alertVariants = cva(
-	'[&>svg]:text-foreground relative w-full rounded-lg border p-4 [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg~*]:pl-7',
+export const alertVariants = cva(
+	"relative w-full rounded-lg border px-4 py-3 text-sm [&:has(svg)]:pl-11 [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-foreground",
 	{
 		variants: {
 			variant: {
-				default: 'bg-background text-foreground',
-				destructive: 'border-destructive/50 text-destructive dark:border-destructive [&>svg]:text-destructive',
+				default: "bg-background text-foreground",
+				destructive:
+					"border-destructive/50 text-destructive dark:border-destructive [&>svg]:text-destructive",
 			},
 		},
 		defaultVariants: {
-			variant: 'default',
+			variant: "default",
 		},
-	}
-)
+	},
+);
 
-interface AlertProps extends AlertPrimitive.AlertRootProps, VariantProps<typeof alertVariants> {}
+type alertProps<T extends ValidComponent = "div"> = AlertRootProps<T> &
+	VariantProps<typeof alertVariants> & {
+		class?: string;
+	};
 
-const Alert: Component<AlertProps> = (props) => {
-	const [, rest] = splitProps(props, ['class', 'variant'])
-	return <AlertPrimitive.Root class={cn(alertVariants({ variant: props.variant }), props.class)} {...rest} />
-}
+export const Alert = <T extends ValidComponent = "div">(
+	props: PolymorphicProps<T, alertProps<T>>,
+) => {
+	const [local, rest] = splitProps(props as alertProps, ["class", "variant"]);
 
-const AlertTitle: Component<ComponentProps<'h5'>> = (props) => {
-	const [, rest] = splitProps(props, ['class'])
-	return <h5 class={cn('mb-1 font-medium leading-none tracking-tight', props.class)} {...rest} />
-}
+	return (
+		<AlertPrimitive
+			class={cn(
+				alertVariants({
+					variant: props.variant,
+				}),
+				local.class,
+			)}
+			{...rest}
+		/>
+	);
+};
 
-const AlertDescription: Component<ComponentProps<'div'>> = (props) => {
-	const [, rest] = splitProps(props, ['class'])
-	return <div class={cn('text-sm [&_p]:leading-relaxed', props.class)} {...rest} />
-}
+export const AlertTitle = (props: ComponentProps<"div">) => {
+	const [local, rest] = splitProps(props, ["class"]);
 
-export { Alert, AlertTitle, AlertDescription }
+	return (
+		<div
+			class={cn("font-medium leading-5 tracking-tight", local.class)}
+			{...rest}
+		/>
+	);
+};
+
+export const AlertDescription = (props: ComponentProps<"div">) => {
+	const [local, rest] = splitProps(props, ["class"]);
+
+	return (
+		<div class={cn("text-sm [&_p]:leading-relaxed", local.class)} {...rest} />
+	);
+};

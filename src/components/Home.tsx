@@ -1,6 +1,6 @@
 import { useNavigate } from '@solidjs/router'
 
-import { Button } from '~/components/ui/button.tsx'
+import { Button, buttonVariants } from '~/components/ui/button.tsx'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '~/components/ui/card.tsx'
 import * as GlobalLoading from '~/systems/globalLoading.ts'
 import * as R from '~/systems/room.ts'
@@ -14,6 +14,8 @@ export function Home() {
 		const res = await R.createRoom()
 		navigate(`/rooms/${res.networkId}`)
 	}
+
+	GlobalLoading.clear()
 
 	return (
 		<AppContainer>
@@ -31,10 +33,13 @@ export function Home() {
 					<CardContent>
 						<p>Play chess with your friends, on desktop or mobile.</p>
 					</CardContent>
-					<CardFooter>
+					<CardFooter class="space-x-1">
 						<Button variant="default" onclick={createRoom}>
 							Host New Game
 						</Button>
+						<a href="/bot" class={buttonVariants({ variant: 'secondary' })}>
+							Play vs Bot
+						</a>
 					</CardFooter>
 				</Card>
 			</ScreenFittingContent>

@@ -1,4 +1,4 @@
-import { As, useColorMode } from '@kobalte/core'
+import { useColorMode } from '@kobalte/core'
 import { A } from '@solidjs/router'
 import { ComponentProps, Match, ParentProps, Show, Switch, splitProps } from 'solid-js'
 
@@ -52,12 +52,12 @@ export function ThemeToggle() {
 
 	return (
 		<DropdownMenu>
-			<DropdownMenuTrigger asChild>
-				<As component={Button} variant="ghost" size="icon">
+			<DropdownMenuTrigger>
+				<Button variant="ghost" size="icon">
 					<Svgs.LightMode width={16} height={16} class=" dark:invisible dark:w-0" />
 					<Svgs.DarkMode width={16} height={16} class="invisible w-0 dark:visible dark:w-auto" />
 					<span class="sr-only">Toggle theme</span>
-				</As>
+				</Button>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent>
 				<DropdownMenuItem onSelect={() => setColorMode('light')}>

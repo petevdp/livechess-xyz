@@ -14,6 +14,7 @@ import * as GlobalLoading from '~/systems/globalLoading.ts'
 import { Home } from './components/Home.tsx'
 
 const RoomGuard = lazy(() => import('~/components/RoomGuard.tsx'))
+const VsBot = lazy(() => import('~/components/VsBot.tsx'))
 
 function App() {
 	const [displayedError, setDisplayedError] = createSignal<Errors.FatalError | null>(null)
@@ -71,6 +72,14 @@ function App() {
 							</Suspense>
 						))}
 					/>
+					<Route
+						path="/bot"
+						component={ErrorHandled(() => (
+							<Suspense fallback={spinner}>
+								<VsBot />
+							</Suspense>
+						))}
+					/>
 				</Router>
 			</ColorModeProvider>
 			<Toaster position="bottom-left" />
@@ -97,8 +106,8 @@ function GenericErrorScreen(props: { error: Error }) {
 	const [showError, setShowError] = createSignal(false)
 	onMount(() => {
 		console.error(props.error)
-		GlobalLoading.clear()
 	})
+	GlobalLoading.clear()
 	return (
 		<AppContainer>
 			<ScreenFittingContent class="grid place-items-center">

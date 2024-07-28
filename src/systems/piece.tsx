@@ -39,7 +39,7 @@ export const [squareSize, setSquareSize] = createSignal(32)
 
 // so we can subscribe to when the pieces are updated
 export const [pieceChangedEpoch, setPiecedChangedEpoch] = createSignal(0)
-export const initialized = () => pieceCache.size > 0
+export const [initialized, setInitialized] = createSignal(false)
 
 function loadPiece(key: keyof typeof pieceSvgs, squareSize: number) {
 	const Svg = pieceSvgs[key] as unknown as Component<ComponentProps<'svg'>>
@@ -49,21 +49,23 @@ function loadPiece(key: keyof typeof pieceSvgs, squareSize: number) {
 	return loadImage(image64, 180)
 }
 
-export function setupPieceSystem() {
+let setupTriggered = false
+export function ensureSetupPieceSystem() {
+	console.log('setting up piece system')
+	if (setupTriggered) return
+	setupTriggered = true
 	createEffect(() => {
-		const promises: Promise<void>[] = []
+		const numSvgs = Object.keys(pieceSvgs).length
 		for (const key in pieceSvgs) {
-			promises.push(
-				loadPiece(key as keyof typeof pieceSvgs, squareSize()).then((img) => {
-					pieceCache.set(key, img)
-				})
-			)
+			loadPiece(key as keyof typeof pieceSvgs, squareSize()).then((img) => {
+				pieceCache.set(key, img)
+				if (pieceCache.size === numSvgs) {
+					console.log('piece system setup')
+					setInitialized(true)
+					setPiecedChangedEpoch((epoch) => epoch + 1)
+				}
+			})
 		}
-
-		if (initialized()) return
-		Promise.all(promises).then(() => {
-			setPiecedChangedEpoch((epoch) => epoch + 1)
-		})
 	})
 }
 

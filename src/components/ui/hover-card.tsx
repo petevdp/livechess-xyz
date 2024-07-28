@@ -1,28 +1,32 @@
-import { HoverCard as HoverCardPrimitive } from '@kobalte/core'
-import type { Component } from 'solid-js'
-import { splitProps } from 'solid-js'
+import { cn } from "@/libs/cn";
+import type { HoverCardContentProps } from "@kobalte/core/hover-card";
+import { HoverCard as HoverCardPrimitive } from "@kobalte/core/hover-card";
+import type { PolymorphicProps } from "@kobalte/core/polymorphic";
+import type { ValidComponent } from "solid-js";
+import { splitProps } from "solid-js";
 
-import { cn } from '~/lib/utils'
+export const HoverCard = HoverCardPrimitive;
+export const HoverCardTrigger = HoverCardPrimitive.Trigger;
 
-const HoverCard: Component<HoverCardPrimitive.HoverCardRootProps> = (props) => {
-	return <HoverCardPrimitive.Root gutter={4} {...props} />
-}
+type hoverCardContentProps<T extends ValidComponent = "div"> =
+	HoverCardContentProps<T> & {
+		class?: string;
+	};
 
-const HoverCardTrigger = HoverCardPrimitive.Trigger
+export const HoverCardContent = <T extends ValidComponent = "div">(
+	props: PolymorphicProps<T, hoverCardContentProps<T>>,
+) => {
+	const [local, rest] = splitProps(props as hoverCardContentProps, ["class"]);
 
-const HoverCardContent: Component<HoverCardPrimitive.HoverCardContentProps> = (props) => {
-	const [, rest] = splitProps(props, ['class'])
 	return (
 		<HoverCardPrimitive.Portal>
 			<HoverCardPrimitive.Content
 				class={cn(
-					'z-50 w-64 rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
-					props.class
+					"z-50 w-64 rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-none data-[expanded]:animate-in data-[closed]:animate-out data-[closed]:fade-out-0 data-[expanded]:fade-in-0 data-[closed]:zoom-out-95 data-[expanded]:zoom-in-95",
+					local.class,
 				)}
 				{...rest}
 			/>
 		</HoverCardPrimitive.Portal>
-	)
-}
-
-export { HoverCard, HoverCardTrigger, HoverCardContent }
+	);
+};

@@ -21,6 +21,10 @@ export default defineConfig(() => {
 			sourcemap: true,
 		},
 		server: {
+			headers: {
+				'Cross-Origin-Opener-Policy': 'same-origin',
+				'Cross-Origin-Embedder-Policy': 'require-corp',
+			},
 			proxy: {
 				'/api': {
 					target: httpTarget,

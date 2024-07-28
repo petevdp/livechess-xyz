@@ -5,9 +5,10 @@ import { Button } from '~/components/ui/button.tsx'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog.tsx'
 import { Input } from '~/components/ui/input.tsx'
 import { Label } from '~/components/ui/label.tsx'
-import { Switch } from '~/components/ui/switch.tsx'
+import { Switch, SwitchControl, SwitchLabel, SwitchThumb } from '~/components/ui/switch.tsx'
 import { Choice, MultiChoiceButton } from '~/components/utils/MultiChoiceButton.tsx'
 import * as P from '~/systems/player.ts'
+import * as R from '~/systems/room.ts'
 
 export function SettingsDialog() {
 	const [nickname, setNickname] = createSignal(P.settings.name ?? '')
@@ -17,10 +18,11 @@ export function SettingsDialog() {
 
 	function close() {
 		if (nickFormRef?.reportValidity()) {
-			P.settings.name = nickname().trim()
+			if (nickname()) P.settings.name = nickname().trim()
 			setOpen(false)
 		}
 	}
+
 	function onKeyDown(e: KeyboardEvent) {
 		if (e.key === 'Enter') close()
 	}
@@ -51,32 +53,40 @@ export function SettingsDialog() {
 				{/*set tabindex so we don't automatically focus the nickname, opening the keyboard on mobile devices*/}
 				<div tabindex={0} class="grid gap-4 py-4">
 					<div class="flex w-full items-center justify-between space-x-2">
-						<Label for="nickname">Nickname</Label>
 						<form
 							onSubmit={(e) => {
 								e.preventDefault()
 							}}
 							ref={nickFormRef}
 						>
-							<Input
-								required={true}
-								pattern={'[a-zA-Z0-9 ]+'}
-								min={3}
-								name="nickname"
-								id="nickname"
-								value={nickname()}
-								oninput={(e) => setNickname(e.target.value)}
-							/>
+							<Label for="nickname">Nickname</Label>
+							<Show when={P.settings.name !== null || R.room()}>
+								<Input
+									required={true}
+									pattern="[a-zA-Z0-9 ]+"
+									min={3}
+									name="nickname"
+									id="nickname"
+									value={nickname()}
+									oninput={(e) => setNickname(e.target.value)}
+								/>
+							</Show>
 						</form>
 					</div>
 					<div>
 						<Switch
-							label="Show Available Moves"
+							// label="Show Available Moves"
 							checked={P.settings.showAvailablemoves}
 							onChange={(changed) => {
 								P.settings.showAvailablemoves = changed
 							}}
-						/>
+							class="flex items-center space-x-1"
+						>
+							<SwitchControl>
+								<SwitchThumb />
+							</SwitchControl>
+							<SwitchLabel>Show Available Moves</SwitchLabel>
+						</Switch>
 					</div>
 					<Show when={P.settings.usingTouch}>
 						<div class="flex w-full items-center justify-between space-x-2">
@@ -95,7 +105,16 @@ export function SettingsDialog() {
 							/>
 						</div>
 						<div class="flex w-full items-center justify-between space-x-2">
-							<Switch label="Vibrate" checked={P.settings.vibrate} onChange={(changed) => (P.settings.vibrate = changed)} />
+							<Switch
+								class="flex items-center space-x-1"
+								checked={P.settings.vibrate}
+								onChange={(changed) => (P.settings.vibrate = changed)}
+							>
+								<SwitchControl>
+									<SwitchThumb />
+								</SwitchControl>
+								<SwitchLabel>Vibrate</SwitchLabel>
+							</Switch>
 						</div>
 					</Show>
 				</div>
