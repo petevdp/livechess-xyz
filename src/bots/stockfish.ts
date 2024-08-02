@@ -47,6 +47,10 @@ export class StockfishBot implements Bot {
 		this.postMessage(`setoption name Skill Level Probability value ${errProb}`)
 	}
 
+	get depth() {
+		return Math.floor(this.difficulty / 4) + 15
+	}
+
 	async initialize() {
 		if (!StockfishBot.codeLoaded) {
 			if (!wasmThreadsSupported()) {
@@ -107,7 +111,7 @@ export class StockfishBot implements Bot {
 			serializedMoves += ' ' + toLongForm(m)
 		}
 		this.postMessage(`position startpos moves${serializedMoves}`)
-		let msg = 'go depth 18'
+		let msg = `go depth ${this.depth}`
 		if (clock) {
 			const increment = parseInt(this.gameConfig.increment) * 1000
 			msg += ` wtime ${clock.white} btime ${clock.black} winc ${increment} binc ${increment}`

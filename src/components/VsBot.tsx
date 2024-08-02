@@ -7,7 +7,7 @@ import { AppContainer, ScreenFittingContent } from '~/components/AppContainer.ts
 import Game from '~/components/Game.tsx'
 import { GameConfig } from '~/components/GameConfig.tsx'
 import { Button } from '~/components/ui/button.tsx'
-import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card.tsx'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card.tsx'
 import * as Audio from '~/systems/audio.ts'
 import * as GlobalLoading from '~/systems/globalLoading.ts'
 import * as Pieces from '~/systems/piece.tsx'
@@ -45,7 +45,8 @@ function VsBotConfig(props: { ctx: VB.VsAIContext }) {
 		<ScreenFittingContent class="grid place-items-center p-2">
 			<Card class="w-[95vw] p-1 sm:w-auto space-y-2">
 				<CardHeader class="w-[95vw] p-1 sm:w-auto">
-					<CardTitle class="text-center">Configure Game</CardTitle>
+					<CardTitle class="text-center">Configure Game vs AI</CardTitle>
+					<CardDescription>Opponent: Stockfish classical</CardDescription>
 				</CardHeader>
 				<CardContent class="p-1 flex flex-col space-y-2">
 					<GameConfig ctx={props.ctx.gameConfigContext} />
