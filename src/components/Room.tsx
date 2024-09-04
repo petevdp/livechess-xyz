@@ -1,4 +1,4 @@
-import { Match, ParentProps, Show, Suspense, Switch, createEffect, createSignal, lazy, on, onCleanup, onMount } from 'solid-js'
+import { Match, ParentProps, Show, Suspense, Switch, createSignal, getOwner, lazy, onCleanup, onMount, runWithOwner } from 'solid-js'
 import toast from 'solid-toast'
 
 import { ScreenFittingContent } from '~/components/AppContainer.tsx'
@@ -26,6 +26,7 @@ export function Room() {
 	if (!room) throw new Error('room is not initialized')
 
 	//#region toast basic room events
+	const owner = getOwner()!
 	const sub = room.event$.subscribe((action) => {
 		switch (action.type) {
 			case 'player-connected':
@@ -50,6 +51,9 @@ export function Room() {
 				}
 				break
 			case 'new-game':
+				runWithOwner(owner, () => {
+					G.setGame(new G.Game(action.gameId, room.gameContext, room.rollbackState.gameConfig))
+				})
 				Audio.playSound('gameStart')
 				Audio.vibrate()
 				break
@@ -66,21 +70,6 @@ export function Room() {
 			setDismissedMultipleClientsWarning(false)
 		}
 	})
-	let gameId: string | undefined
-
-	createEffect(
-		on(
-			() => room.rollbackState.activeGameId,
-			(newGameId) => {
-				if (!newGameId) {
-					return
-				}
-				if (newGameId === gameId) return
-				const game = new G.Game(newGameId, room.gameContext, room.rollbackState.gameConfig)
-				G.setGame(game)
-			}
-		)
-	)
 
 	return (
 		<>
@@ -209,7 +198,7 @@ function PlayerAwareness() {
 				<Match when={room.leftPlayer?.id === room.player.id}>
 					<PlayerConfigDisplay
 						canStartGame={room.canStartGame}
-						toggleReady={() => room.toggleReady()}
+						toggleReady={() => room.toggleReadyOrStartGame()}
 						player={room.leftPlayer!}
 						color={room.playerColor(room.player.id)!}
 						cancelPieceSwap={() => room.declineOrCancelPieceSwap()}

@@ -36,8 +36,13 @@ export type GameEvent =
 			type: 'game-over'
 	  }
 	| {
-			type: DrawEventType | 'new-game'
+			type: DrawEventType
 			playerId: string
+	  }
+	| {
+			type: 'new-game'
+			playerId: string
+			gameId: string
 	  }
 
 export type MakeMoveResult =
@@ -132,12 +137,7 @@ export class Game {
 
 	setupGameState() {
 		const moveHistory = storeToSignal(this.gameContext.rollbackState.moves)
-		// createEffect(() => {
-		// 	console.log('move history changed: ', moveHistory())
-		// })
-		const boardHistory = GL.useBoardHistory(moveHistory, GL.getStartPos(this.gameConfig))
-		// const [state, setState] = createSignal<GL.GameState>(null as any)
-		// this.stateSignal = state
+		const boardHistory = GL.useBoardHistory(() => moveHistory(), GL.getStartPos(this.gameConfig))
 
 		// only update state on board history change because syncing chained signals can be annoying
 		this.stateSignal = createMemo(
@@ -750,13 +750,13 @@ export function getDrawIsOfferedBy(offers: RootGameState['drawOffers']) {
 }
 
 export function getNewGameTransaction(playerId: string): { mutations: SS.StoreMutation[]; events: GameEvent[] } {
+	const gameId = createId(6)
 	return {
-		events: [{ type: 'new-game', playerId }],
+		events: [{ type: 'new-game', playerId, gameId }],
 		mutations: [
-			{ path: ['status'], value: 'playing' },
 			{ path: ['moves'], value: [] },
 			{ path: ['drawOffers'], value: { white: null, black: null } },
-			{ path: ['activeGameId'], value: createId(6) },
+			{ path: ['activeGameId'], value: gameId },
 			{ path: ['outcome'], value: undefined },
 		],
 	}

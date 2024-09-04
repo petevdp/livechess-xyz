@@ -8,7 +8,6 @@ import * as Api from '~/api.ts'
 import { PLAYER_TIMEOUT } from '~/config.ts'
 import * as SS from '~/sharedStore/sharedStore.ts'
 import { WsTransport } from '~/sharedStore/wsTransport.ts'
-import { createId } from '~/utils/ids.ts'
 import { deepClone } from '~/utils/obj.ts'
 
 import * as G from './game/game.ts'
@@ -428,30 +427,27 @@ export class Room extends RoomStoreHelpers {
 
 	//#endregion
 
-	toggleReady() {
+	toggleReadyOrStartGame() {
 		if (!this.isPlayerParticipating) return
 		if (!this.leftPlayer!.isReadyForGame) {
-			void this.sharedStore.setStoreWithRetries(() => {
+			this.sharedStore.setStoreWithRetries(() => {
 				if (!this.isPlayerParticipating || this.leftPlayer!.isReadyForGame) return []
 				if (this.rightPlayer?.isReadyForGame) {
-					return {
-						events: [{ type: 'new-game', playerId: this.player.id }],
-						mutations: [
-							{
-								path: ['isReadyForGame', this.leftPlayer!.id],
-								value: false,
-							},
-							{
-								path: ['isReadyForGame', this.rightPlayer!.id],
-								value: false,
-							},
-							{ path: ['status'], value: 'playing' },
-							{ path: ['moves'], value: [] },
-							{ path: ['drawOffers'], value: { white: null, black: null } },
-							{ path: ['activeGameId'], value: createId(6) },
-							{ path: ['outcome'], value: undefined },
-						] satisfies SS.StoreMutation[],
-					}
+					const transaction = G.getNewGameTransaction(this.player.id)
+					transaction.mutations.push({
+						path: ['isReadyForGame', this.leftPlayer!.id],
+						value: false,
+					})
+					transaction.mutations.push({
+						path: ['isReadyForGame', this.rightPlayer!.id],
+						value: false,
+					})
+					transaction.mutations.push({
+						path: ['status'],
+						value: 'playing',
+					})
+
+					return transaction
 				} else {
 					return [
 						{

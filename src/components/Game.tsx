@@ -70,7 +70,7 @@ export default function Game() {
 			observe(boardRef)
 		})
 		onCleanup(() => {
-			unobserve(boardRef)
+			boardRef && unobserve(boardRef)
 		})
 		function handleObserverCallback(entries: ResizeObserverEntry[]) {
 			const entry = entries[0]
@@ -578,7 +578,7 @@ export default function Game() {
 	//#region sound effects for incoming moves
 	{
 		const sub = game.gameContext.event$.subscribe(async (event) => {
-			if (event.type !== 'make-move' || event.playerId !== game.gameContext.player.id) return
+			if (event.type !== 'make-move' || event.playerId === game.gameContext.player.id) return
 			const move = game.gameContext.state.moves[event.moveIndex]
 			const isVisible = game.gameConfig.variant !== 'fog-of-war' || game.currentBoardView.visibleSquares.has(move.to)
 			Audio.playSoundEffectForMove(move, false, isVisible)
