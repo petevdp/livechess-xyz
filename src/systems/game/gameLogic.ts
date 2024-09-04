@@ -36,6 +36,8 @@ export type Move = {
 	enPassant?: string
 	check?: boolean
 	capture: boolean
+	checkmate?: boolean
+	algebraic: string
 	duck?: string
 	algebraicNotationAmbiguity: ('rank' | 'file')[]
 	ts: Timestamp
@@ -313,7 +315,47 @@ export function candidateMoveToSelectedMove(move: CandidateMove): SelectedMove {
 	} satisfies SelectedMove
 }
 
-function candidateMoveToMove(candidateMove: CandidateMove, capture?: boolean, check?: boolean, duck?: string): Move {
+export function getMoveHistoryAsNotation(history: MoveHistory) {
+	const moves: [string, string | null][] = []
+	for (let i = 0; i < Math.ceil(history.length / 2); i++) {
+		const whiteMove = history[i * 2].algebraic
+		if (i * 2 + 1 >= history.length) {
+			moves.push([whiteMove, null])
+			break
+		}
+		const blackMove = history[i * 2 + 1].algebraic
+		moves.push([whiteMove, blackMove])
+	}
+	return moves
+}
+
+function candidateMoveToMove(candidateMove: CandidateMove, capture?: boolean, check?: boolean, checkmate?: boolean, duck?: string): Move {
+	const algebraic = (() =>
+		// get algebraic notation for move
+		{
+			const pieceStr = candidateMove.piece === 'pawn' ? '' : toShortPieceName(candidateMove.piece)
+			const captureStr = capture ? 'x' : ''
+			const toStr = notationFromCoords(candidateMove.to)
+			const promotionStr = candidateMove.promotion ? '=' + candidateMove.promotion.toUpperCase() : ''
+			const checkStr = check ? '+' : ''
+			const checkmateStr = checkmate ? '#' : ''
+
+			if (candidateMove.castle) {
+				return candidateMove.castle === 'queen' ? 'O-O-O' : 'O-O'
+			}
+
+			let disambiguation = ''
+			for (const type of candidateMove.algebraicNotationAmbiguity) {
+				if (type === 'rank') {
+					disambiguation += notationFromCoords(candidateMove.from).charAt(1)
+				} else if (type === 'file') {
+					disambiguation += notationFromCoords(candidateMove.from).charAt(0)
+				}
+			}
+
+			return pieceStr + disambiguation + captureStr + toStr + promotionStr + checkStr + checkmateStr
+		})()
+
 	return {
 		from: notationFromCoords(candidateMove.from),
 		to: notationFromCoords(candidateMove.to),
@@ -322,9 +364,11 @@ function candidateMoveToMove(candidateMove: CandidateMove, capture?: boolean, ch
 		promotion: candidateMove.promotion,
 		enPassant: candidateMove.enPassant,
 		ts: Date.now(),
-		capture: capture || false,
-		check: check || false,
+		capture: capture ?? false,
+		check: check ?? false,
+		checkmate: checkmate,
 		duck,
+		algebraic,
 		algebraicNotationAmbiguity: candidateMove.algebraicNotationAmbiguity,
 	} satisfies Move
 }
@@ -456,9 +500,10 @@ export function validateAndPlayMove(move: SelectedMove, game: GameState, variant
 	const candidate = candidates[0]
 	const isCapture = !!getBoard(game).pieces[move.to] || candidate.enPassant
 	const [newBoard] = applyMoveToBoard(candidate, getBoard(game))
+	const checkmate = !VARIANTS_ALLOWING_SELF_CHECKS.includes(variant) && checkmated(game, variant)
 	return {
 		board: newBoard,
-		move: candidateMoveToMove(candidate, isCapture, inCheck(newBoard), move.duck),
+		move: candidateMoveToMove(candidate, isCapture, inCheck(newBoard), checkmate, move.duck),
 	}
 }
 
@@ -1072,31 +1117,6 @@ export function toLongPieceName(piece: string) {
 }
 
 // https://en.wikipedia.org/wiki/Algebraic_notation_(chess)
-export function moveToAlgebraicNotation(moveIndex: number, state: GameState, variant: Variant): string {
-	const move = state.moveHistory[moveIndex]
-	const piece = move.piece === 'pawn' ? '' : toShortPieceName(move.piece)
-	const capture = move.capture ? 'x' : ''
-	const to = move.to
-	const promotion = move.promotion ? '=' + move.promotion.toUpperCase() : ''
-	const check = inCheck(getBoard(state)) ? '+' : ''
-	const checkmate = check && checkmated(state, variant) ? '#' : ''
-
-	if (move.castle) {
-		return move.castle === 'queen' ? 'O-O-O' : 'O-O'
-	}
-
-	let disambiguation = ''
-	for (const type of move.algebraicNotationAmbiguity) {
-		if (type === 'rank') {
-			disambiguation += move.from[1]
-		} else if (type === 'file') {
-			disambiguation += move.from[0]
-		}
-	}
-
-	return piece + disambiguation + capture + to + promotion + check + checkmate
-}
-
 export function isPlayerTurn(board: Board, color: Color) {
 	return board.toMove === color
 }
@@ -1161,4 +1181,5 @@ export function getVisibleSquares(game: GameState, color: Color) {
 	}
 	return visibleSquares
 }
+
 //#endregion

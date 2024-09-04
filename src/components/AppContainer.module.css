@@ -1,0 +1,28 @@
+.appContainer {
+	display: grid;
+	grid-template-columns: min-content 1fr min-content;
+	grid-template-areas:
+		'nav content controls';
+}
+@media screen and (max-aspect-ratio: 7/6) {
+	.appContainer {
+		grid-template-columns: repeat(2, auto);
+		grid-template-rows: min-content 1fr;
+		grid-template-areas:
+		'nav controls'
+		'content content';
+	}
+}
+
+
+.content {
+	grid-area: content;
+}
+
+.nav {
+	grid-area: nav;
+}
+
+.controls {
+	grid-area: controls;
+}

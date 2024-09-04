@@ -19,4 +19,9 @@ render(App, root)
 
 // if (!import.meta.env.PROD) {
 // 	import('~/console.ts')
+// } else {
+// 	// @ts-expect-error
+// 	window.loadAppConsole = () => {
+// 		import('~/console.ts')
+// 	}
 // }

@@ -23,16 +23,8 @@ export type BoardView = {
 	lastMove: GL.Move | null
 	visibleSquares: Set<string>
 }
-const DRAW_EVENTS = ['draw-offered', 'draw-accepted', 'draw-declined', 'draw-canceled'] as const
+export const DRAW_EVENTS = ['draw-offered', 'draw-accepted', 'draw-declined', 'draw-canceled'] as const
 export type DrawEventType = (typeof DRAW_EVENTS)[number]
-export type DrawEventWithDetails = { type: DrawEventType; participant: GameParticipantWithDetails }
-export type MoveEventWithDetails = { type: 'make-move'; participant: GameParticipantWithDetails; moveIndex: number }
-
-export type GameEventWithDetails =
-	| DrawEventWithDetails
-	| MoveEventWithDetails
-	| { type: 'game-over' }
-	| { type: 'new-game'; participant: GameParticipantWithDetails }
 
 export type GameEvent =
 	| {
@@ -89,9 +81,9 @@ export interface RootGameContext {
 	members: P.Player[]
 
 	configureNewGame(): void
+	event$: Observable<GameEvent>
 
 	player: P.Player
-	event$: Observable<GameEventWithDetails>
 }
 
 export interface GameConfigContext {
@@ -140,6 +132,9 @@ export class Game {
 
 	setupGameState() {
 		const moveHistory = storeToSignal(this.gameContext.rollbackState.moves)
+		// createEffect(() => {
+		// 	console.log('move history changed: ', moveHistory())
+		// })
 		const boardHistory = GL.useBoardHistory(moveHistory, GL.getStartPos(this.gameConfig))
 		// const [state, setState] = createSignal<GL.GameState>(null as any)
 		// this.stateSignal = state
@@ -356,11 +351,6 @@ export class Game {
 	currentBoardView = {} as BoardView
 	private _setViewedMove = unit as unknown as (move: number | 'live') => void
 	viewedMoveIndex = unit as unknown as Accessor<number>
-	private getMoveHistoryAsNotation = unit as Accessor<[string, string | null][]>
-
-	get moveHistoryAsNotation() {
-		return this.getMoveHistoryAsNotation()
-	}
 
 	setupBoardView() {
 		const [currentMove, setViewedMove] = createSignal<'live' | number>('live')
@@ -401,8 +391,6 @@ export class Game {
 			},
 		} as BoardView
 
-		this.getMoveHistoryAsNotation = createMemo(() => getMoveHistoryAsNotation(this.stateSignal(), this.gameConfig.variant))
-
 		let prevMoveCount = this.state.moveHistory.length
 		createEffect(() => {
 			if (this.state.moveHistory.length !== prevMoveCount) {
@@ -414,28 +402,6 @@ export class Game {
 
 	get viewingLiveBoard() {
 		return this.viewedMoveIndex() === this.state.moveHistory.length - 1
-	}
-
-	get moveEvent$() {
-		return this.gameContext.event$.pipe(
-			concatMap((event): MoveEventWithDetails[] => {
-				if (event.type !== 'make-move') return []
-				const participant = Object.values(unwrap(this.gameContext.rollbackState.gameParticipants)).find(
-					(p) => p.id === event.participant.id
-				)
-				if (!participant) return []
-				return [
-					{
-						type: 'make-move',
-						participant: {
-							...participant,
-							name: this.gameContext.members.find((m) => m.id === participant.id)!.name,
-						},
-						moveIndex: event.moveIndex,
-					},
-				]
-			})
-		)
 	}
 
 	setViewedMove(move: number | 'live') {
@@ -564,29 +530,6 @@ export class Game {
 	//#endregion
 
 	//#region draws and resignation
-	get drawEvent$() {
-		return this.gameContext.event$.pipe(
-			concatMap((action): DrawEventWithDetails[] => {
-				const type = action.type as DrawEventType
-				if (!DRAW_EVENTS.includes(type)) return []
-				const drawEvent = action as DrawEventWithDetails
-				const state = unwrap(this.gameContext.rollbackState.gameParticipants)
-				const participant = Object.values(state).find((p) => p.id === drawEvent.participant!.id)
-				if (!DRAW_EVENTS.includes(action.type as DrawEventType) || !participant) return []
-				const participantWithDetails = {
-					...participant,
-					name: this.gameContext.members.find((m) => m.id === participant.id)!.name,
-				}
-				return [
-					{
-						type: action.type as DrawEventType,
-						participant: participantWithDetails,
-					},
-				]
-			})
-		)
-	}
-
 	offerOrAcceptDraw() {
 		if (!this.isClientPlayerParticipating) return
 		const moveOffered = this.state.moveHistory.length
@@ -797,20 +740,6 @@ function useClock(move$: Observable<GL.Move>, gameConfig: GL.ParsedGameConfig, g
 	})
 
 	return clocks
-}
-
-function getMoveHistoryAsNotation(state: GL.GameState, variant: GL.Variant) {
-	const moves: [string, string | null][] = []
-	for (let i = 0; i < Math.ceil(state.moveHistory.length / 2); i++) {
-		const whiteMove = GL.moveToAlgebraicNotation(i * 2, state, variant)
-		if (i * 2 + 1 >= state.moveHistory.length) {
-			moves.push([whiteMove, null])
-			break
-		}
-		const blackMove = GL.moveToAlgebraicNotation(i * 2 + 1, state, variant)
-		moves.push([whiteMove, blackMove])
-	}
-	return moves
 }
 
 export function getDrawIsOfferedBy(offers: RootGameState['drawOffers']) {

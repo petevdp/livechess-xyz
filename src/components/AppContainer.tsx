@@ -12,38 +12,41 @@ import * as GlobalLoading from '~/systems/globalLoading.ts'
 import * as P from '~/systems/player.ts'
 import * as R from '~/systems/room.ts'
 
+import styles from './AppContainer.module.css'
 import * as Svgs from './Svgs.tsx'
 import { ModalContainer } from './utils/Modal.tsx'
 
 export function AppContainer(props: ParentProps) {
 	return (
-		<>
-			<nav class="flex w-full justify-between p-[0.25rem] pb-[.5rem]">
+		<div class={`${styles.appContainer} w-full h-full`}>
+			<nav class={`${styles.nav} p-[0.25rem] pb-[.5rem]`}>
 				<A href="/" class="inline-flex p-1 h-10 w-10 items-center justify-center">
 					<Svgs.Logo />
 				</A>
 				<div class="flex items-center justify-end space-x-1 font-light">
 					<Show when={R.room() && !R.room()!.isPlayerParticipating}>Spectating</Show>
-					<Button size="icon" variant="ghost" onclick={() => (P.settings.muteAudio = !P.settings.muteAudio)}>
-						{P.settings.muteAudio ? <Svgs.Muted /> : <Svgs.NotMuted />}
-					</Button>
-					<ThemeToggle />
-					<SettingsDialog />
-					<AboutDialog />
 				</div>
 			</nav>
+			<nav class={`${styles.controls} p-[0.25rem] pb-[.5rem] flex flex-col items-center wc:flex-row-reverse`}>
+				<Button size="icon" variant="ghost" onclick={() => (P.settings.muteAudio = !P.settings.muteAudio)}>
+					{P.settings.muteAudio ? <Svgs.Muted /> : <Svgs.NotMuted />}
+				</Button>
+				<ThemeToggle />
+				<SettingsDialog />
+				<AboutDialog />
+			</nav>
+			<div class={`${styles.content}`}>
+				<Switch>
+					<Match when={GlobalLoading.isLoading()}>
+						<ScreenFittingContent class="grid place-items-center">
+							<Spinner />
+						</ScreenFittingContent>
+					</Match>
+					<Match when={!GlobalLoading.isLoading()}>{props.children}</Match>
+				</Switch>
+			</div>
 			<ModalContainer />
-			<Switch>
-				<Match when={GlobalLoading.isLoading()}>
-					<ScreenFittingContent class="grid place-items-center">
-						<Spinner />
-					</ScreenFittingContent>
-				</Match>
-				<Match when={!GlobalLoading.isLoading()}>
-					<div>{props.children}</div>
-				</Match>
-			</Switch>
-		</>
+		</div>
 	)
 }
 
@@ -80,7 +83,7 @@ export function ThemeToggle() {
 export function ScreenFittingContent(props: ComponentProps<'div'>) {
 	const [, rest] = splitProps(props, ['class'])
 	return (
-		<div class={cn('h-[calc(100vh_-_48px_-.5rem)]', props.class)} {...rest}>
+		<div class={cn('h-full', props.class)} {...rest}>
 			{props.children}
 		</div>
 	)

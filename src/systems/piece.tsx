@@ -41,9 +41,10 @@ export const [squareSize, setSquareSize] = createSignal(32)
 export const [pieceChangedEpoch, setPiecedChangedEpoch] = createSignal(0)
 export const [initialized, setInitialized] = createSignal(false)
 
-function loadPiece(key: keyof typeof pieceSvgs, squareSize: number) {
+// TODO insanely inefficient to need to rerun this when squareSize changes, fix
+function loadPiece(key: keyof typeof pieceSvgs) {
 	const Svg = pieceSvgs[key] as unknown as Component<ComponentProps<'svg'>>
-	const svg = (<Svg class="chess-piece" width={squareSize} height={squareSize} />) as HTMLElement
+	const svg = (<Svg class="chess-piece" />) as HTMLElement
 	const xml = new XMLSerializer().serializeToString(svg)
 	const image64 = 'data:image/svg+xml;base64,' + btoa(xml)
 	return loadImage(image64, 180)
@@ -51,22 +52,18 @@ function loadPiece(key: keyof typeof pieceSvgs, squareSize: number) {
 
 let setupTriggered = false
 export function ensureSetupPieceSystem() {
-	console.log('setting up piece system')
 	if (setupTriggered) return
 	setupTriggered = true
-	createEffect(() => {
-		const numSvgs = Object.keys(pieceSvgs).length
-		for (const key in pieceSvgs) {
-			loadPiece(key as keyof typeof pieceSvgs, squareSize()).then((img) => {
-				pieceCache.set(key, img)
-				if (pieceCache.size === numSvgs) {
-					console.log('piece system setup')
-					setInitialized(true)
-					setPiecedChangedEpoch((epoch) => epoch + 1)
-				}
-			})
-		}
-	})
+	const numSvgs = Object.keys(pieceSvgs).length
+	for (const key in pieceSvgs) {
+		loadPiece(key as keyof typeof pieceSvgs).then((img) => {
+			pieceCache.set(key, img)
+			if (pieceCache.size === numSvgs) {
+				setPiecedChangedEpoch((epoch) => epoch + 1)
+			}
+		})
+	}
+	setInitialized(true)
 }
 
 function getPieceKey(piece: GL.ColoredPiece) {

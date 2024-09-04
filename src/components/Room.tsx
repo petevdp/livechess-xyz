@@ -76,7 +76,7 @@ export function Room() {
 					return
 				}
 				if (newGameId === gameId) return
-				const game = new G.Game(newGameId, room as G.RootGameContext, room.rollbackState.gameConfig)
+				const game = new G.Game(newGameId, room.gameContext, room.rollbackState.gameConfig)
 				G.setGame(game)
 			}
 		)
@@ -96,7 +96,7 @@ export function Room() {
 							</ScreenFittingContent>
 						}
 					>
-						<GameLazy gameId={room.rollbackState.activeGameId!} />
+						<GameLazy />
 					</Suspense>
 				</Match>
 			</Switch>

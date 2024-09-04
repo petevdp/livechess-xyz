@@ -1,5 +1,6 @@
 import { useColorMode } from '@kobalte/core'
 import { createMediaQuery } from '@solid-primitives/media'
+import { makeResizeObserver } from '@solid-primitives/resize-observer'
 import deepEquals from 'fast-deep-equal'
 import { filter, first, from as rxFrom, skip } from 'rxjs'
 import {
@@ -37,6 +38,7 @@ import * as Audio from '~/systems/audio.ts'
 import * as G from '~/systems/game/game.ts'
 import * as GL from '~/systems/game/gameLogic.ts'
 import * as Pieces from '~/systems/piece.tsx'
+import { setSquareSize } from '~/systems/piece.tsx'
 import * as P from '~/systems/player.ts'
 
 import styles from './Game.module.css'
@@ -45,7 +47,8 @@ import * as Modal from './utils/Modal.tsx'
 
 //TODO component duplicates on reload sometimes for some reason
 
-export default function Game(props: { gameId: string }) {
+export default function Game() {
+	console.log('game initial render')
 	const game = G.game()!
 
 	//#region calc board sizes
@@ -53,57 +56,46 @@ export default function Game(props: { gameId: string }) {
 	// let SQUARE_SIZE = BOARD_SIZE / 8
 
 	// eslint-disable-next-line prefer-const
+	let boardContainerRef = null as unknown as HTMLDivElement
+
+	// eslint-disable-next-line prefer-const
 	let boardRef = null as unknown as HTMLDivElement
-
-	const [windowSize, setWindowSize] = createSignal({
-		width: window.innerWidth,
-		height: window.innerHeight,
-	})
-
-	window.addEventListener('resize', () => {
-		setWindowSize({ width: window.innerWidth, height: window.innerHeight })
-	})
-
-	let isPortrait: () => boolean
-	let isSmallPortrait: () => boolean
+	const [boardSize, setBoardSize] = createSignal(100)
+	const [boardSizeCss, setBoardSizeCss] = createSignal(100)
+	const [canvasProps, setCanvasProps] = createSignal({})
 	{
-		const _isPortrait = createMediaQuery('(max-aspect-ratio: 7/6)')
-		const _isSmallPortrait = createMediaQuery('(max-width: 700px)')
-		isPortrait = createMemo(() => _isPortrait())
-		isSmallPortrait = createMemo(() => _isSmallPortrait())
-	}
-
-	const boardSizeCss = (): number => {
-		if (isSmallPortrait()) {
-			return Math.min(windowSize().width - 30, windowSize().height - 160)
-		} else if (isPortrait()) {
-			return Math.min(windowSize().width - 80, windowSize().height - 160)
-		} else {
-			return windowSize().height - 170
+		const isPortrait = createMediaQuery('(max-aspect-ratio: 7/6')
+		const { observe, unobserve } = makeResizeObserver(handleObserverCallback)
+		onMount(() => {
+			observe(boardRef)
+		})
+		onCleanup(() => {
+			unobserve(boardRef)
+		})
+		function handleObserverCallback(entries: ResizeObserverEntry[]) {
+			const entry = entries[0]
+			if (!entry) return
+			const size = isPortrait() ? window.innerWidth - 30 : Math.min(entry.contentRect.width, entry.contentRect.height)
+			const adjustedSize = size * window.devicePixelRatio
+			batch(() => {
+				setBoardSize(adjustedSize)
+				setBoardSizeCss(size)
+				setSquareSize(size / 8)
+				setCanvasProps({
+					class: 'object-contain',
+					style: { width: `${size}px`, height: `${size}px` },
+					width: adjustedSize,
+					height: adjustedSize,
+				})
+			})
 		}
 	}
 
-	const boardSize = () => {
-		return Math.floor(boardSizeCss() * window.devicePixelRatio)
-	}
-
-	createEffect(() => {
-		Pieces.setSquareSize(boardSizeCss() / 8)
-	})
 	const squareSize = Pieces.squareSize
 
 	//#endregion
 
 	//#region board rendering and mouse events
-
-	const canvasProps = () => {
-		return {
-			class: 'object-contain',
-			style: { width: `${boardSizeCss()}px`, height: `${boardSizeCss()}px` },
-			width: boardSize(),
-			height: boardSize(),
-		}
-	}
 
 	function scaleAndReset(context: CanvasRenderingContext2D) {
 		context.clearRect(0, 0, boardSizeCss(), boardSizeCss())
@@ -519,33 +511,34 @@ export default function Game(props: { gameId: string }) {
 
 	//#region draw offer events
 	{
-		const sub = game.drawEvent$.subscribe((event) => {
-			if (event.participant.id === game.gameContext.player.id) {
-				switch (event.type) {
-					case 'draw-offered':
-						toast('Draw offered')
-						break
-					case 'draw-canceled':
-						toast('Draw cancelled')
-						break
-					case 'draw-declined':
-						toast('Draw declined')
-						break
-				}
-				return
-			}
+		const sub = game.gameContext.event$.subscribe((event) => {
 			switch (event.type) {
 				case 'draw-offered':
-					toast(`${event.participant.name} offered a draw`)
-					Audio.playSound('drawOffered')
-					Audio.vibrate()
+					if (event.playerId === game.bottomPlayer.id) {
+						toast('Draw offered')
+					} else {
+						toast(`${game.topPlayer.name} offered a draw`)
+						Audio.playSound('drawOffered')
+						Audio.vibrate()
+					}
 					break
 				case 'draw-canceled':
-					toast(`${event.participant.name} cancelled their draw offer`)
+					if (event.playerId === game.bottomPlayer.id) {
+						toast('Draw cancelled')
+					} else {
+						toast(`${game.topPlayer.name} cancelled their draw offer`)
+						Audio.vibrate()
+					}
 					break
 				case 'draw-declined':
-					toast(`${event.participant.name} declined draw offer`)
+					if (event.playerId === game.bottomPlayer.id) {
+						toast('Draw declined')
+					} else {
+						toast(`${game.topPlayer.name} declined draw offer`)
+						Audio.vibrate()
+					}
 					break
+				// draw being accepted is dealt with in the end game screen
 			}
 		})
 		onCleanup(() => {
@@ -584,14 +577,12 @@ export default function Game(props: { gameId: string }) {
 
 	//#region sound effects for incoming moves
 	{
-		const sub = game.moveEvent$.subscribe(async (event) => {
-			const moveIsFromOpponent = event.participant.id !== game.gameContext.player.id
-			if (moveIsFromOpponent) {
-				const move = game.gameContext.state.moves[event.moveIndex]
-				const isVisible = game.gameConfig.variant !== 'fog-of-war' || game.currentBoardView.visibleSquares.has(move.to)
-				Audio.playSoundEffectForMove(move, false, isVisible)
-				Audio.vibrate()
-			}
+		const sub = game.gameContext.event$.subscribe(async (event) => {
+			if (event.type !== 'make-move' || event.playerId !== game.gameContext.player.id) return
+			const move = game.gameContext.state.moves[event.moveIndex]
+			const isVisible = game.gameConfig.variant !== 'fog-of-war' || game.currentBoardView.visibleSquares.has(move.to)
+			Audio.playSoundEffectForMove(move, false, isVisible)
+			Audio.vibrate()
 		})
 
 		onCleanup(() => {
@@ -638,62 +629,62 @@ export default function Game(props: { gameId: string }) {
 	const hideHistory = () => game.gameConfig.variant === 'fog-of-war'
 
 	return (
-		<div class={styles.boardPageWrapper}>
-			<div
-				ref={boardRef}
-				class={cn(
-					styles.boardContainer,
-					'rounded-lg border bg-card p-2 text-card-foreground shadow-sm max-w-max max-h-full gap-[0.25rem]',
-					hideHistory() ? styles.hideHistory : styles.showHistory
-				)}
-			>
-				<Show when={!hideHistory()}>
-					<MoveHistory {...moveNavProps()} />
+		<div
+			ref={boardContainerRef}
+			class={cn(
+				styles.boardContainer,
+				'w-full h-full rounded-lg border bg-card p-2 text-card-foreground shadow-sm gap-[0.25rem]',
+				hideHistory() ? styles.hideHistory : styles.showHistory
+			)}
+		>
+			<Show when={!hideHistory()}>
+				<MoveHistory {...moveNavProps()} />
+			</Show>
+			<div class={`${styles.topLeftActions} flex items-start space-x-1`}>
+				<Button variant="ghost" size="icon" onclick={() => setBoardFlipped((f) => !f)} class="mb-1">
+					<Svgs.Flip />
+				</Button>
+				<Show when={game.gameConfig.variant !== 'regular'}>
+					<VariantInfoDialog variant={game.gameConfig.variant}>
+						<Button variant="ghost" size="icon" class="mb-1">
+							<Svgs.Help />
+						</Button>
+					</VariantInfoDialog>
 				</Show>
-				<div class={`${styles.topLeftActions} flex items-start space-x-1`}>
-					<Button variant="ghost" size="icon" onclick={() => setBoardFlipped((f) => !f)} class="mb-1">
-						<Svgs.Flip />
-					</Button>
-					<Show when={game.gameConfig.variant !== 'regular'}>
-						<VariantInfoDialog variant={game.gameConfig.variant}>
-							<Button variant="ghost" size="icon" class="mb-1">
-								<Svgs.Help />
-							</Button>
-						</VariantInfoDialog>
-					</Show>
-				</div>
-				<Player class={styles.topPlayer} player={game.topPlayer} />
-				<Clock
-					class={styles.clockTopPlayer}
-					clock={game.clock[game.topPlayer.color]}
-					ticking={game.isPlayerTurn(game.topPlayer.color) && game.clock[game.topPlayer.color] > 0}
-					timeControl={game.gameConfig.timeControl}
-					color={game.topPlayer.color}
-				/>
-				<CapturedPieces />
-				<div class={styles.board}>
+			</div>
+			<Player class={styles.topPlayer} player={game.topPlayer} />
+			<Clock
+				class={styles.clockTopPlayer}
+				clock={game.clock[game.topPlayer.color]}
+				ticking={game.isPlayerTurn(game.topPlayer.color) && game.clock[game.topPlayer.color] > 0}
+				timeControl={game.gameConfig.timeControl}
+				color={game.topPlayer.color}
+			/>
+			<CapturedPieces />
+			<div class={`${styles.board} grid place-items-center`} ref={boardRef}>
+				<div>
 					<span>{boardCanvas}</span>
 					<span class="absolute -translate-y-full">{highlightsCanvas}</span>
 					<span class="absolute -translate-y-full">{piecesCanvas}</span>
 					<span class="absolute -translate-y-full">{grabbedPieceCanvas}</span>
 				</div>
-				<Show when={game.isClientPlayerParticipating} fallback={<div class={styles.bottomLeftActions} />}>
-					<ActionsPanel class={styles.bottomLeftActions} placingDuck={game.placingDuck()} />
-				</Show>
-				<Player class={styles.bottomPlayer} player={game.bottomPlayer} />
-				<Clock
-					class={styles.clockBottomPlayer}
-					clock={game.clock[game.bottomPlayer.color]}
-					ticking={game.isPlayerTurn(game.bottomPlayer.color) && game.clock[game.bottomPlayer.color] > 0}
-					timeControl={game.gameConfig.timeControl}
-					color={game.bottomPlayer.color}
-				/>
-				<Show when={!hideHistory()}>
-					<div class={cn(styles.moveNav, 'self-center justify-self-center min-w-0 wc:self-start')}>
-						<MoveNav {...moveNavProps()} />
-					</div>
-				</Show>
 			</div>
+			<Show when={game.isClientPlayerParticipating} fallback={<div class={styles.bottomLeftActions} />}>
+				<ActionsPanel class={styles.bottomLeftActions} placingDuck={game.placingDuck()} />
+			</Show>
+			<Player class={styles.bottomPlayer} player={game.bottomPlayer} />
+			<Clock
+				class={styles.clockBottomPlayer}
+				clock={game.clock[game.bottomPlayer.color]}
+				ticking={game.isPlayerTurn(game.bottomPlayer.color) && game.clock[game.bottomPlayer.color] > 0}
+				timeControl={game.gameConfig.timeControl}
+				color={game.bottomPlayer.color}
+			/>
+			<Show when={!hideHistory()}>
+				<div class={cn(styles.moveNav, 'self-center justify-self-center min-w-0 wc:self-start')}>
+					<MoveNav {...moveNavProps()} />
+				</div>
+			</Show>
 			<GameOutcomeDialog />
 		</div>
 	)
@@ -893,7 +884,7 @@ function MoveHistory(props: MoveNavProps) {
 	const itemClass = 'grid grid-cols-[min-content_1fr_1fr] gap-1 text-xs items-center'
 	const game = G.game()!
 	return (
-		<div class={`${styles.moveHistoryContainer} grid grid-cols-2 h-max max-h-full gap-x-4 gap-y-1 p-1 overflow-y-auto`}>
+		<div class={`${styles.moveHistoryContainer} grid grid-cols-2 h-max max-h-full gap-x-4 min-w-96 gap-y-1 p-1 overflow-y-auto`}>
 			<div class={itemClass}>
 				<span class="font-mono font-bold">00.</span>
 				<Button
@@ -905,8 +896,8 @@ function MoveHistory(props: MoveNavProps) {
 					Start
 				</Button>
 			</div>
-			<For each={game.moveHistoryAsNotation}>
-				{(move, index) => {
+			<For each={GL.getMoveHistoryAsNotation(game.stateSignal().moveHistory)}>
+				{(moves, index) => {
 					const viewingFirstMove = () => props.viewedMoveIndex === index() * 2
 					const viewingSecondMove = () => props.viewedMoveIndex === index() * 2 + 1
 					return (
@@ -918,16 +909,16 @@ function MoveHistory(props: MoveNavProps) {
 								variant={viewingFirstMove() ? 'default' : 'ghost'}
 								onClick={() => props.setViewedMoveIndex(index() * 2)}
 							>
-								{move[0]}
+								<span class="font-mono">{moves[0]}</span>
 							</Button>{' '}
-							<Show when={move[1]}>
+							<Show when={moves[1]}>
 								<Button
 									size="sm"
 									class="p-[.25rem] font-light"
 									variant={viewingSecondMove() ? 'default' : 'ghost'}
 									onClick={() => props.setViewedMoveIndex(index() * 2 + 1)}
 								>
-									{move[1]}
+									{moves[1]}
 								</Button>
 							</Show>
 						</div>

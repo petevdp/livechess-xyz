@@ -1,6 +1,5 @@
-import { NEVER, Observable, Subscription, concatMap } from 'rxjs'
+import { NEVER, Observable, Subscription } from 'rxjs'
 import { createEffect, createSignal, getOwner, on, onCleanup, runWithOwner } from 'solid-js'
-import { unwrap } from 'solid-js/store'
 
 // import { RandomBot } from '~/bots/randomBot.ts'
 import { StockfishBot } from '~/bots/stockfish.ts'
@@ -167,25 +166,7 @@ export class VsAIContext implements G.RootGameContext {
 	}
 
 	get event$() {
-		return this.sharedStore.event$.pipe(
-			concatMap((event) => {
-				if (event.type === 'game-over') return [event as G.GameEventWithDetails]
-				const participant = Object.values(unwrap(this.rollbackState.gameParticipants)).find((p) => {
-					return p.id === event.playerId
-				})!
-				if (!participant) throw new Error('Participant not found')
-				const participantWithDetails = {
-					...participant,
-					name: this.members.find((m) => m.id === participant.id)!.name,
-				}
-				return [
-					{
-						...event,
-						participant: participantWithDetails,
-					} as G.GameEventWithDetails,
-				]
-			})
-		)
+		return this.sharedStore.event$
 	}
 
 	startGame() {

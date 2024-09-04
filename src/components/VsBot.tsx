@@ -30,7 +30,7 @@ export default function VsBot() {
 		<AppContainer>
 			<Switch>
 				<Match when={G.game()?.gameId}>
-					<Game gameId={G.game()!.gameId} />
+					<Game />
 				</Match>
 				<Match when={VB.vsBotContext()}>
 					<VsBotConfig ctx={VB.vsBotContext()!} />

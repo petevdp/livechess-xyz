@@ -59,9 +59,6 @@ importers:
       fastify:
         specifier: ^4.25.2
         version: 4.25.2
-      highlight.run:
-        specifier: ^8.4.0
-        version: 8.4.0
       json-safe-parse:
         specifier: ^0.0.2
         version: 0.0.2
@@ -1817,9 +1814,6 @@ packages:
 
   help-me@5.0.0:
     resolution: {integrity: sha512-7xgomUX6ADmcYzFik0HzAxh/73YlKR9bmFzf51CZwR+b6YtzU2m0u49hQCqV6SvlqIqsaxovfwdvbnsw3b/zpg==}
-
-  highlight.run@8.4.0:
-    resolution: {integrity: sha512-uZxrG21HA90PkwvVYjXQgJ4l6UlW0VrHusFC2rLkaPeGh2T9vTnO0iiuBy7oqyk2bP4TjuyrqyLBA4nun4iFjA==}
 
   html-encoding-sniffer@4.0.0:
     resolution: {integrity: sha512-Y22oTqIU4uuPgEemfz7NDJz6OeKf12Lsu+QC+s3BVpda64lTiMYCyGwg5ki4vFxkMwQdeZDl2adZoqUgdFuTgQ==}
@@ -4853,8 +4847,6 @@ snapshots:
       function-bind: 1.1.2
 
   help-me@5.0.0: {}
-
-  highlight.run@8.4.0: {}
 
   html-encoding-sniffer@4.0.0:
     dependencies:

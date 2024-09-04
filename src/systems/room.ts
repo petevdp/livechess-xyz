@@ -1,6 +1,6 @@
 import { until } from '@solid-primitives/promise'
 import { Observable, concatMap, mergeAll, race, from as rxFrom, startWith } from 'rxjs'
-import { map } from 'rxjs/operators'
+import { filter, map } from 'rxjs/operators'
 import { Owner, createRoot, createSignal, getOwner, onCleanup, runWithOwner } from 'solid-js'
 import { unwrap } from 'solid-js/store'
 
@@ -36,12 +36,21 @@ export type RoomEvent =
 	  }
 	| G.GameEvent
 
+export const ROOM_ONLY_EVENTS = [
+	'initiate-piece-swap',
+	'agree-piece-swap',
+	'decline-or-cancel-piece-swap',
+	'player-connected',
+	'player-disconnected',
+	'player-reconnected',
+] as const
+
 export type RoomState = {
 	members: RoomMember[]
 	status: 'pregame' | 'playing' | 'postgame'
 	gameConfig: GL.GameConfig
 	gameParticipants: Record<GL.Color, RoomGameParticipant>
-	drawOffers: Record<GL.Color, number | undefined>
+	drawOffers: { [key in GL.Color]: number }
 	moves: GL.Move[]
 	outcome?: GL.GameOutcome
 	activeGameId?: string
@@ -97,7 +106,7 @@ export function connectToRoom(
 		store = SS.initFollowerStore<RoomState, ClientOwnedState, RoomEvent>(transport, { playerId })
 		instanceOwner = getOwner()!
 
-		Api.keepServerAlive()
+		if (import.meta.env.PROD) Api.keepServerAlive()
 
 		disposePrevious = () => {
 			setRoom(null)
@@ -238,6 +247,7 @@ export class Room extends RoomStoreHelpers {
 	}
 
 	gameConfigContext: G.GameConfigContext
+	gameContext: G.RootGameContext
 
 	constructor(
 		public sharedStore: RoomStore,
@@ -256,6 +266,29 @@ export class Room extends RoomStoreHelpers {
 			},
 			reseedFischerRandom: () => {
 				void this.sharedStore.setStore({ path: ['gameConfig', 'fischerRandomSeed'], value: GL.getFischerRandomSeed() })
+			},
+		}
+
+		// boilerplate mostly to make typescript happy
+		this.gameContext = {
+			configureNewGame: this.configureNewGame,
+			event$: this.event$.pipe(
+				filter((event) => !ROOM_ONLY_EVENTS.includes(event.type as (typeof ROOM_ONLY_EVENTS)[number]))
+			) as Observable<G.GameEvent>,
+			get members() {
+				return this.members
+			},
+			get player() {
+				return this.player
+			},
+			get state() {
+				return this.state
+			},
+			get rollbackState() {
+				return this.rollbackState
+			},
+			get sharedStore() {
+				return this.sharedStore
 			},
 		}
 	}
@@ -389,15 +422,6 @@ export class Room extends RoomStoreHelpers {
 
 	//#endregion
 
-	//#region game start / config
-	setGameConfig(config: Partial<GL.GameConfig>) {
-		void this.sharedStore.setStore({ path: ['gameConfig'], value: config })
-	}
-
-	reseedFischerRandom() {
-		void this.sharedStore.setStore({ path: ['gameConfig', 'fischerRandomSeed'], value: GL.getFischerRandomSeed() })
-	}
-
 	toggleReady() {
 		if (!this.isPlayerParticipating) return
 		if (!this.leftPlayer!.isReadyForGame) {
@@ -444,8 +468,8 @@ export class Room extends RoomStoreHelpers {
 		}
 	}
 
-	configureNewGame() {
-		void this.sharedStore.setStoreWithRetries(() => {
+	configureNewGame = async () => {
+		const res = await this.sharedStore.setStoreWithRetries(() => {
 			if (!this.rightPlayer || !this.rollbackState.activeGameId) return
 			return [
 				...this.getPieceSwapMutation(),
@@ -456,6 +480,7 @@ export class Room extends RoomStoreHelpers {
 				},
 			]
 		})
+		if (res) G.setGame(null)
 	}
 
 	//#endregion
