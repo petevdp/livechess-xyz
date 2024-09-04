@@ -47,14 +47,11 @@ export const ROOM_ONLY_EVENTS = [
 
 export type RoomState = {
 	members: RoomMember[]
+	// will contain id of player that initiated the piece swap
+	agreePieceSwap: string | null
+	isReadyForGame: { [playerId: string]: boolean }
 	status: 'pregame' | 'playing' | 'postgame'
-	gameConfig: GL.GameConfig
-	gameParticipants: Record<GL.Color, RoomGameParticipant>
-	drawOffers: { [key in GL.Color]: number }
-	moves: GL.Move[]
-	outcome?: GL.GameOutcome
-	activeGameId?: string
-}
+} & G.RootGameState
 
 export type ClientOwnedState = {
 	playerId: string
@@ -133,23 +130,27 @@ export function connectToRoom(
 				]
 
 				if (!isSpectating) {
+					let color: GL.Color
+					if (state.gameParticipants.white) {
+						color = 'black'
+					} else if (state.gameParticipants.black) {
+						color = 'white'
+					} else {
+						color = Math.random() < 0.5 ? 'white' : 'black'
+					}
 					const gameParticipant = {
 						id: playerId,
-						isReadyForGame: false,
-						agreePieceSwap: false,
-						disconnectedAt: undefined,
-						name: player.name,
-					} as RoomGameParticipant
-					if (state.gameParticipants.white) {
-						gameParticipant.color = 'black'
-					} else if (state.gameParticipants.black) {
-						gameParticipant.color = 'white'
-					} else {
-						gameParticipant.color = Math.random() < 0.5 ? 'white' : 'black'
-					}
+						color,
+					} satisfies G.GameParticipant as G.GameParticipant
+
 					mutations.push({
 						path: ['gameParticipants', gameParticipant.color],
 						value: gameParticipant,
+					})
+
+					mutations.push({
+						path: ['isReadyForGame', playerId],
+						value: false,
 					})
 				}
 
@@ -214,7 +215,9 @@ export class RoomStoreHelpers {
 						...player,
 						...gameParticipant,
 						color: this.playerColor(gameParticipant.id)!,
-					} as RoomGameParticipant,
+						isReadyForGame: this.rollbackState.isReadyForGame[gameParticipant.id],
+						agreePieceSwap: this.rollbackState.agreePieceSwap === gameParticipant.id,
+					} satisfies RoomGameParticipant,
 				]
 			})
 			.flat()
@@ -270,25 +273,27 @@ export class Room extends RoomStoreHelpers {
 		}
 
 		// boilerplate mostly to make typescript happy
+		// eslint-disable-next-line @typescript-eslint/no-this-alias
+		const room = this
 		this.gameContext = {
-			configureNewGame: this.configureNewGame,
-			event$: this.event$.pipe(
+			configureNewGame: room.configureNewGame,
+			event$: room.event$.pipe(
 				filter((event) => !ROOM_ONLY_EVENTS.includes(event.type as (typeof ROOM_ONLY_EVENTS)[number]))
 			) as Observable<G.GameEvent>,
 			get members() {
-				return this.members
+				return room.members
 			},
 			get player() {
-				return this.player
+				return room.player
 			},
 			get state() {
-				return this.state
+				return room.state
 			},
 			get rollbackState() {
-				return this.rollbackState
+				return room.rollbackState
 			},
 			get sharedStore() {
-				return this.sharedStore
+				return room.sharedStore as G.RootGameContext['sharedStore']
 			},
 		}
 	}
@@ -344,7 +349,6 @@ export class Room extends RoomStoreHelpers {
 			if (this.state.status !== 'pregame' || !this.isPlayerParticipating) return
 			if (!this.rightPlayer) {
 				const participant = { ...this.rollbackState.gameParticipants[this.leftPlayer!.color] }
-				participant.agreePieceSwap = false
 				participant.color = GL.oppositeColor(this.leftPlayer!.color)
 				return {
 					events: [{ type: 'agree-piece-swap', playerId: this.player.id }],
@@ -375,6 +379,10 @@ export class Room extends RoomStoreHelpers {
 						path: ['gameParticipants', this.leftPlayer!.color, 'agreePieceSwap'],
 						value: true,
 					},
+					{
+						path: ['agreePieceSwap'],
+						value: this.player.id,
+					},
 				],
 			}
 		})
@@ -385,13 +393,15 @@ export class Room extends RoomStoreHelpers {
 		const rightParticipant = deepClone(this.rightPlayer!)
 		const prevLeft = leftParticipant.color
 		leftParticipant.color = rightParticipant.color
-		leftParticipant.agreePieceSwap = false
 		rightParticipant.color = prevLeft
-		rightParticipant.agreePieceSwap = false
 		return [
 			{
 				path: ['gameParticipants', leftParticipant.color],
 				value: leftParticipant,
+			},
+			{
+				path: ['agreePieceSwap'],
+				value: null,
 			},
 			{
 				path: ['gameParticipants', rightParticipant.color],
@@ -408,12 +418,8 @@ export class Room extends RoomStoreHelpers {
 				events: [{ type: 'decline-or-cancel-piece-swap', playerId: this.player.id }],
 				mutations: [
 					{
-						path: ['gameParticipants', 'white', 'agreePieceSwap'],
-						value: false,
-					},
-					{
-						path: ['gameParticipants', 'black', 'agreePieceSwap'],
-						value: false,
+						path: ['agreePieceSwap'],
+						value: null,
 					},
 				],
 			}
@@ -432,11 +438,11 @@ export class Room extends RoomStoreHelpers {
 						events: [{ type: 'new-game', playerId: this.player.id }],
 						mutations: [
 							{
-								path: ['gameParticipants', this.leftPlayer!.color, 'isReadyForGame'],
+								path: ['isReadyForGame', this.leftPlayer!.id],
 								value: false,
 							},
 							{
-								path: ['gameParticipants', this.rightPlayer!.color, 'isReadyForGame'],
+								path: ['isReadyForGame', this.rightPlayer!.id],
 								value: false,
 							},
 							{ path: ['status'], value: 'playing' },
@@ -449,7 +455,7 @@ export class Room extends RoomStoreHelpers {
 				} else {
 					return [
 						{
-							path: ['gameParticipants', this.leftPlayer!.color, 'isReadyForGame'],
+							path: ['isReadyForGame', this.leftPlayer!.id],
 							value: true,
 						},
 					]
@@ -460,7 +466,7 @@ export class Room extends RoomStoreHelpers {
 				if (!this.isPlayerParticipating || !this.leftPlayer!.isReadyForGame) return []
 				return [
 					{
-						path: ['gameParticipants', this.leftPlayer!.color, 'isReadyForGame'],
+						path: ['isReadyForGame', this.leftPlayer!.id],
 						value: false,
 					},
 				]

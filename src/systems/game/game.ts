@@ -1,6 +1,6 @@
 import { until } from '@solid-primitives/promise'
 import deepEquals from 'fast-deep-equal'
-import { Observable, ReplaySubject, concatMap, distinctUntilChanged, filter, first, from as rxFrom } from 'rxjs'
+import { Observable, ReplaySubject, distinctUntilChanged, filter, first, from as rxFrom } from 'rxjs'
 import { map } from 'rxjs/operators'
 import { Accessor, createEffect, createMemo, createSignal, getOwner, observable, on, onCleanup } from 'solid-js'
 import { unwrap } from 'solid-js/store'

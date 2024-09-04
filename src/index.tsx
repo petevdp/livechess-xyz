@@ -17,11 +17,14 @@ console.debug({
 const root = document.getElementById('root')!
 render(App, root)
 
-// if (!import.meta.env.PROD) {
-// 	import('~/console.ts')
-// } else {
-// 	// @ts-expect-error
-// 	window.loadAppConsole = () => {
-// 		import('~/console.ts')
-// 	}
-// }
+if (!import.meta.env.PROD) {
+	import('~/console.ts')
+} else {
+	let loaded = false
+	// @ts-expect-error
+	window.loadAppConsole = () => {
+		if (loaded) return
+		import('~/console.ts')
+		loaded = true
+	}
+}

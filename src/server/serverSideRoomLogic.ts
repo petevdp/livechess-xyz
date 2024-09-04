@@ -19,6 +19,8 @@ export function initServerSideRoomLogic(store: R.RoomStore, transport: SS.Transp
 			members: [],
 			status: 'pregame',
 			gameParticipants: {} as RoomState['gameParticipants'],
+			agreePieceSwap: null,
+			isReadyForGame: {},
 			gameConfig: GL.getDefaultGameConfig(),
 			drawOffers: {} as RoomState['drawOffers'],
 			moves: [],

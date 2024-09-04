@@ -1,5 +1,5 @@
 import { until } from '@solid-primitives/promise'
-import { Component, ComponentProps, createEffect, createSignal } from 'solid-js'
+import { Component, ComponentProps, createSignal } from 'solid-js'
 
 import bbishop from '~/assets/pieces/bBishop.svg'
 import bking from '~/assets/pieces/bKing.svg'
@@ -83,7 +83,7 @@ export async function getPiece(piece: GL.ColoredPiece, size?: number) {
 		return pieceCache.get(key)!
 	}
 
-	return await loadPiece(key as keyof typeof pieceSvgs, size)
+	return await loadPiece(key as keyof typeof pieceSvgs)
 }
 
 export function getCachedPiece(piece: GL.ColoredPiece) {

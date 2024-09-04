@@ -28,7 +28,7 @@ export class StockfishBot implements Bot {
 
 	constructor(
 		private difficulty: number,
-		private gameConfig
+		private gameConfig: GL.GameConfig
 	) {
 		;[this.engineReady, this.setEngineReady] = createSignal(false)
 	}
