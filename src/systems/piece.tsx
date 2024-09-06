@@ -35,8 +35,6 @@ const pieceSvgs = {
 
 export const pieceCache = new Map<string, HTMLImageElement>()
 
-export const [squareSize, setSquareSize] = createSignal(32)
-
 // so we can subscribe to when the pieces are updated
 export const [pieceChangedEpoch, setPiecedChangedEpoch] = createSignal(0)
 export const [initialized, setInitialized] = createSignal(false)

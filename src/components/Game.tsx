@@ -38,7 +38,6 @@ import * as Audio from '~/systems/audio.ts'
 import * as G from '~/systems/game/game.ts'
 import * as GL from '~/systems/game/gameLogic.ts'
 import * as Pieces from '~/systems/piece.tsx'
-import { setSquareSize } from '~/systems/piece.tsx'
 import * as P from '~/systems/player.ts'
 
 import styles from './Game.module.css'
@@ -72,7 +71,7 @@ export default function Game() {
 		onCleanup(() => {
 			boardRef && unobserve(boardRef)
 		})
-		function handleObserverCallback(entries: ResizeObserverEntry[]) {
+		function handleObserverCallback(_: ResizeObserverEntry[]) {
 			const navbarElt = document.getElementById('navbar')
 			if (!navbarElt) throw new Error('Unable to locate navar at id #navbar')
 
@@ -97,7 +96,7 @@ export default function Game() {
 		}
 	}
 
-	const squareSize = Pieces.squareSize
+	const [squareSize, setSquareSize] = createSignal(32)
 
 	//#endregion
 
