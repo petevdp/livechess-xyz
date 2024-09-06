@@ -3,7 +3,7 @@ import { Match, ParentProps, Switch } from 'solid-js'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog.tsx'
 import * as GL from '~/systems/game/gameLogic.ts'
 
-import styles from './Dialog.module.scss'
+import styles from './AboutDialog.module.scss'
 
 function DuckChess() {
 	return (

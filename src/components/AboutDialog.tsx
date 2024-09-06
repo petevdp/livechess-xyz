@@ -2,7 +2,7 @@ import * as Svgs from '~/components/Svgs.tsx'
 import { Button } from '~/components/ui/button.tsx'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '~/components/ui/dialog.tsx'
 
-import styles from './Dialog.module.scss'
+import styles from './AboutDialog.module.scss'
 
 export function AboutDialog() {
 	return (
