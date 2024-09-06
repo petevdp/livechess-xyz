@@ -177,11 +177,14 @@ export class Game {
 	private boardWithCurrentMove = unit as unknown as Accessor<null | GL.Board>
 	setBoardWithCurrentMove = unit as (board: null | GL.Board) => void
 	private _candidateMovesForSelected = unit as unknown as Accessor<any[] | GL.CandidateMove[]>
+	lastSubmittedMoveValid = unit as unknown as Accessor<boolean>
+	setLastSubmittedMoveValid = unit as unknown as (moveIndex: boolean) => void
 
 	setupMoveSelectionAndValidation() {
 		;[this.currentMove, this.setCurrentMove] = createSignal(null as null | GL.SelectedMove)
 		;[this.boardWithCurrentMove, this.setBoardWithCurrentMove] = createSignal(null as null | GL.Board)
 		;[this.placingDuck, this.setPlacingDuck] = createSignal(false)
+		;[this.lastSubmittedMoveValid, this.setLastSubmittedMoveValid] = createSignal(false)
 
 		this._candidateMovesForSelected = () => {
 			const currentMove = this.currentMove()
@@ -238,7 +241,11 @@ export class Game {
 		if (move) this.setCurrentMove(move)
 		if (this.outcome || !this.currentMove) return { type: 'invalid' }
 		const currentMove = this.currentMove()!
-		const getResult = () => GL.validateAndPlayMove(currentMove, this.stateSignal(), this.gameConfig.variant)
+		const getResult = () => {
+			const result = GL.validateAndPlayMove(currentMove, this.stateSignal(), this.gameConfig.variant)
+			this.setLastSubmittedMoveValid(!!result)
+			return result
+		}
 
 		if (this.currentMoveAmbiguity) {
 			const result = getResult()
