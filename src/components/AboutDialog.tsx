@@ -16,8 +16,8 @@ export function AboutDialog() {
 				<DialogHeader>
 					<DialogTitle>About</DialogTitle>
 					<DialogDescription>
-						<a href="https://github.com/petevdp/livechess-xyz">
-							<Svgs.Github />
+						<a class="link" href="https://github.com/petevdp/livechess-xyz">
+							https://github.com/petevdp/livechess-xyz
 						</a>
 					</DialogDescription>
 				</DialogHeader>
@@ -25,12 +25,10 @@ export function AboutDialog() {
 					<p>livechess.xyz is a free and open-source chess site.</p>
 					<p>The goal is to provide a convenient way to play chess with your friends without requiring sign-ups or accounts of any kind.</p>
 					<p>Just paste a link or have your friend scan a QR code and you're ready to play.</p>
-					<p>
-						If you have any questions, concerns bug reports or feature requests please create an issue here:
-						<a class="link" href={'https://github.com/petevdp/livechess-xyz/issues'}>
-							https://github.com/petevdp/livechess-xyz/issues
-						</a>
-					</p>
+					<p>If you have any questions, concerns bug reports or feature requests please create an issue here:</p>
+					<a class="link" href={'https://github.com/petevdp/livechess-xyz/issues'}>
+						https://github.com/petevdp/livechess-xyz/issues
+					</a>
 				</div>
 			</DialogContent>
 		</Dialog>
