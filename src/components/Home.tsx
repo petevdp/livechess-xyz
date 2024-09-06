@@ -20,9 +20,9 @@ export function Home() {
 	return (
 		<AppContainer>
 			<ScreenFittingContent class="grid place-items-center">
-				<Card class="h-min w-80">
+				<Card class="h-min w-fit">
 					<CardHeader>
-						<CardTitle>
+						<CardTitle class="scroll-m-20 border-b pb-2 text-3xl font-semibold tracking-tight first:mt-0">
 							Welcome to{' '}
 							<a href="/" class="text-primary underline">
 								livechess.xyz

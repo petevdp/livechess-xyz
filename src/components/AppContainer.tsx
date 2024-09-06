@@ -24,16 +24,16 @@ export function AppContainer(props: ParentProps) {
 				<A href="/" class="inline-flex p-1 h-10 w-10 items-center justify-center">
 					<Svgs.Logo />
 				</A>
-				<div class={`${styles.controls} p-[0.25rem] pb-[.5rem] flex flex-col items-center wc:flex-row-reverse`}>
-					<div class="flex items-center justify-end space-x-1 font-light">
-						<Show when={R.room() && !R.room()!.isPlayerParticipating}>Spectating</Show>
-					</div>
+				<div class={`${styles.controls} p-[0.25rem] pb-[.5rem] flex flex-col items-center wc:flex-row`}>
 					<Button size="icon" variant="ghost" onclick={() => (P.settings.muteAudio = !P.settings.muteAudio)}>
 						{P.settings.muteAudio ? <Svgs.Muted /> : <Svgs.NotMuted />}
 					</Button>
 					<ThemeToggle />
 					<SettingsDialog />
 					<AboutDialog />
+					<div class="flex items-center justify-end space-x-1 font-light">
+						<Show when={R.room() && !R.room()!.isPlayerParticipating}>Spectating</Show>
+					</div>
 				</div>
 			</nav>
 			<Switch>

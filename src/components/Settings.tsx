@@ -52,27 +52,26 @@ export function SettingsDialog() {
 				</DialogHeader>
 				{/*set tabindex so we don't automatically focus the nickname, opening the keyboard on mobile devices*/}
 				<div tabindex={0} class="grid gap-4 py-4">
-					<div class="flex w-full items-center justify-between space-x-2">
-						<form
-							onSubmit={(e) => {
-								e.preventDefault()
-							}}
-							ref={nickFormRef}
-						>
-							<Label for="nickname">Nickname</Label>
-							<Show when={P.settings.name !== null || R.room()}>
-								<Input
-									required={true}
-									pattern="[a-zA-Z0-9 ]+"
-									min={3}
-									name="nickname"
-									id="nickname"
-									value={nickname()}
-									oninput={(e) => setNickname(e.target.value)}
-								/>
-							</Show>
-						</form>
-					</div>
+					<form
+						onSubmit={(e) => {
+							e.preventDefault()
+						}}
+						ref={nickFormRef}
+						class="flex items-center space-x-4 w-full"
+					>
+						<Label for="nickname">Nickname</Label>
+						<Show when={P.settings.name !== null || R.room()}>
+							<Input
+								required={true}
+								pattern="[a-zA-Z0-9 ]+"
+								min={3}
+								name="nickname"
+								id="nickname"
+								value={nickname()}
+								oninput={(e) => setNickname(e.target.value)}
+							/>
+						</Show>
+					</form>
 					<div>
 						<Switch
 							// label="Show Available Moves"

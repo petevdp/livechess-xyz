@@ -9,7 +9,7 @@ import animals from '~/assets/names_dictionary/animals.ts'
 import NotFound from '~/components/NotFound.tsx'
 import { Button } from '~/components/ui/button.tsx'
 import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card.tsx'
-import { Checkbox } from '~/components/ui/checkbox.tsx'
+import { Checkbox, CheckboxControl, CheckboxLabel } from '~/components/ui/checkbox.tsx'
 import { Input } from '~/components/ui/input.tsx'
 import { Label } from '~/components/ui/label.tsx'
 import * as Errors from '~/systems/errors.ts'
@@ -171,18 +171,17 @@ export function PlayerForm(props: PlayerFormProps) {
 							pattern={'[a-zA-Z0-9 ]+'}
 							oninput={(e) => setDisplayName(e.target.value.trim())}
 						/>
+						<Show when={props.numPlayers < 2}>
+							<Checkbox
+								class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 flex items-center space-x-1"
+								checked={isSpectating()}
+								onChange={() => setIsSpectating((is) => !is)}
+							>
+								<CheckboxControl />
+								<CheckboxLabel>Join as Spectator</CheckboxLabel>
+							</Checkbox>
+						</Show>
 						<div class="flex justify-between space-x-3">
-							<Show when={props.numPlayers < 2}>
-								<div class="flex items-center space-x-1">
-									<Checkbox
-										class="space-x-0"
-										id="spectating-checkbox"
-										checked={isSpectating()}
-										onChange={() => setIsSpectating((is) => !is)}
-									/>
-									<Label for="spectating-checkbox-input">Spectate</Label>
-								</div>
-							</Show>
 							<Button class="flex-1" type="submit" value="Submit">
 								Join
 							</Button>

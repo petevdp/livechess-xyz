@@ -708,17 +708,19 @@ function GameOutcomeDialog() {
 	})
 	return (
 		<Dialog open={open()} onOpenChange={setOpen}>
-			<DialogContent class="w-max">
+			<DialogContent class="w-min">
 				<DialogHeader>
-					<span class="mt-1">{showGameOutcome(game.outcome!)[0]}</span>
+					<DialogTitle>{showGameOutcome(game.outcome!)[0]}</DialogTitle>
 				</DialogHeader>
-				<DialogDescription>{showGameOutcome(game.outcome!)[1]}</DialogDescription>
-				<div class="flex justify-center space-x-1">
-					<Button onclick={() => game.gameContext.configureNewGame()}>New Game</Button>
-					<Button variant="secondary" onclick={() => setOpen(false)}>
-						Continue
-					</Button>
-				</div>
+				<DialogFooter>
+					<DialogDescription>{showGameOutcome(game.outcome!)[1]}</DialogDescription>
+					<div class="flex justify-center space-x-1">
+						<Button onclick={() => game.gameContext.configureNewGame()}>New Game</Button>
+						<Button variant="secondary" onclick={() => setOpen(false)}>
+							Continue
+						</Button>
+					</div>
+				</DialogFooter>
 			</DialogContent>
 		</Dialog>
 	)
@@ -846,13 +848,17 @@ function ResignButton() {
 				</Button>
 			</DialogTrigger>
 			<DialogContent>
-				<DialogTitle>Confirm Resignation</DialogTitle>
-				<DialogDescription>Are you sure you want to resign?</DialogDescription>
+				<DialogHeader>
+					<DialogTitle>Confirm Resignation</DialogTitle>
+				</DialogHeader>
 				<DialogFooter>
-					<Button variant="secondary" onClick={() => setOpen(false)}>
-						Cancel
-					</Button>
-					<Button onClick={() => game.resign()}>Resign</Button>
+					<DialogDescription>Are you sure you want to resign?</DialogDescription>
+					<div class="flex space-x-1">
+						<Button variant="secondary" onClick={() => setOpen(false)}>
+							Cancel
+						</Button>
+						<Button onClick={() => game.resign()}>Resign</Button>
+					</div>
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>
