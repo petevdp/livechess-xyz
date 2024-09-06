@@ -96,6 +96,7 @@ export interface SharedStore<State extends object, CCS extends ClientControlledS
 		numRetries?: number
 	): Promise<boolean>
 
+	rollbackEvent$: Observable<Event>
 	event$: Observable<Event>
 	initialized: Accessor<boolean>
 	config: Accessor<ClientConfig<State, CCS> | null>

@@ -73,9 +73,15 @@ export default function Game() {
 			boardRef && unobserve(boardRef)
 		})
 		function handleObserverCallback(entries: ResizeObserverEntry[]) {
-			const entry = entries[0]
-			if (!entry) return
-			const size = isPortrait() ? window.innerWidth - 30 : Math.min(entry.contentRect.width, entry.contentRect.height)
+			const navbarElt = document.getElementById('navbar')
+			if (!navbarElt) throw new Error('Unable to locate navar at id #navbar')
+
+			const baseOffset = 30
+			let minHeight = isPortrait() ? window.innerHeight - navbarElt.clientHeight - 150 : window.innerHeight - 80
+			let minWidth = isPortrait() ? window.innerWidth : window.innerWidth - navbarElt.clientWidth - 450
+			minHeight -= baseOffset
+			minWidth -= baseOffset
+			const size = Math.min(minWidth, minHeight)
 			const adjustedSize = size * window.devicePixelRatio
 			batch(() => {
 				setBoardSize(adjustedSize)
@@ -660,7 +666,7 @@ export default function Game() {
 				timeControl={game.gameConfig.timeControl}
 				color={game.topPlayer.color}
 			/>
-			<CapturedPieces />
+			<CapturedPieces class={styles.capturedPiecesContainer} />
 			<div class={`${styles.board} grid place-items-center`} ref={boardRef}>
 				<div>
 					<span>{boardCanvas}</span>
@@ -960,10 +966,10 @@ function MoveNav(props: MoveNavProps) {
 }
 
 //#region captured pieces
-export function CapturedPieces() {
+export function CapturedPieces(props: { class: string }) {
 	const game = G.game()!
 	return (
-		<div class={cn(styles.capturedPiecesContainer, 'flex flex-col wc:flex-row justify-between space-y-1 wc:space-y-0 wc:space-x-1')}>
+		<div class={cn(props.class, 'flex flex-col wc:flex-row justify-between space-y-1 wc:space-y-0 wc:space-x-1')}>
 			<CapturedPiecesForColor pieces={game.capturedPieces(game.bottomPlayer.color)} capturedBy={'top-player'} />
 			<CapturedPiecesForColor pieces={game.capturedPieces(game.topPlayer.color)} capturedBy={'bottom-player'} />
 		</div>
