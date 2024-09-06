@@ -1,5 +1,5 @@
 import { ColorMode, ColorModeProvider, ColorModeScript } from '@kobalte/core'
-import { Route, Router } from '@solidjs/router'
+import { Route, Router, useNavigate } from '@solidjs/router'
 import { ErrorBoundary, JSXElement, Show, Suspense, createEffect, createSignal, lazy, onMount } from 'solid-js'
 import { Toaster } from 'solid-toast'
 
@@ -64,6 +64,18 @@ function App() {
 			>
 				<Router>
 					<Route path="/" component={ErrorHandled(Home)} />
+					<Route
+						path="/rooms/new"
+						component={ErrorHandled(() => {
+							const navigate = useNavigate()
+							onMount(async () => {
+								const { createRoom } = await import('~/systems/room.ts')
+								const res = await createRoom()
+								navigate(`/rooms/${res.networkId}`)
+							})
+							return <Spinner />
+						})}
+					/>
 					<Route
 						path="/rooms/:id"
 						component={ErrorHandled(() => (

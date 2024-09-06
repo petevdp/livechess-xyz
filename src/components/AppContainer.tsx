@@ -5,7 +5,7 @@ import { ComponentProps, Match, ParentProps, Show, Switch, splitProps } from 'so
 import { AboutDialog } from '~/components/AboutDialog.tsx'
 import { SettingsDialog } from '~/components/Settings.tsx'
 import { Spinner } from '~/components/Spinner.tsx'
-import { Button } from '~/components/ui/button.tsx'
+import { Button, buttonVariants } from '~/components/ui/button.tsx'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '~/components/ui/dropdown-menu.tsx'
 import { cn } from '~/lib/utils.ts'
 import * as GlobalLoading from '~/systems/globalLoading.ts'
@@ -21,7 +21,7 @@ export function AppContainer(props: ParentProps) {
 		<div class={`w-full h-full flex wc:flex-col min-h-0`}>
 			{/* include id so we can do precise height calculations against the navbar for the board */}
 			<nav id="navbar" class={`${styles.nav} p-[0.25rem] pb-[.5rem] flex flex-col wc:flex-row items-center wc:justify-between`}>
-				<A href="/" class="inline-flex p-1 h-10 w-10 items-center justify-center">
+				<A href="/" class={buttonVariants({ variant: 'ghost', size: 'icon' })}>
 					<Svgs.Logo />
 				</A>
 				<div class={`${styles.controls} p-[0.25rem] pb-[.5rem] flex flex-col items-center wc:flex-row`}>

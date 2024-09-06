@@ -34,9 +34,9 @@ export function Home() {
 						<p>Play chess with your friends, on desktop or mobile.</p>
 					</CardContent>
 					<CardFooter class="space-x-1">
-						<Button variant="default" onclick={createRoom}>
-							Host New Game
-						</Button>
+						<a href="/rooms/new" class={buttonVariants({ variant: 'default' })}>
+							Join Game
+						</a>
 						<a href="/bot" class={buttonVariants({ variant: 'secondary' })}>
 							Play vs Bot
 						</a>

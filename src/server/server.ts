@@ -119,21 +119,15 @@ server.head('/api/networks/:networkId', (req, res) => {
 	}
 })
 
-server.get('/rooms/:networkId', (_, res) => {
-	// serve index.html
+function getHtmlResponse(_: unknown, res: any) {
 	return res
 		.sendFile('index.html')
 		.header('Cross-Origin-Opener-Policy', 'same-origin')
 		.header('Cross-Origin-Embedder-Policy', 'require-corp')
-})
+}
 
-server.get('/bot', (_, res) => {
-	// serve index.html
-	return res
-		.sendFile('index.html')
-		.header('Cross-Origin-Opener-Policy', 'same-origin')
-		.header('Cross-Origin-Embedder-Policy', 'require-corp')
-})
+server.get('/rooms/:networkId', getHtmlResponse)
+server.get('/bot', getHtmlResponse)
 
 server.get('/api/qrcodes/:filename', async (req, res) => {
 	//@ts-expect-error
