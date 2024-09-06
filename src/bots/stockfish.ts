@@ -7,7 +7,9 @@ import * as GL from '~/systems/game/gameLogic.ts'
 import { SelectedMove } from '~/systems/game/gameLogic.ts'
 import { type Bot } from '~/systems/vsBot.ts'
 import { loadScript } from '~/utils/loadScript.ts'
+import { sleep } from '~/utils/time'
 
+// UCI protocol: https://www.wbec-ridderkerk.nl/html/UCIProtocol.html
 type UCIFromEngineMsg =
 	| {
 			type: 'uciok'
@@ -28,7 +30,7 @@ export class StockfishBot implements Bot {
 
 	constructor(
 		private difficulty: number,
-		private gameConfig: GL.GameConfig
+		private gameConfig: GL.ParsedGameConfig
 	) {
 		;[this.engineReady, this.setEngineReady] = createSignal(false)
 	}
@@ -48,7 +50,15 @@ export class StockfishBot implements Bot {
 	}
 
 	get depth() {
-		return Math.floor(this.difficulty / 4) + 15
+		if (this.difficulty < 5) return 1
+		if (this.difficulty < 10) return 2
+		if (this.difficulty < 15) return 3
+		return null
+	}
+
+	// make it seem like bot is actually thinking about the responses
+	get artificialMinResponseTime() {
+		return 750
 	}
 
 	async initialize() {
@@ -106,14 +116,17 @@ export class StockfishBot implements Bot {
 
 	async makeMove(state: GL.GameState, clock?: G.Game['clock']): Promise<GL.SelectedMove> {
 		await until(this.engineReady)
+		const minResponsePromise = sleep(this.artificialMinResponseTime)
 		let serializedMoves = ''
 		for (const m of state.moveHistory) {
 			serializedMoves += ' ' + toLongForm(m)
 		}
 		this.postMessage(`position startpos moves${serializedMoves}`)
-		let msg = `go depth ${this.depth}`
+		let msg = 'go'
+		if (this.depth !== null) msg += ` depth ${this.depth}`
+
 		if (clock) {
-			const increment = parseInt(this.gameConfig.increment) * 1000
+			const increment = this.gameConfig.increment
 			msg += ` wtime ${clock.white} btime ${clock.black} winc ${increment} binc ${increment}`
 		}
 		this.postMessage(msg)
@@ -123,6 +136,7 @@ export class StockfishBot implements Bot {
 				endWith(null)
 			)
 		)
+		await minResponsePromise
 		if (!res) throw new Error('No move received')
 		return res.move
 	}

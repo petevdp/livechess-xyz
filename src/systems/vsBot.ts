@@ -3,6 +3,7 @@ import { createEffect, createSignal, getOwner, on, onCleanup, runWithOwner } fro
 
 // import { RandomBot } from '~/bots/randomBot.ts'
 import { StockfishBot } from '~/bots/stockfish.ts'
+import { Logo } from '~/components/Svgs.tsx'
 import * as SS from '~/sharedStore/sharedStore.ts'
 import { unit } from '~/utils/unit.ts'
 
@@ -115,12 +116,11 @@ export function setupVsBot() {
 	)
 
 	createEffect(() => {
-		on(
-			() => store.lockstepState.gameConfig.bot!.difficulty,
-			() => {
-				void bot.setDifficulty(store.lockstepState.gameConfig.bot!.difficulty)
-			}
-		)
+		if (store.lockstepState.gameConfig.bot!.difficulty === undefined) {
+			console.error('Bot difficulty is undefined')
+			return
+		}
+		void bot.setDifficulty(store.lockstepState.gameConfig.bot!.difficulty)
 	})
 }
 

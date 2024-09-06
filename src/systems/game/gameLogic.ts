@@ -1076,10 +1076,14 @@ export function timeControlToMs(timeControl: TimeControl) {
 	return minutes * 60 * 1000
 }
 
+export function incrementToMs(increment: Increment) {
+	return parseInt(increment) * 1000
+}
+
 export function parseGameConfig(config: GameConfig): ParsedGameConfig {
 	if (config.timeControl !== 'unlimited') {
 		const timeControl = timeControlToMs(config.timeControl)
-		const increment = parseFloat(config.increment) * 1000
+		const increment = incrementToMs(config.increment)
 		return {
 			variant: config.variant,
 			timeControl,

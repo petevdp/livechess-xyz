@@ -151,14 +151,20 @@ export function GameConfig(props: { ctx: G.GameConfigContext }) {
 	return (
 		<div class="flex flex-col gap-y-1">
 			<Show when={props.ctx.vsBot}>
-				<div class="flex items-center space-x-2">
+				<div class="flex items-center space-x-2 mx-auto">
 					<Label>Difficulty (1-20)</Label>
-					<NumberField class="w-36" minValue={0} maxValue={20}>
+					<NumberField
+						class="w-36"
+						minValue={1}
+						maxValue={20}
+						onRawValueChange={(value) => {
+							props.ctx.setGameConfig({ bot: { difficulty: value } })
+						}}
+						validationState={!isNaN(props.ctx.gameConfig.bot!.difficulty) ? 'valid' : 'invalid'}
+						rawValue={props.ctx.gameConfig.bot!.difficulty}
+					>
 						<div class="relative">
-							<NumberFieldInput
-								value={props.ctx.gameConfig.bot?.difficulty}
-								onChange={(e) => props.ctx.setGameConfig({ bot: { difficulty: parseInt(e.currentTarget.value) } })}
-							/>
+							<NumberFieldInput />
 							<NumberFieldIncrementTrigger />
 							<NumberFieldDecrementTrigger />
 						</div>
