@@ -1,5 +1,4 @@
 /* @refresh reload */
-import 'console.ts'
 import 'solid-devtools'
 import { render } from 'solid-js/web'
 
