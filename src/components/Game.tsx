@@ -39,8 +39,6 @@ import * as G from '~/systems/game/game.ts'
 import * as GL from '~/systems/game/gameLogic.ts'
 import * as Pieces from '~/systems/piece.tsx'
 import * as P from '~/systems/player.ts'
-import { deepClone } from '~/utils/obj.ts'
-import { SpriteRenderEngine, SpriteRenderEngineConfig } from '~/utils/spriteRenderEngine.ts'
 
 import styles from './Game.module.css'
 import { Button } from './ui/button.tsx'
@@ -188,26 +186,9 @@ export default function Game() {
 	//#endregion
 
 	//#region render pieces
-	let moveIndex = game.state.moveHistory.length - 1 // may be -1 if there are no moves on the board
-	const config: SpriteRenderEngineConfig = {
-    spriteTypes: {
-      piece: {
-        draw({ctx, args, globalArgs, sprite }) {
-
-        }
-      }
-    },
-  }
-	type PieceGlobalArgs
-  const pieceRenderEngine = new SpriteRenderEngine({ spriteTypes: {} }, piecesCanvas.getContext('2d')!)
-	function returnBoardToLive() {
-	}
-
-	let renderedBoardView: G.BoardView = deepClone(game.currentBoardView)
-	const pieceRenderEngine = new SpriteRenderEngine({})
 	createEffect(() => {
 		if (!Pieces.initialized()) return
-		const args: RenderPiecesArgs = {
+		const args: RenderPiecesState = {
 			squareSize: squareSize(),
 			boardFlipped: boardFlipped(),
 			shouldHideNonVisible: game.gameConfig.variant === 'fog-of-war' && !game.outcome,
@@ -1076,7 +1057,7 @@ function renderBoard(args: RenderBoardArgs) {
 	}
 }
 
-type RenderPiecesArgs = {
+type RenderPiecesState = {
 	context: CanvasRenderingContext2D
 	shouldHideNonVisible: boolean
 	squareSize: number
@@ -1087,9 +1068,15 @@ type RenderPiecesArgs = {
 		y: number
 	} | null
 	activePieceSquare: string | null
+	animation?: {
+		frame: number
+		duration: number
+		boardBefore: GL.Board
+		mutations: { to: string; from: string }[]
+	}
 }
 
-function renderPieces(args: RenderPiecesArgs) {
+function renderPieces(args: RenderPiecesState) {
 	const ctx = args.context
 	for (const [square, piece] of Object.entries(args.boardView.board.pieces)) {
 		if (
@@ -1105,6 +1092,26 @@ function renderPieces(args: RenderPiecesArgs) {
 			x = 7 - x
 			y = 7 - y
 		}
+
+		if (args.animation) {
+			const mutationStart = args.animation.mutations.find((m) => m.from === square)
+			// piece is part
+			if (mutationStart) {
+				const from = GL.coordsFromNotation(mutationStart.from)
+				const to = GL.coordsFromNotation(mutationStart.to)
+
+				const distanceX = (to.x - from.x) * args.squareSize
+				const distanceY = (to.y - from.y) * args.squareSize
+
+				const stepX = distanceX / args.animation.duration
+				const stepY = distanceY / args.animation.duration
+
+				x = from.x * args.squareSize + stepX * args.animation.frame
+				y = from.y * args.squareSize + stepY * args.animation.frame
+			}
+			const mutationEnd = args.animation.mutations.find((m) => m.to === square)
+		}
+
 		ctx.drawImage(Pieces.getCachedPiece(piece), x * args.squareSize, y * args.squareSize, args.squareSize, args.squareSize)
 	}
 }
@@ -1284,8 +1291,6 @@ function checkPastWarnThreshold(timeControl: GL.TimeControl, clock: number) {
 			return clock < 1000 * 60 * 2
 	}
 }
-
-function getPieceSpriteRenderConfig() {}
 
 //#endregion helpers
 
