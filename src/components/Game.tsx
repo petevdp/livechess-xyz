@@ -39,6 +39,8 @@ import * as G from '~/systems/game/game.ts'
 import * as GL from '~/systems/game/gameLogic.ts'
 import * as Pieces from '~/systems/piece.tsx'
 import * as P from '~/systems/player.ts'
+import { deepClone } from '~/utils/obj.ts'
+import { SpriteRenderEngine, SpriteRenderEngineConfig } from '~/utils/spriteRenderEngine.ts'
 
 import styles from './Game.module.css'
 import { Button } from './ui/button.tsx'
@@ -186,6 +188,23 @@ export default function Game() {
 	//#endregion
 
 	//#region render pieces
+	let moveIndex = game.state.moveHistory.length - 1 // may be -1 if there are no moves on the board
+	const config: SpriteRenderEngineConfig = {
+    spriteTypes: {
+      piece: {
+        draw({ctx, args, globalArgs, sprite }) {
+
+        }
+      }
+    },
+  }
+	type PieceGlobalArgs
+  const pieceRenderEngine = new SpriteRenderEngine({ spriteTypes: {} }, piecesCanvas.getContext('2d')!)
+	function returnBoardToLive() {
+	}
+
+	let renderedBoardView: G.BoardView = deepClone(game.currentBoardView)
+	const pieceRenderEngine = new SpriteRenderEngine({})
 	createEffect(() => {
 		if (!Pieces.initialized()) return
 		const args: RenderPiecesArgs = {
@@ -1265,6 +1284,8 @@ function checkPastWarnThreshold(timeControl: GL.TimeControl, clock: number) {
 			return clock < 1000 * 60 * 2
 	}
 }
+
+function getPieceSpriteRenderConfig() {}
 
 //#endregion helpers
 

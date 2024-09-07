@@ -2,8 +2,15 @@ import { Subject, filter, firstValueFrom, map } from 'rxjs'
 
 import { OneToManyMap, otmAdd } from './oneToManyMap'
 
+type SpriteRenderContext = {
+	ctx: CanvasRenderingContext2D
+	sprite: Sprite
+	args?: any
+	globalArgs?: any
+}
+
 export type SpriteTemplate = {
-	draw(ctx: CanvasRenderingContext2D, sprite: Sprite, args?: any): void
+	draw(ctx: SpriteRenderContext): void
 }
 
 export type SpriteRenderEngineConfig = {
@@ -34,6 +41,7 @@ export type EngineEvent = {
 }
 export class SpriteRenderEngine<S extends Sprite = Sprite> {
 	sprites: [string, S][] = []
+	spriteGlobalArgs: Map<string, any> = new Map()
 	zIndexMap = new Map() as OneToManyMap<number, number>
 	frame = 0n
 	animsRunning = 0
@@ -141,6 +149,16 @@ export class SpriteRenderEngine<S extends Sprite = Sprite> {
 		sprite.y = dest.y
 		this.draw()
 		return true
+	}
+
+	async cancelAllAnimations() {
+		for (let i = 0; i < this.sprites.length; i++) {
+			const [_, sprite] = this.sprites[i]
+			if (sprite.moveAnimation) {
+				delete sprite.moveAnimation
+				this.event$.next({ type: 'animation-cancelled', spriteIndex: i })
+			}
+		}
 	}
 
 	async moveAnimated(index: number, dest: Coords, durationFrames: number) {

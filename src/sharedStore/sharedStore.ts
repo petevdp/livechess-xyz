@@ -96,7 +96,14 @@ export interface SharedStore<State extends object, CCS extends ClientControlledS
 		numRetries?: number
 	): Promise<boolean>
 
+	/**
+	 * listen to events fired after a transaction is fully committed
+	 */
 	event$: Observable<Event>
+	/**
+	 * listen to events fired before a transaction is committed
+	 */
+	rollbackEvent$: Observable<Event>
 	initialized: Accessor<boolean>
 	config: Accessor<ClientConfig<State, CCS> | null>
 	lastMutationIndex: number
@@ -331,6 +338,7 @@ export function initLeaderStore<State extends object, CCS extends ClientControll
 		lockstepState: store,
 		rollbackState: store,
 		event$,
+		rollbackEvent$: event$,
 		config: () => config,
 		clientControlled: clientControlled,
 		get lastMutationIndex() {
@@ -475,13 +483,14 @@ export function initFollowerStore<State extends object, CCS extends ClientContro
 
 	//#region actions
 	const event$ = new Subject<Event>()
+	const rollbackEvent$ = new Subject<Event>()
 	subscription.add(event$)
+	subscription.add(rollbackEvent$)
 	subscription.add(
 		event$.subscribe((action) => {
 			console.debug(`dispatching action: ${action}`)
 		})
 	)
-
 	//#endregion
 
 	//#region outgoing transactions
@@ -529,6 +538,9 @@ export function initFollowerStore<State extends object, CCS extends ClientContro
 		}
 		transport.send(message)
 
+		for (const event of transaction.events) {
+			rollbackEvent$.next(event)
+		}
 		batch(() => {
 			applyMutationsToStore(newTransaction.mutations, setRollbackStore, rollbackStore)
 		})
@@ -659,6 +671,7 @@ export function initFollowerStore<State extends object, CCS extends ClientContro
 		config,
 		initialized,
 		event$,
+		rollbackEvent$,
 		get lastMutationIndex() {
 			return nextAtomId - 1
 		},

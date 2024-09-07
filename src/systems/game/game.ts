@@ -13,7 +13,6 @@ import { unit } from '~/utils/unit.ts'
 
 import * as P from '../player.ts'
 import * as GL from './gameLogic.ts'
-import { Color } from './gameLogic.ts'
 
 //#region types
 export type PlayerWithColor = P.Player & { color: GL.Color }
@@ -66,6 +65,18 @@ export type GameParticipant = {
 	id: string
 	color: GL.Color
 }
+
+export type BoardViewEvent =
+	| {
+			type: 'return-to-live'
+	  }
+	| {
+			type: 'load-move'
+			move: GL.Move
+	  }
+	| {
+			type: 'flip-board'
+	  }
 
 export type GameParticipantWithDetails = GameParticipant & { name: string }
 
@@ -767,7 +778,7 @@ function useClock(move$: Observable<GL.Move>, gameConfig: GL.ParsedGameConfig, g
 
 export function getDrawIsOfferedBy(offers: RootGameState['drawOffers']) {
 	for (const [color, draw] of Object.entries(offers)) {
-		if (draw !== null) return color as Color
+		if (draw !== null) return color as GL.Color
 	}
 	return null
 }
