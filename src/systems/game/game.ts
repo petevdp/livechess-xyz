@@ -287,23 +287,39 @@ export class Game {
 		this.setCurrentMove(null)
 		this.setPlacingDuck(false)
 		this.setBoardWithCurrentMove(null)
-		const [acceptedMove, setAcceptedMove] = createSignal(null as null | GL.Move)
+		const [acceptedMove, setAcceptedMove] = createSignal(null as null | GL.Move | false)
 		void this.gameContext.sharedStore.setStoreWithRetries(() => {
-			if (!this.isActiveGame) return
+			if (!this.isActiveGame) {
+				setAcceptedMove(false)
+				return
+			}
 			const state = unwrap(this.state)
-			if (this.viewedMoveIndex() !== state.moveHistory.length - 1 || this.outcome) return
+			if (this.viewedMoveIndex() !== state.moveHistory.length - 1 || this.outcome) {
+				setAcceptedMove(false)
+				return
+			}
 			// check that we're still on the same currentMove
-			if (this.state.moveHistory.length !== expectedMoveIndex) return
+			if (this.state.moveHistory.length !== expectedMoveIndex) {
+				setAcceptedMove(false)
+				return
+			}
 			const board = GL.getBoard(state)
-			if (!GL.isPlayerTurn(board, this.bottomPlayer.color) || !board.pieces[currentMove.from]) return
+			if (!GL.isPlayerTurn(board, this.bottomPlayer.color) || !board.pieces[currentMove.from]) {
+				setAcceptedMove(false)
+				return
+			}
 			const result = GL.validateAndPlayMove(currentMove, state, this.gameConfig.variant)
 			if (!result) {
+				setAcceptedMove(false)
 				return
 			}
 			setAcceptedMove(result.move)
 			return this.getMoveTransaction(result, state, this.bottomPlayer.id)
 		})
-		return { type: 'accepted', move: await until(() => acceptedMove()) }
+
+		await until(() => acceptedMove() !== null)
+		if (acceptedMove()) return { type: 'accepted', move: acceptedMove() as GL.Move }
+		return { type: 'invalid' }
 	}
 
 	private getMoveTransaction(_result: ReturnType<typeof GL.validateAndPlayMove>, state: GL.GameState, playerId: string) {
