@@ -813,15 +813,17 @@ function ActionsPanel(props: { class: string; placingDuck: boolean }) {
 				<Match when={!game.outcome}>
 					<DrawHoverCard>
 						<span>
-							<Button
-								disabled={!!game.drawIsOfferedBy}
-								title="Offer Draw"
-								size="icon"
-								variant="ghost"
-								onclick={() => game.offerOrAcceptDraw()}
-							>
-								<Svgs.OfferDraw />
-							</Button>
+							<Show when={!game.gameConfig.bot}>
+								<Button
+									disabled={!!game.drawIsOfferedBy}
+									title="Offer Draw"
+									size="icon"
+									variant="ghost"
+									onclick={() => game.offerOrAcceptDraw()}
+								>
+									<Svgs.OfferDraw />
+								</Button>
+							</Show>
 							<ResignButton />
 						</span>
 					</DrawHoverCard>
