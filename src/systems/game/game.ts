@@ -18,9 +18,8 @@ import * as GL from './gameLogic.ts'
 export type PlayerWithColor = P.Player & { color: GL.Color }
 export type BoardView = {
 	board: GL.Board
-	inCheck: boolean
 	lastMove: GL.Move | null
-	visibleSquares: Set<string>
+	moveIndex: number
 }
 export const DRAW_EVENTS = ['draw-offered', 'draw-accepted', 'draw-declined', 'draw-canceled'] as const
 export type DrawEventType = (typeof DRAW_EVENTS)[number]
@@ -385,6 +384,9 @@ export class Game {
 	currentBoardView = {} as BoardView
 	private _setViewedMove = unit as unknown as (move: number | 'live') => void
 	viewedMoveIndex = unit as unknown as Accessor<number>
+	viewedBoardIndex() {
+		return this.viewedMoveIndex() - 1
+	}
 
 	setupBoardView() {
 		const [currentMove, setViewedMove] = createSignal<'live' | number>('live')

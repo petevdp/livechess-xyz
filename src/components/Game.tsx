@@ -1,5 +1,6 @@
 import { useColorMode } from '@kobalte/core'
 import { createMediaQuery } from '@solid-primitives/media'
+import { until } from '@solid-primitives/promise'
 import { makeResizeObserver } from '@solid-primitives/resize-observer'
 import deepEquals from 'fast-deep-equal'
 import { filter, first, from as rxFrom, skip } from 'rxjs'
@@ -39,6 +40,7 @@ import * as G from '~/systems/game/game.ts'
 import * as GL from '~/systems/game/gameLogic.ts'
 import * as Pieces from '~/systems/piece.tsx'
 import * as P from '~/systems/player.ts'
+import { DefaultMap } from '~/utils/defaultMap.ts'
 
 import styles from './Game.module.css'
 import { Button } from './ui/button.tsx'
@@ -46,9 +48,16 @@ import * as Modal from './utils/Modal.tsx'
 
 //TODO component duplicates on reload sometimes for some reason
 
+const [boardView, setBoardView] = createSignal(null as null | G.BoardView)
+
 export default function Game() {
 	console.log('game initial render')
 	const game = G.game()!
+	setBoardView({
+		board: game.board,
+		lastMove: game.state.moveHistory[game.state.moveHistory.length - 1],
+		moveIndex: game.state.moveHistory.length - 1,
+	})
 
 	//#region calc board sizes
 	// let BOARD_SIZE = 600
@@ -141,7 +150,6 @@ export default function Game() {
 			visibleSquares: game.currentBoardView.visibleSquares,
 			context: boardCanvas.getContext('2d')!,
 		}
-		Pieces.pieceChangedEpoch()
 		scaleAndReset(args.context)
 
 		untrack(() => {
@@ -176,7 +184,6 @@ export default function Game() {
 			context: highlightsCanvas.getContext('2d')!,
 		}
 		scaleAndReset(args.context)
-		Pieces.pieceChangedEpoch()
 
 		untrack(() => {
 			args.context.clearRect(0, 0, boardSize(), boardSize())
@@ -185,22 +192,102 @@ export default function Game() {
 	})
 	//#endregion
 
-	//#region render pieces
+	//#region render/animate pieces
+	let piecesState: RenderPiecesState = null as unknown as RenderPiecesState
+	// for when a new move is made on the live board while the user is viewing a past board
+	async function returnBoardToLive() {
+		if (game.viewedBoardIndex() === game.state.moveHistory.length) return
+		if (game.viewedBoardIndex() < 2) {
+			throw new Error("can't return to live with less than 2 moves on the board")
+		}
+		game.setViewedMove(game.state.moveHistory.length - 1)
+		const lastMove = game.state.moveHistory[game.state.moveHistory.length - 1]
+		await runAnimation({
+			boardBefore: game.currentBoardView.board,
+			duration: 30,
+			mutations: [{ from: lastMove.from, to: lastMove.to }],
+		})
+	}
+
+	async function morphToBoard(boardIndex: number) {
+		if (boardIndex === game.viewedBoardIndex()) return
+		if (boardIndex < 0 || boardIndex >= game.state.boardHistory.length) {
+			throw new Error(`invalid board index: ${boardIndex}`)
+		}
+		const boardBefore = game.state.boardHistory[game.viewedBoardIndex()].board
+		const boardAfter = game.state.boardHistory[boardIndex].board
+		const mutations: { from: string; to: string }[] = []
+		const availableStartingPieceCounts = new DefaultMap<string, string[]>(() => [])
+		const getPieceKey = (piece: GL.ColoredPiece) => `${piece.type}:${piece.color}`
+		for (const [square, piece] of Object.entries(boardBefore.pieces)) {
+			const key = getPieceKey(piece)
+			// square contains same piece, no need to move it
+			if (key === getPieceKey(boardAfter.pieces[square])) continue
+			const arr = availableStartingPieceCounts.get(key) || []
+			arr.push(square)
+			availableStartingPieceCounts.set(key, arr)
+		}
+
+		for (const [toSquare, piece] of Object.entries(boardAfter.pieces)) {
+			const key = getPieceKey(piece)
+			const squares = availableStartingPieceCounts.get(key)
+			if (!squares || squares.length === 0) continue
+			const fromSquare = squares.pop()!
+			mutations.push({ from: fromSquare, to: toSquare })
+		}
+		game.setViewedMove(boardIndex - 1)
+		runAnimation({
+			boardBefore,
+			duration: 30,
+			mutations,
+		})
+	}
+
+	const [pieceAnimationDone, setPieceAnimationDone] = createSignal(false)
+	async function runAnimation(args: PieceAnimationArgs) {
+		if (game.gameConfig.variant === 'fog-of-war') {
+			console.error('animations not supported in fog-of-war variant')
+			return
+		}
+		const animationAlreadyRunning = !!piecesState.animation
+		piecesState.animation = {
+			...args,
+			currentFrame: 0,
+		}
+
+		// just highjack the existing animation loop if it's already running
+		if (animationAlreadyRunning) return
+		;(function runInner() {
+			if (piecesState.animation.currentFrame >= piecesState.animation.duration) {
+				delete piecesState.animation
+				setPieceAnimationDone(true)
+				return
+			}
+			renderPieces(piecesState)
+			piecesState.animation.currentFrame++
+			requestAnimationFrame(runInner)
+		})()
+		await until(pieceAnimationDone)
+		setPieceAnimationDone(false)
+	}
+	const [renderedBoard, setRenderedBoard] = createSignal(game.state.boardHistory[game.state.boardHistory.length - 1])
 	createEffect(() => {
 		if (!Pieces.initialized()) return
-		const args: RenderPiecesState = {
+		piecesState = {
+			...piecesState,
 			squareSize: squareSize(),
 			boardFlipped: boardFlipped(),
 			shouldHideNonVisible: game.gameConfig.variant === 'fog-of-war' && !game.outcome,
-			boardView: getBoardView(),
+			board: renderedBoard(),
 			grabbedMousePos: grabbedMousePos(),
 			activePieceSquare: activePieceSquare(),
 			context: piecesCanvas.getContext('2d')!,
 		}
-		Pieces.pieceChangedEpoch()
-		scaleAndReset(args.context)
+
+		if (piecesState.animation) return
+		scaleAndReset(piecesState.context)
 		untrack(() => {
-			renderPieces(args)
+			renderPieces(piecesState)
 		})
 	})
 	//#endregion
@@ -217,7 +304,6 @@ export default function Game() {
 			placingDuck: game.placingDuck(),
 			touchScreen: P.settings.usingTouch,
 		}
-		Pieces.pieceChangedEpoch()
 
 		scaleAndReset(args.context)
 		untrack(() => {
@@ -265,7 +351,7 @@ export default function Game() {
 		return game.currentBoardView.board.pieces[square]?.color === game.bottomPlayer.color
 	}
 
-	function makeMove(move?: GL.SelectedMove) {
+	function makeMove(move?: GL.SelectedMove, animate: boolean = false) {
 		batch(() => {
 			const resPromise = game.tryMakeMove(move)
 			setActivePieceSquare(null)
@@ -274,6 +360,7 @@ export default function Game() {
 			resPromise.then((res) => {
 				if (res.type === 'accepted') {
 					untrack(() => {
+						if (animate) morphToBoard(game.state.moveHistory.length - 1)
 						Audio.playSoundEffectForMove(res.move, true, true)
 					})
 				}
@@ -1056,32 +1143,41 @@ function renderBoard(args: RenderBoardArgs) {
 		}
 	}
 }
+type BoardView = {
+	board: GL.Board
+	visibleSquares: Set<string>
+}
 
 type RenderPiecesState = {
 	context: CanvasRenderingContext2D
 	shouldHideNonVisible: boolean
 	squareSize: number
 	boardFlipped: boolean
-	boardView: G.BoardView
+	board: GL.Board
+	visibleSquares: Set<string>
 	grabbedMousePos: {
 		x: number
 		y: number
 	} | null
 	activePieceSquare: string | null
-	animation?: {
-		frame: number
-		duration: number
-		boardBefore: GL.Board
-		mutations: { to: string; from: string }[]
+	animation?: PieceAnimationArgs & {
+		currentFrame: number
 	}
+}
+type PieceAnimationArgs = {
+	// in frames for now
+	duration: number
+	boardBefore: GL.Board
+	mutations: { to: string; from: string }[]
 }
 
 function renderPieces(args: RenderPiecesState) {
 	const ctx = args.context
-	for (const [square, piece] of Object.entries(args.boardView.board.pieces)) {
+	const board = args.animation ? args.animation.boardBefore : args.board
+	for (const [square, piece] of Object.entries(board)) {
 		if (
 			(args.grabbedMousePos && args.activePieceSquare === square) ||
-			(args.shouldHideNonVisible ? !args.boardView.visibleSquares.has(square) : false)
+			(args.shouldHideNonVisible ? !args.visibleSquares.has(square) : false)
 		) {
 			continue
 		}
@@ -1106,8 +1202,8 @@ function renderPieces(args: RenderPiecesState) {
 				const stepX = distanceX / args.animation.duration
 				const stepY = distanceY / args.animation.duration
 
-				x = from.x * args.squareSize + stepX * args.animation.frame
-				y = from.y * args.squareSize + stepY * args.animation.frame
+				x = from.x * args.squareSize + stepX * args.animation.currentFrame
+				y = from.y * args.squareSize + stepY * args.animation.currentFrame
 			}
 			const mutationEnd = args.animation.mutations.find((m) => m.to === square)
 		}

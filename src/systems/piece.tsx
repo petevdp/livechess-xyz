@@ -36,7 +36,6 @@ const pieceSvgs = {
 export const pieceCache = new Map<string, HTMLImageElement>()
 
 // so we can subscribe to when the pieces are updated
-export const [pieceChangedEpoch, setPiecedChangedEpoch] = createSignal(0)
 export const [initialized, setInitialized] = createSignal(false)
 
 // TODO insanely inefficient to need to rerun this when squareSize changes, fix
@@ -56,9 +55,6 @@ export function ensureSetupPieceSystem() {
 	for (const key in pieceSvgs) {
 		loadPiece(key as keyof typeof pieceSvgs).then((img) => {
 			pieceCache.set(key, img)
-			if (pieceCache.size === numSvgs) {
-				setPiecedChangedEpoch((epoch) => epoch + 1)
-			}
 		})
 	}
 	setInitialized(true)

@@ -5,7 +5,6 @@ import { render } from 'solid-js/web'
 
 import App from './App'
 import './index.css'
-import { Canvas } from './playground/canvas'
 
 console.debug({
 	VITE_GIT_COMMIT_DATE: import.meta.env.VITE_GIT_COMMIT_DATE,
@@ -16,7 +15,7 @@ console.debug({
 })
 
 const root = document.getElementById('root')!
-render(Canvas, root)
+render(App, root)
 
 if (!import.meta.env.PROD) {
 	import('~/console.ts')
