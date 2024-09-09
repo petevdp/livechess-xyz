@@ -5,6 +5,7 @@ import { makeResizeObserver } from '@solid-primitives/resize-observer'
 import deepEquals from 'fast-deep-equal'
 import { filter, first, from as rxFrom, skip } from 'rxjs'
 import {
+	Accessor,
 	For,
 	Match,
 	ParentProps,
@@ -17,8 +18,10 @@ import {
 	observable,
 	onCleanup,
 	onMount,
+	runWithOwner,
 	untrack,
 } from 'solid-js'
+import { getOwner } from 'solid-js/web'
 import toast from 'solid-toast'
 
 import * as Svgs from '~/components/Svgs.tsx'
@@ -36,11 +39,14 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from '~/components/ui/h
 import { BOARD_COLORS } from '~/config.ts'
 import { cn } from '~/lib/utils.ts'
 import * as Audio from '~/systems/audio.ts'
+import { BoardViewContext } from '~/systems/boardViewContext.ts'
 import * as G from '~/systems/game/game.ts'
 import * as GL from '~/systems/game/gameLogic.ts'
 import * as Pieces from '~/systems/piece.tsx'
 import * as P from '~/systems/player.ts'
 import { DefaultMap } from '~/utils/defaultMap.ts'
+import { deepClone } from '~/utils/obj.ts'
+import { StoreProperty, createStoreProperty, storeToSignal } from '~/utils/solid.ts'
 
 import styles from './Game.module.css'
 import { Button } from './ui/button.tsx'
@@ -48,15 +54,19 @@ import * as Modal from './utils/Modal.tsx'
 
 //TODO component duplicates on reload sometimes for some reason
 
-const [boardView, setBoardView] = createSignal(null as null | G.BoardView)
+let boardContext: BoardViewContext = null as unknown as BoardViewContext
 
 export default function Game() {
 	console.log('game initial render')
 	const game = G.game()!
-	setBoardView({
-		board: game.board,
-		lastMove: game.state.moveHistory[game.state.moveHistory.length - 1],
-		moveIndex: game.state.moveHistory.length - 1,
+	boardContext = new BoardViewContext(game)
+	onMount(() => {
+		boardContext.contexts = {
+			board: boardCanvas.getContext('2d')!,
+			highlights: highlightsCanvas.getContext('2d')!,
+			pieces: piecesCanvas.getContext('2d')!,
+			grabbedPiece: grabbedPieceCanvas.getContext('2d')!,
+		}
 	})
 
 	//#region calc board sizes
@@ -68,9 +78,16 @@ export default function Game() {
 
 	// eslint-disable-next-line prefer-const
 	let boardRef = null as unknown as HTMLDivElement
-	const [boardSize, setBoardSize] = createSignal(100)
-	const [boardSizeCss, setBoardSizeCss] = createSignal(100)
-	const [canvasProps, setCanvasProps] = createSignal({})
+	const canvasProps = createMemo(() => {
+		const size = boardContext.store.state.boardSize
+		const sizeCss = boardContext.store.state.boardSizeCss
+		return {
+			class: 'object-contain',
+			style: { width: `${sizeCss}px`, height: `${sizeCss}px` },
+			width: size,
+			height: size,
+		}
+	})
 	{
 		const isPortrait = createMediaQuery('(max-aspect-ratio: 7/6')
 		const { observe, unobserve } = makeResizeObserver(handleObserverCallback)
@@ -91,255 +108,21 @@ export default function Game() {
 			minWidth -= baseOffset
 			const size = Math.min(minWidth, minHeight)
 			const adjustedSize = size * window.devicePixelRatio
-			batch(() => {
-				setBoardSize(adjustedSize)
-				setBoardSizeCss(size)
-				setSquareSize(size / 8)
-				setCanvasProps({
-					class: 'object-contain',
-					style: { width: `${size}px`, height: `${size}px` },
-					width: adjustedSize,
-					height: adjustedSize,
-				})
-			})
+			boardContext.store.set({ boardSize: adjustedSize, boardSizeCss: size, squareSize: size / 8 })
 		}
 	}
-
-	const [squareSize, setSquareSize] = createSignal(32)
-
 	//#endregion
 
 	//#region board rendering and mouse events
-
-	function scaleAndReset(context: CanvasRenderingContext2D) {
-		context.clearRect(0, 0, boardSizeCss(), boardSizeCss())
-		context.setTransform(1, 0, 0, 1, 0, 0)
-		context.scale(devicePixelRatio, devicePixelRatio)
-	}
 
 	const boardCanvas = (<canvas {...canvasProps()} />) as HTMLCanvasElement
 	const highlightsCanvas = (<canvas {...canvasProps()} />) as HTMLCanvasElement
 	const piecesCanvas = (<canvas {...canvasProps()} />) as HTMLCanvasElement
 	const grabbedPieceCanvas = (<canvas {...canvasProps()} />) as HTMLCanvasElement
 
-	//#region board and interaction state
-	const [boardFlipped, setBoardFlipped] = createSignal(false)
-	const [hoveredSquare, setHoveredSquare] = createSignal(null as null | string)
-	const [activePieceSquare, setActivePieceSquare] = createSignal(null as null | string)
-	const [grabbingPieceSquare, setGrabbingPieceSquare] = createSignal(false)
+	//#region interaction state
 	const [currentMousePos, setCurrentMousePos] = createSignal({ x: 0, y: 0 } as { x: number; y: number } | null)
 	const [grabbedMousePos, setGrabbedMousePos] = createSignal(null as null | { x: number; y: number })
-	//#endregion
-
-	const legalMovesForActivePiece = createMemo(() => {
-		const _square = activePieceSquare()
-		if (!_square) return []
-		return game.getLegalMovesForSquare(_square)
-	})
-
-	//#region canvas rendering
-
-	//#region board rendering updates
-	createEffect(async () => {
-		if (!Pieces.initialized()) return
-		// handle all reactivity here, so we know renderBoard itself will run fast
-		const args: RenderBoardArgs = {
-			squareSize: squareSize(),
-			boardFlipped: boardFlipped(),
-			shouldHideNonVisible: game.gameConfig.variant === 'fog-of-war' && !game.outcome,
-			visibleSquares: game.currentBoardView.visibleSquares,
-			context: boardCanvas.getContext('2d')!,
-		}
-		scaleAndReset(args.context)
-
-		untrack(() => {
-			args.context.clearRect(0, 0, boardSize(), boardSize())
-			renderBoard(args)
-		})
-	})
-
-	//#endregion
-
-	function getBoardView() {
-		// consolidating signals for board view
-		return {
-			board: game.currentBoardView.board,
-			lastMove: game.currentBoardView.lastMove,
-			visibleSquares: game.currentBoardView.visibleSquares,
-			inCheck: game.currentBoardView.inCheck,
-		}
-	}
-
-	//#region render highlights
-	createEffect(() => {
-		const args: RenderHighlightsArgs = {
-			squareSize: squareSize(),
-			boardFlipped: boardFlipped(),
-			shouldHideNonVisible: game.gameConfig.variant === 'fog-of-war' && !game.outcome,
-			boardView: getBoardView(),
-			legalMovesForActivePiece: legalMovesForActivePiece(),
-			playerColor: game.bottomPlayer.color,
-			activePieceSquare: activePieceSquare(),
-			hoveredSquare: hoveredSquare(),
-			context: highlightsCanvas.getContext('2d')!,
-		}
-		scaleAndReset(args.context)
-
-		untrack(() => {
-			args.context.clearRect(0, 0, boardSize(), boardSize())
-			renderHighlights(args)
-		})
-	})
-	//#endregion
-
-	//#region render/animate pieces
-	let piecesState: RenderPiecesState = null as unknown as RenderPiecesState
-	// for when a new move is made on the live board while the user is viewing a past board
-	async function returnBoardToLive() {
-		if (game.viewedBoardIndex() === game.state.moveHistory.length) return
-		if (game.viewedBoardIndex() < 2) {
-			throw new Error("can't return to live with less than 2 moves on the board")
-		}
-		game.setViewedMove(game.state.moveHistory.length - 1)
-		const lastMove = game.state.moveHistory[game.state.moveHistory.length - 1]
-		await runAnimation({
-			boardBefore: game.currentBoardView.board,
-			duration: 30,
-			mutations: [{ from: lastMove.from, to: lastMove.to }],
-		})
-	}
-
-	async function morphToBoard(boardIndex: number) {
-		if (boardIndex === game.viewedBoardIndex()) return
-		if (boardIndex < 0 || boardIndex >= game.state.boardHistory.length) {
-			throw new Error(`invalid board index: ${boardIndex}`)
-		}
-		const boardBefore = game.state.boardHistory[game.viewedBoardIndex()].board
-		const boardAfter = game.state.boardHistory[boardIndex].board
-		const mutations: { from: string; to: string }[] = []
-		const availableStartingPieceCounts = new DefaultMap<string, string[]>(() => [])
-		const getPieceKey = (piece: GL.ColoredPiece) => `${piece.type}:${piece.color}`
-		for (const [square, piece] of Object.entries(boardBefore.pieces)) {
-			const key = getPieceKey(piece)
-			// square contains same piece, no need to move it
-			if (key === getPieceKey(boardAfter.pieces[square])) continue
-			const arr = availableStartingPieceCounts.get(key) || []
-			arr.push(square)
-			availableStartingPieceCounts.set(key, arr)
-		}
-
-		for (const [toSquare, piece] of Object.entries(boardAfter.pieces)) {
-			const key = getPieceKey(piece)
-			const squares = availableStartingPieceCounts.get(key)
-			if (!squares || squares.length === 0) continue
-			const fromSquare = squares.pop()!
-			mutations.push({ from: fromSquare, to: toSquare })
-		}
-		game.setViewedMove(boardIndex - 1)
-		runAnimation({
-			boardBefore,
-			duration: 30,
-			mutations,
-		})
-	}
-
-	const [pieceAnimationDone, setPieceAnimationDone] = createSignal(false)
-	async function runAnimation(args: PieceAnimationArgs) {
-		if (game.gameConfig.variant === 'fog-of-war') {
-			console.error('animations not supported in fog-of-war variant')
-			return
-		}
-		const animationAlreadyRunning = !!piecesState.animation
-		piecesState.animation = {
-			...args,
-			currentFrame: 0,
-		}
-
-		// just highjack the existing animation loop if it's already running
-		if (animationAlreadyRunning) return
-		;(function runInner() {
-			if (piecesState.animation.currentFrame >= piecesState.animation.duration) {
-				delete piecesState.animation
-				setPieceAnimationDone(true)
-				return
-			}
-			renderPieces(piecesState)
-			piecesState.animation.currentFrame++
-			requestAnimationFrame(runInner)
-		})()
-		await until(pieceAnimationDone)
-		setPieceAnimationDone(false)
-	}
-	const [renderedBoard, setRenderedBoard] = createSignal(game.state.boardHistory[game.state.boardHistory.length - 1])
-	createEffect(() => {
-		if (!Pieces.initialized()) return
-		piecesState = {
-			...piecesState,
-			squareSize: squareSize(),
-			boardFlipped: boardFlipped(),
-			shouldHideNonVisible: game.gameConfig.variant === 'fog-of-war' && !game.outcome,
-			board: renderedBoard(),
-			grabbedMousePos: grabbedMousePos(),
-			activePieceSquare: activePieceSquare(),
-			context: piecesCanvas.getContext('2d')!,
-		}
-
-		if (piecesState.animation) return
-		scaleAndReset(piecesState.context)
-		untrack(() => {
-			renderPieces(piecesState)
-		})
-	})
-	//#endregion
-
-	//#region render grabbed piece
-	createEffect(() => {
-		const args: RenderGrabbedPieceArgs = {
-			squareSize: squareSize(),
-			boardView: getBoardView(),
-			grabbedMousePos: grabbedMousePos(),
-			activePieceSquare: activePieceSquare(),
-			currentMousePos: P.settings.usingTouch ? null : currentMousePos(),
-			context: grabbedPieceCanvas.getContext('2d')!,
-			placingDuck: game.placingDuck(),
-			touchScreen: P.settings.usingTouch,
-		}
-
-		scaleAndReset(args.context)
-		untrack(() => {
-			args.context.clearRect(0, 0, boardSize(), boardSize())
-			renderGrabbedPiece(args)
-		})
-	})
-	//#endregion
-
-	createEffect(() => {
-		if (game.bottomPlayer.color === 'black') {
-			setBoardFlipped(true)
-		} else {
-			setBoardFlipped(false)
-		}
-	})
-
-	// contextually set cursor style
-	createEffect(() => {
-		if (!game.isClientPlayerParticipating || !game.viewingLiveBoard) {
-			if (grabbedPieceCanvas.style.cursor !== 'default') grabbedPieceCanvas.style.cursor = 'default'
-			return
-		}
-		if (grabbingPieceSquare()) {
-			grabbedPieceCanvas.style.cursor = 'grabbing'
-		} else if (
-			hoveredSquare() &&
-			game.currentBoardView.board.pieces[hoveredSquare()!] &&
-			game.currentBoardView.board.pieces[hoveredSquare()!]!.color === game.bottomPlayer.color
-		) {
-			grabbedPieceCanvas.style.cursor = 'grab'
-		} else {
-			grabbedPieceCanvas.style.cursor = 'default'
-		}
-	})
-
 	//#endregion
 
 	//#region mouse events
@@ -1149,12 +932,10 @@ type BoardView = {
 }
 
 type RenderPiecesState = {
-	context: CanvasRenderingContext2D
-	shouldHideNonVisible: boolean
 	squareSize: number
 	boardFlipped: boolean
 	board: GL.Board
-	visibleSquares: Set<string>
+	lastMove: GL.Move | null
 	grabbedMousePos: {
 		x: number
 		y: number
@@ -1164,11 +945,11 @@ type RenderPiecesState = {
 		currentFrame: number
 	}
 }
-type PieceAnimationArgs = {
-	// in frames for now
-	duration: number
-	boardBefore: GL.Board
-	mutations: { to: string; from: string }[]
+
+type RenderPiecesArgs = RenderPiecesState & {
+	visibleSquares: Set<string>
+	// todo kinda redundant
+	shouldHideNonVisible: boolean
 }
 
 function renderPieces(args: RenderPiecesState) {

@@ -1,6 +1,8 @@
 import { captureStoreUpdates, trackStore } from '@solid-primitives/deep'
 import { Accessor, createEffect, createRoot, createSignal, untrack } from 'solid-js'
-import { unwrap } from 'solid-js/store'
+import { SetStoreFunction, createStore, unwrap } from 'solid-js/store'
+
+import { deepClone } from './obj'
 
 // reg until seems to be broken
 export function myUntil(fn: () => any) {
@@ -44,7 +46,7 @@ export function storeToSignal<T extends {}>(store: T): Accessor<T> {
 				let current = state
 				const last = path[path.length - 1]
 				if (path.length === 0) {
-					state = JSON.parse(JSON.stringify(value))
+					state = deepClone(value)
 					setSignal(state)
 					return
 				}
@@ -59,3 +61,20 @@ export function storeToSignal<T extends {}>(store: T): Accessor<T> {
 	})
 	return signal
 }
+
+export function createSignalProperty<T>(value: T) {
+	const [get, set] = createSignal(value)
+
+	return { get, set }
+}
+
+export function createStoreProperty<T extends object>(value: T) {
+	const [state, set] = createStore(value)
+	return { state, set }
+}
+
+export type StoreProperty<T extends object> = ReturnType<typeof createStoreProperty<T>>
+
+let t: StoreProperty<{ a: number }>
+t = createStoreProperty({ a: 1 })
+t = createStoreProperty({ a: 2 })
