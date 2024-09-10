@@ -4,7 +4,7 @@ import { createEffect, createSignal, getOwner, on, onCleanup, runWithOwner } fro
 // import { RandomBot } from '~/bots/randomBot.ts'
 import { StockfishBot } from '~/bots/stockfish.ts'
 import * as SS from '~/sharedStore/sharedStore.ts'
-import { SignalProperty, createSignalProperty } from '~/utils/solid.ts'
+import { createSignalProperty } from '~/utils/solid.ts'
 import { unit } from '~/utils/unit.ts'
 
 import * as G from './game/game.ts'

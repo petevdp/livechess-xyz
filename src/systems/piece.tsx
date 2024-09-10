@@ -51,7 +51,6 @@ let setupTriggered = false
 export function ensureSetupPieceSystem() {
 	if (setupTriggered) return
 	setupTriggered = true
-	const numSvgs = Object.keys(pieceSvgs).length
 	for (const key in pieceSvgs) {
 		loadPiece(key as keyof typeof pieceSvgs).then((img) => {
 			pieceCache.set(key, img)
