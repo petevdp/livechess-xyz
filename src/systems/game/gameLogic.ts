@@ -253,8 +253,8 @@ export function useBoardHistory(moves: Accessor<Move[]>, startingBoard: Board) {
 	let boardHistory: BoardHistoryEntry[] = [{ board: startingBoard }]
 	return () => getBoardHistory(moves())
 
-	function getBoardHistory(moves: Move[]) {
-		const movesList = moves
+	function getBoardHistory(_moves: Move[]) {
+		const movesList = _moves
 		let i = 0
 		let firstNewMoveHash: string | null = null
 		for (; i < movesList.length; i++) {

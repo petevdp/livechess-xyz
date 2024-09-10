@@ -1,7 +1,8 @@
 import { until } from '@solid-primitives/promise'
+import { createEnv } from '@t3-oss/env-core'
 import { Observable, concatMap, mergeAll, race, from as rxFrom, startWith } from 'rxjs'
 import { filter, map } from 'rxjs/operators'
-import { Owner, createRoot, createSignal, getOwner, onCleanup, runWithOwner } from 'solid-js'
+import { Owner, createEffect, createRoot, createSignal, getOwner, on, onCleanup, runWithOwner } from 'solid-js'
 import { unwrap } from 'solid-js/store'
 
 import * as Api from '~/api.ts'
@@ -9,6 +10,7 @@ import { PLAYER_TIMEOUT } from '~/config.ts'
 import * as SS from '~/sharedStore/sharedStore.ts'
 import { WsTransport } from '~/sharedStore/wsTransport.ts'
 import { deepClone } from '~/utils/obj.ts'
+import { createSignalProperty } from '~/utils/solid.ts'
 
 import * as G from './game/game.ts'
 import * as GL from './game/gameLogic.ts'
@@ -96,22 +98,13 @@ export function connectToRoom(
 	)
 
 	let store = null as unknown as RoomStore
-	let instanceOwner = null as unknown as Owner
-	disposePrevious()
-	createRoot((_dispose) => {
-		store = SS.initFollowerStore<RoomState, ClientOwnedState, RoomEvent>(transport, { playerId })
-		instanceOwner = getOwner()!
-
-		if (import.meta.env.PROD) Api.keepServerAlive()
-
-		disposePrevious = () => {
-			setRoom(null)
-			_dispose()
-		}
-	})
-
 	runWithOwner(parentOwner, () => {
-		onCleanup(disposePrevious)
+		store = SS.initFollowerStore<RoomState, ClientOwnedState, RoomEvent>(transport, { playerId })
+		onCleanup(() => {
+			console.warn('-----cleaning up store----')
+			setRoom(null)
+		})
+		if (import.meta.env.PROD) Api.keepServerAlive()
 	})
 
 	const connected$ = until(() => store.initialized()).then(async () => {
@@ -160,7 +153,7 @@ export function connectToRoom(
 			})
 		}
 
-		const room = runWithOwner(instanceOwner, () => new Room(store, transport, store.rollbackState.members.find((p) => playerId === p.id)!))!
+		const room = new Room(store, transport, store.rollbackState.members.find((p) => playerId === p.id)!, parentOwner)
 		setRoom(room)
 	})
 	//#endregion
@@ -254,7 +247,8 @@ export class Room extends RoomStoreHelpers {
 	constructor(
 		public sharedStore: RoomStore,
 		transport: SS.Transport<RoomMessage>,
-		public player: RoomMember
+		public player: RoomMember,
+		owner: Owner
 	) {
 		super(sharedStore, transport)
 		this.gameConfigContext = {
@@ -275,7 +269,7 @@ export class Room extends RoomStoreHelpers {
 		// eslint-disable-next-line @typescript-eslint/no-this-alias
 		const room = this
 		this.gameContext = {
-			configureNewGame: room.configureNewGame,
+			backToPregame: room.backToPregame,
 			event$: room.event$.pipe(
 				filter((event) => !ROOM_ONLY_EVENTS.includes(event.type as (typeof ROOM_ONLY_EVENTS)[number]))
 			) as Observable<G.GameEvent>,
@@ -295,6 +289,34 @@ export class Room extends RoomStoreHelpers {
 				return room.sharedStore as G.RootGameContext['sharedStore']
 			},
 		}
+
+		runWithOwner(owner, () => {
+			onCleanup(() => {
+				this.setGame(null)
+			})
+
+			createEffect(
+				on(
+					() => this.sharedStore.rollbackState.activeGameId,
+					() => {
+						if (this.sharedStore.rollbackState.activeGameId) {
+							this.setGame(new G.Game(this.sharedStore.rollbackState.activeGameId, this.gameContext, this.gameConfigContext.gameConfig))
+						} else {
+							this.setGame(null)
+						}
+					}
+				)
+			)
+		})
+	}
+
+	private _game = createSignalProperty<G.Game | null>(null)
+	get game() {
+		return this._game.get()
+	}
+	setGame(game: G.Game | null) {
+		this.game?.dispose()
+		this._game.set(game)
 	}
 
 	get isPlayerParticipating() {
@@ -427,10 +449,11 @@ export class Room extends RoomStoreHelpers {
 
 	//#endregion
 
-	toggleReadyOrStartGame() {
+	async toggleReadyOrStartGame() {
 		if (!this.isPlayerParticipating) return
+		let success: boolean
 		if (!this.leftPlayer!.isReadyForGame) {
-			this.sharedStore.setStoreWithRetries(() => {
+			success = await this.sharedStore.setStoreWithRetries(() => {
 				if (!this.isPlayerParticipating || this.leftPlayer!.isReadyForGame) return []
 				if (this.rightPlayer?.isReadyForGame) {
 					const transaction = G.getNewGameTransaction(this.player.id)
@@ -470,7 +493,7 @@ export class Room extends RoomStoreHelpers {
 		}
 	}
 
-	configureNewGame = async () => {
+	backToPregame = async () => {
 		const res = await this.sharedStore.setStoreWithRetries(() => {
 			if (!this.rightPlayer || !this.rollbackState.activeGameId) return
 			return [
@@ -482,7 +505,7 @@ export class Room extends RoomStoreHelpers {
 				},
 			]
 		})
-		if (res) G.setGame(null)
+		res && this.setGame(null)
 	}
 
 	//#endregion

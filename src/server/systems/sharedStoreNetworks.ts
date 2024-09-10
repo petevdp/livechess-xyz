@@ -84,9 +84,13 @@ export function createNetwork(log: FastifyBaseLogger) {
 	const networkId = createId(6)
 	const message$ = new Subject<Msg>()
 	const clients = new Map<string, Client<Msg>>()
+	log = log.child({ networkId })
 	const disposed$ = new Subject<void>()
 	message$.subscribe((msg) => {
-		log.info("network's message$ received %s", msg.type)
+		if (msg.type === 'mutation') {
+			log.info('%s received %s: %s', networkId, msg.mutation.mutationId, msg.mutation.events.map((e) => e.type).join(', '))
+			log.trace('updated paths: %s', msg.mutation.mutations.map((m) => m.path).join(','), msg.mutation.mutations)
+		}
 	})
 	createRoot((disposeRoot) => {
 		const leaderTransport: Transport<Msg> = {

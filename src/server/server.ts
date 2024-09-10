@@ -5,12 +5,13 @@ import { Crypto } from '@peculiar/webcrypto'
 import Fastify from 'fastify'
 import * as fs from 'node:fs'
 import path from 'node:path'
+import { LoggerOptions } from 'pino'
 import QRCode from 'qrcode'
 import { Transform } from 'stream'
 import { fileURLToPath } from 'url'
 import * as ws from 'ws'
 
-import { ENV, ensureSetupEnv } from '../env.ts'
+import { ENV, Env, ensureSetupEnv } from '../env.ts'
 import * as SSS from './systems/sharedStoreNetworks.ts'
 
 ensureSetupEnv()
@@ -26,26 +27,27 @@ if (!fs.existsSync('./logs')) {
 }
 
 // improve formatting of logs, have distinct development version
-const envToLogger = {
+const envToLogger: { [env in Env['NODE_ENV']]: LoggerOptions } = {
 	development: {
-		transport: {
-			target: 'pino-pretty',
-			options: {
-				translateTime: 'HH:MM:ss Z',
-				ignore: 'pid,hostname',
-				color: true,
-			},
-		},
+		level: 'trace',
+		// transport: {
+		// 	target: 'pino-pretty',
+		// 	options: {
+		// 		translateTime: 'HH:MM:ss Z',
+		// 		ignore: 'pid,hostname',
+		// 		color: true,
+		// 	},
+		// },
 	},
 	production: {
 		transport: {
 			targets: [
-				{
-					level: 'info',
-					target: 'pino-pretty',
-					translateTime: 'HH:MM:ss Z',
-					ignore: 'pid,hostname',
-				},
+				// {
+				// 	level: 'info',
+				// 	target: 'pino-pretty',
+				// 	translateTime: 'HH:MM:ss Z',
+				// 	ignore: 'pid,hostname',
+				// },
 				{
 					level: 'trace',
 					target: 'pino/file',
@@ -61,7 +63,7 @@ const envToLogger = {
 }
 
 const server = Fastify({ logger: envToLogger[ENV.NODE_ENV] })
-server.log.info(`environment: %s`, ENV.NODE_ENV)
+server.log.child({ env: ENV }).info(`environment: %s`, ENV.NODE_ENV, ENV)
 server.register(fastifyWebsocket)
 server.register(fastifyCors, () => {
 	return (req: any, callback: any) => {

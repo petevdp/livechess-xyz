@@ -4,10 +4,10 @@ import { createEffect, createSignal, getOwner, on, onCleanup, runWithOwner } fro
 // import { RandomBot } from '~/bots/randomBot.ts'
 import { StockfishBot } from '~/bots/stockfish.ts'
 import * as SS from '~/sharedStore/sharedStore.ts'
+import { SignalProperty, createSignalProperty } from '~/utils/solid.ts'
 import { unit } from '~/utils/unit.ts'
 
 import * as G from './game/game.ts'
-import { setGame } from './game/game.ts'
 import * as GL from './game/gameLogic'
 import * as P from './player.ts'
 
@@ -24,7 +24,7 @@ export interface Bot {
 type GameMessage = SS.SharedStoreMessage<G.GameEvent, G.RootGameState, object>
 export const BOT_ID = 'BOT'
 
-const [_vsBotContext, setVsBotContext] = createSignal<VsAIContext | null>(null)
+const [_vsBotContext, setVsBotContext] = createSignal<VsBotContext | null>(null)
 export const vsBotContext = _vsBotContext
 
 export function setupVsBot() {
@@ -71,32 +71,32 @@ export function setupVsBot() {
 	const bot = new StockfishBot(store.lockstepState.gameConfig.bot!.difficulty, GL.parseGameConfig(store.lockstepState.gameConfig))
 
 	const sub = new Subscription()
-	const vsAiContext = new VsAIContext(store, bot)
-	setVsBotContext(vsAiContext)
+	const ctx = new VsBotContext(store, bot)
+	setVsBotContext(ctx)
 	let cleanedUp = false
 	onCleanup(() => {
 		sub.unsubscribe()
 		bot?.dispose()
+		vsBotContext()?.dispose()
 		setVsBotContext(null)
-		setGame(null)
 		cleanedUp = true
 	})
 
 	function makeMove(move: GL.SelectedMove) {
 		if (cleanedUp) return
-		G.game()?.makeMoveProgrammatic(move, BOT_ID)
+		ctx.game!.makeMoveProgrammatic(move, BOT_ID)
 	}
 
 	const ownerContext = getOwner()
 
 	sub.add(
-		vsAiContext.event$.subscribe((e) => {
+		ctx.event$.subscribe((e) => {
 			if (e.type !== 'new-game') return
 			runWithOwner(ownerContext, () => {
-				const game = new G.Game(store.lockstepState.activeGameId!, vsAiContext, vsAiContext.state.gameConfig)
-				G.setGame(game)
+				const game = new G.Game(store.lockstepState.activeGameId!, ctx, ctx.state.gameConfig)
+				ctx.setGame(game)
 				bot.initialize()
-				if (vsAiContext.botParticipant.color === 'white') {
+				if (ctx.botParticipant.color === 'white') {
 					bot.makeMove(game.state).then(makeMove)
 				}
 			})
@@ -105,10 +105,10 @@ export function setupVsBot() {
 
 	createEffect(
 		on(
-			() => [G.game()?.stateSignal(), G.game()] as const,
+			() => [ctx.game?.stateSignal(), ctx.game] as const,
 			([state, game]) => {
 				if (!state || !game) return
-				if (GL.getBoard(state).toMove !== vsAiContext.botParticipant.color || game.outcome) return
+				if (GL.getBoard(state).toMove !== ctx.botParticipant.color || game.outcome) return
 				bot.makeMove(state).then(makeMove)
 			}
 		)
@@ -123,7 +123,7 @@ export function setupVsBot() {
 	})
 }
 
-export class VsAIContext implements G.RootGameContext {
+export class VsBotContext implements G.RootGameContext {
 	gameConfigContext: G.GameConfigContext
 
 	constructor(
@@ -141,6 +141,20 @@ export class VsAIContext implements G.RootGameContext {
 				void this.sharedStore.setStore({ path: ['gameConfig', 'fischerRandomSeed'], value: GL.getFischerRandomSeed() })
 			},
 		}
+	}
+
+	private _game = createSignalProperty<G.Game | null>(null)
+	get game() {
+		return this._game.get()
+	}
+	setGame(game: G.Game | null) {
+		this.game?.dispose()
+		this._game.set(game)
+	}
+
+	dispose() {
+		this.setGame(null)
+		this.bot.dispose()
 	}
 
 	get botParticipant() {
@@ -174,14 +188,15 @@ export class VsAIContext implements G.RootGameContext {
 		})
 	}
 
-	async configureNewGame() {
+	async backToPregame() {
 		const res = await this.sharedStore.setStoreWithRetries(() => {
 			return [
 				{ path: ['status'], value: 'pregame' },
 				{ path: ['activeGameId'], value: undefined },
 			]
 		})
-		res && G.setGame(null)
+		if (!res) return
+		this.setGame(null)
 	}
 
 	get state() {

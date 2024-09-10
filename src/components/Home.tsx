@@ -35,7 +35,7 @@ export function Home() {
 					</CardContent>
 					<CardFooter class="space-x-1">
 						<a href="/rooms/new" class={buttonVariants({ variant: 'default' })}>
-							Join Game
+							Play Vs Friends
 						</a>
 						<a href="/bot" class={buttonVariants({ variant: 'secondary' })}>
 							Play vs Bot

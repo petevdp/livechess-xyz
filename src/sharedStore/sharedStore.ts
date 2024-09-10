@@ -1,6 +1,18 @@
 import { until } from '@solid-primitives/promise'
 import deepEquals from 'fast-deep-equal'
-import { Observable, Subject, Subscription, concatMap, endWith, filter, first, firstValueFrom } from 'rxjs'
+import {
+	Observable,
+	Subject,
+	Subscription,
+	asapScheduler,
+	asyncScheduler,
+	concatMap,
+	endWith,
+	filter,
+	first,
+	firstValueFrom,
+	observeOn,
+} from 'rxjs'
 import { Accessor, batch, createSignal, onCleanup } from 'solid-js'
 import { createStore, produce, unwrap } from 'solid-js/store'
 
@@ -103,7 +115,6 @@ export interface SharedStore<State extends object, CCS extends ClientControlledS
 	/**
 	 * listen to events fired before a transaction is committed
 	 */
-	rollbackEvent$: Observable<Event>
 	initialized: Accessor<boolean>
 	config: Accessor<ClientConfig<State, CCS> | null>
 	lastMutationIndex: number
@@ -202,11 +213,6 @@ export function initLeaderStore<State extends object, CCS extends ClientControll
 	//#region events
 	const event$ = new Subject<Event>()
 	subscription.add(event$)
-	subscription.add(
-		event$.subscribe((event) => {
-			console.debug('dispatching action: ', event)
-		})
-	)
 
 	const appliedTransactions = [] as NewSharedStoreOrderedTransaction<Event>[]
 	const transactionsBeingBuilt = new Set<SharedStoreTransactionBuilder<Event>>()
@@ -338,7 +344,6 @@ export function initLeaderStore<State extends object, CCS extends ClientControll
 		lockstepState: store,
 		rollbackState: store,
 		event$,
-		rollbackEvent$: event$,
 		config: () => config,
 		clientControlled: clientControlled,
 		get lastMutationIndex() {
@@ -483,12 +488,12 @@ export function initFollowerStore<State extends object, CCS extends ClientContro
 
 	//#region actions
 	const event$ = new Subject<Event>()
-	const rollbackEvent$ = new Subject<Event>()
 	subscription.add(event$)
-	subscription.add(rollbackEvent$)
+	// allow any downstream effects to happen before events are dispatched
+	const eventAsap$ = event$
 	subscription.add(
-		event$.subscribe((action) => {
-			console.debug(`dispatching action: ${action}`)
+		eventAsap$.subscribe((event) => {
+			console.debug(`dispatching event:`, event)
 		})
 	)
 	//#endregion
@@ -538,9 +543,6 @@ export function initFollowerStore<State extends object, CCS extends ClientContro
 		}
 		transport.send(message)
 
-		for (const event of transaction.events) {
-			rollbackEvent$.next(event)
-		}
 		batch(() => {
 			applyMutationsToStore(newTransaction.mutations, setRollbackStore, rollbackStore)
 		})
@@ -590,7 +592,6 @@ export function initFollowerStore<State extends object, CCS extends ClientContro
 			if (areTransactionsEqual(mutationToCompare, receivedAtom)) {
 				// everything is fine, we don't need to store the previous value anymore
 				previousValues.delete(receivedAtom.index)
-				console.debug(_config.clientId, 'dispatching events')
 				for (const action of receivedAtom.events) {
 					event$.next(action)
 				}
@@ -620,7 +621,6 @@ export function initFollowerStore<State extends object, CCS extends ClientContro
 			appliedTransactions.push(receivedAtom)
 			applyMutationsToStore(receivedAtom.mutations, setRollbackStore, rollbackStore)
 		}
-		console.debug(_config.clientId, 'dispatching events')
 		for (const action of receivedAtom.events) {
 			event$.next(action)
 		}
@@ -671,7 +671,6 @@ export function initFollowerStore<State extends object, CCS extends ClientContro
 		config,
 		initialized,
 		event$,
-		rollbackEvent$,
 		get lastMutationIndex() {
 			return nextAtomId - 1
 		},

@@ -2,12 +2,13 @@ import { until } from '@solid-primitives/promise'
 import deepEquals from 'fast-deep-equal'
 import { Observable, ReplaySubject, distinctUntilChanged, filter, first, from as rxFrom } from 'rxjs'
 import { map } from 'rxjs/operators'
-import { Accessor, createEffect, createMemo, createSignal, getOwner, observable, on, onCleanup } from 'solid-js'
+import { Accessor, createEffect, createMemo, createRoot, createSignal, getOwner, observable, on, onCleanup } from 'solid-js'
 import { unwrap } from 'solid-js/store'
 
 import * as SS from '~/sharedStore/sharedStore.ts'
 import { PUSH, StoreMutation } from '~/sharedStore/sharedStore.ts'
 import { createId } from '~/utils/ids.ts'
+import { deepClone } from '~/utils/obj.ts'
 import { storeToSignal } from '~/utils/solid.ts'
 import { unit } from '~/utils/unit.ts'
 
@@ -95,7 +96,7 @@ export interface RootGameContext {
 	rollbackState: RootGameState
 	members: P.Player[]
 
-	configureNewGame(): void
+	backToPregame(): void
 	event$: Observable<GameEvent>
 
 	player: P.Player
@@ -119,17 +120,25 @@ export interface GameConfigContext {
  */
 export class Game {
 	gameConfig: GL.GameConfig
+	dispose!: () => void
 
 	constructor(
 		public gameId: string,
 		public gameContext: RootGameContext,
 		gameConfig: GL.GameConfig
 	) {
-		if (!getOwner()) throw new Error('Game constructor must be called in reactive context')
-		this.gameConfig = JSON.parse(JSON.stringify(gameConfig)) as GL.GameConfig
+		this.gameConfig = deepClone(gameConfig) as GL.GameConfig
+		createRoot((dispose) => {
+			this.dispose = () => {
+				console.warn(`disposing game: ${gameId}`)
+				dispose()
+			}
+			this.init()
+		})
+	}
 
+	init() {
 		this.setupGameState()
-		this.setupBoardView()
 		this.setupClocks()
 		this.setupMoveSelectionAndValidation()
 	}
@@ -146,8 +155,17 @@ export class Game {
 	}
 
 	setupGameState() {
-		const moveHistory = storeToSignal(this.gameContext.rollbackState.moves)
-		const boardHistory = GL.useBoardHistory(() => moveHistory(), GL.getStartPos(this.gameConfig))
+		const moveHistory = storeToSignal<typeof this.gameContext.rollbackState.moves>(this.gameContext.rollbackState, ['moves'])
+		const boardHistory = GL.useBoardHistory(moveHistory, GL.getStartPos(this.gameConfig))
+		// createEffect(() => {
+		// 	console.log('move history: ', moveHistory())
+		// })
+		// createEffect(() => {
+		// 	console.log('board history: ', boardHistory())
+		// })
+		// createEffect(() => {
+		// 	console.log('store moves: ', unwrap(this.gameContext.rollbackState))
+		// })
 
 		// only update state on board history change because syncing chained signals can be annoying
 		this.stateSignal = createMemo(
@@ -304,7 +322,7 @@ export class Game {
 				return
 			}
 			const state = unwrap(this.state)
-			if (this.viewedMoveIndex() !== state.moveHistory.length - 1 || this.outcome) {
+			if (this.outcome) {
 				setAcceptedMove(false)
 				return
 			}
@@ -379,76 +397,6 @@ export class Game {
 	}
 
 	//#endregion
-
-	//#region board view and history
-	currentBoardView = {} as BoardView
-	private _setViewedMove = unit as unknown as (move: number | 'live') => void
-	viewedMoveIndex = unit as unknown as Accessor<number>
-	viewedBoardIndex() {
-		return this.viewedMoveIndex() - 1
-	}
-
-	setupBoardView() {
-		const [currentMove, setViewedMove] = createSignal<'live' | number>('live')
-		this.viewedMoveIndex = () => (currentMove() === 'live' ? this.state.moveHistory.length - 1 : (currentMove() as number))
-		this._setViewedMove = setViewedMove
-		const lastMove = () => this.state.moveHistory[this.viewedMoveIndex()] || null
-
-		// boards are only so we don't need to deeply track this
-		const viewedBoard = () => {
-			if (this.boardWithCurrentMove() && this.viewingLiveBoard) {
-				return this.boardWithCurrentMove()!
-			} else {
-				return this.state.boardHistory[this.viewedMoveIndex() + 1].board
-			}
-		}
-
-		const inCheck = createMemo(() => GL.inCheck(viewedBoard()))
-		const visibleSquares = createMemo(() => {
-			if (this.gameConfig.variant === 'fog-of-war') {
-				return GL.getVisibleSquares(this.stateSignal(), this.bottomPlayer.color)
-			}
-			// just avoid computing this when not needed
-			return new Set()
-		})
-
-		this.currentBoardView = {
-			get board() {
-				return viewedBoard()
-			},
-			get visibleSquares() {
-				return visibleSquares()
-			},
-			get inCheck() {
-				return inCheck()
-			},
-			get lastMove() {
-				return lastMove()
-			},
-		} as BoardView
-
-		let prevMoveCount = this.state.moveHistory.length
-		createEffect(() => {
-			if (this.state.moveHistory.length !== prevMoveCount) {
-				this.setViewedMove('live')
-			}
-			prevMoveCount = this.state.moveHistory.length
-		})
-	}
-
-	get viewingLiveBoard() {
-		return this.viewedMoveIndex() === this.state.moveHistory.length - 1
-	}
-
-	setViewedMove(move: number | 'live') {
-		if (move === 'live') {
-			this._setViewedMove(this.state.moveHistory.length - 1)
-		} else if (move >= -1 && move < this.state.moveHistory.length) {
-			this._setViewedMove(move)
-		} else {
-			throw new Error(`invalid move index ${move}`)
-		}
-	}
 
 	capturedPieces(color: GL.Color) {
 		function getPieceCounts(pieces: GL.Piece[]) {
@@ -799,5 +747,3 @@ export function getNewGameTransaction(playerId: string): { mutations: SS.StoreMu
 }
 
 //#endregion
-
-export const [game, setGame] = createSignal<Game | null>(null)

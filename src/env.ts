@@ -47,11 +47,11 @@ function _setupEnv() {
 		isServer: true,
 	})
 	ENV = env
-	console.log(ENV)
 	return env
 }
 
 export let ENV: ReturnType<typeof _setupEnv>
+export type Env = typeof ENV
 
 export type ClientEnv = typeof ENV & {
 	PROD: boolean

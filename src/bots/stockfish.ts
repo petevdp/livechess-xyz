@@ -53,12 +53,12 @@ export class StockfishBot implements Bot {
 		if (this.difficulty < 5) return 1
 		if (this.difficulty < 10) return 2
 		if (this.difficulty < 15) return 3
-		return null
+		return 10
 	}
 
 	// make it seem like bot is actually thinking about the responses
 	get artificialMinResponseTime() {
-		return 750
+		return 1000
 	}
 
 	async initialize() {
