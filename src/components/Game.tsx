@@ -18,7 +18,7 @@ import {
 	onCleanup,
 	onMount,
 } from 'solid-js'
-import { createStore, unwrap } from 'solid-js/store'
+import { createStore } from 'solid-js/store'
 import toast from 'solid-toast'
 
 import * as Svgs from '~/components/Svgs.tsx'
@@ -435,12 +435,9 @@ export default function Game(props: { game: G.Game }) {
 	//#region board updates sound effects for incoming moves
 	{
 		async function onEvent(event: G.GameEvent) {
-			console.log('---- EVENT ----', event)
 			if (event.type !== 'make-move' || event.playerId === P.playerId()) return
 			// to get around moveHistory not being updated by the time the event is dispatched Sadge
-			console.log('waiting for move')
 			const move = await until(() => S.game.state.moveHistory[event.moveIndex])
-			console.log('snapping back')
 			await S.boardCtx.snapBackToLive()
 			const isVisible = S.game.gameConfig.variant !== 'fog-of-war' || S.boardCtx.visibleSquares().has(move.to)
 			if (!move) return

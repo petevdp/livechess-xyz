@@ -1,18 +1,6 @@
 import { until } from '@solid-primitives/promise'
 import deepEquals from 'fast-deep-equal'
-import {
-	Observable,
-	Subject,
-	Subscription,
-	asapScheduler,
-	asyncScheduler,
-	concatMap,
-	endWith,
-	filter,
-	first,
-	firstValueFrom,
-	observeOn,
-} from 'rxjs'
+import { Observable, Subject, Subscription, concatMap, endWith, filter, first, firstValueFrom } from 'rxjs'
 import { Accessor, batch, createSignal, onCleanup } from 'solid-js'
 import { createStore, produce, unwrap } from 'solid-js/store'
 

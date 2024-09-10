@@ -1,7 +1,7 @@
 import { captureStoreUpdates, trackStore } from '@solid-primitives/deep'
 import deepEquals from 'fast-deep-equal'
-import { Accessor, createEffect, createRenderEffect, createRoot, createSignal, untrack } from 'solid-js'
-import { SetStoreFunction, createStore, unwrap } from 'solid-js/store'
+import { Accessor, createEffect, createRoot, createSignal, untrack } from 'solid-js'
+import { createStore, unwrap } from 'solid-js/store'
 
 import { deepClone } from './obj'
 
@@ -91,7 +91,3 @@ export function createStoreProperty<T extends object>(value: T) {
 }
 
 export type StoreProperty<T extends object> = ReturnType<typeof createStoreProperty<T>>
-
-let t: StoreProperty<{ a: number }>
-t = createStoreProperty({ a: 1 })
-t = createStoreProperty({ a: 2 })

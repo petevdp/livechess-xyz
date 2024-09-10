@@ -8,7 +8,7 @@ import Game from '~/components/Game.tsx'
 import { GameConfig } from '~/components/GameConfig.tsx'
 import { Button } from '~/components/ui/button.tsx'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card.tsx'
-import * as Audio from '~/systems/audio.tsx'
+import * as Audio from '~/systems/audio.ts'
 import * as GlobalLoading from '~/systems/globalLoading.ts'
 import * as Pieces from '~/systems/piece.tsx'
 

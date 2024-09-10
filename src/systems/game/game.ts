@@ -2,7 +2,7 @@ import { until } from '@solid-primitives/promise'
 import deepEquals from 'fast-deep-equal'
 import { Observable, ReplaySubject, distinctUntilChanged, filter, first, from as rxFrom } from 'rxjs'
 import { map } from 'rxjs/operators'
-import { Accessor, createEffect, createMemo, createRoot, createSignal, getOwner, observable, on, onCleanup } from 'solid-js'
+import { Accessor, createEffect, createMemo, createRoot, createSignal, observable, on, onCleanup } from 'solid-js'
 import { unwrap } from 'solid-js/store'
 
 import * as SS from '~/sharedStore/sharedStore.ts'
@@ -157,15 +157,6 @@ export class Game {
 	setupGameState() {
 		const moveHistory = storeToSignal<typeof this.gameContext.rollbackState.moves>(this.gameContext.rollbackState, ['moves'])
 		const boardHistory = GL.useBoardHistory(moveHistory, GL.getStartPos(this.gameConfig))
-		// createEffect(() => {
-		// 	console.log('move history: ', moveHistory())
-		// })
-		// createEffect(() => {
-		// 	console.log('board history: ', boardHistory())
-		// })
-		// createEffect(() => {
-		// 	console.log('store moves: ', unwrap(this.gameContext.rollbackState))
-		// })
 
 		// only update state on board history change because syncing chained signals can be annoying
 		this.stateSignal = createMemo(

@@ -251,6 +251,7 @@ function hashMove(move: Move): string {
 export function useBoardHistory(moves: Accessor<Move[]>, startingBoard: Board) {
 	let moveHashes: string[] = []
 	let boardHistory: BoardHistoryEntry[] = [{ board: startingBoard }]
+
 	return () => getBoardHistory(moves())
 
 	function getBoardHistory(_moves: Move[]) {

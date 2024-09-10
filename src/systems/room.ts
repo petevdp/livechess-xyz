@@ -1,8 +1,7 @@
 import { until } from '@solid-primitives/promise'
-import { createEnv } from '@t3-oss/env-core'
 import { Observable, concatMap, mergeAll, race, from as rxFrom, startWith } from 'rxjs'
 import { filter, map } from 'rxjs/operators'
-import { Owner, createEffect, createRoot, createSignal, getOwner, on, onCleanup, runWithOwner } from 'solid-js'
+import { Owner, createEffect, createSignal, on, onCleanup, runWithOwner } from 'solid-js'
 import { unwrap } from 'solid-js/store'
 
 import * as Api from '~/api.ts'
@@ -58,8 +57,6 @@ export type ClientOwnedState = {
 	playerId: string
 }
 //#endregion
-
-let disposePrevious = () => {}
 
 export async function createRoom() {
 	return await Api.newNetwork()
@@ -451,9 +448,8 @@ export class Room extends RoomStoreHelpers {
 
 	async toggleReadyOrStartGame() {
 		if (!this.isPlayerParticipating) return
-		let success: boolean
 		if (!this.leftPlayer!.isReadyForGame) {
-			success = await this.sharedStore.setStoreWithRetries(() => {
+			await this.sharedStore.setStoreWithRetries(() => {
 				if (!this.isPlayerParticipating || this.leftPlayer!.isReadyForGame) return []
 				if (this.rightPlayer?.isReadyForGame) {
 					const transaction = G.getNewGameTransaction(this.player.id)
