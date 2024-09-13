@@ -1,5 +1,5 @@
 import deepEquals from 'fast-deep-equal'
-import { Accessor } from 'solid-js'
+import { Accessor, createMemo } from 'solid-js'
 
 //#region primitives
 
@@ -19,7 +19,7 @@ export type ColoredPiece = {
 
 type Timestamp = number
 
-export type SelectedMove = {
+export type InProgressMove = {
 	from: string
 	to: string
 	disambiguation?: MoveDisambiguation
@@ -252,7 +252,7 @@ export function useBoardHistory(moves: Accessor<Move[]>, startingBoard: Board) {
 	let moveHashes: string[] = []
 	let boardHistory: BoardHistoryEntry[] = [{ board: startingBoard }]
 
-	return () => getBoardHistory(moves())
+	return createMemo(() => getBoardHistory(moves()), undefined, { equals: false })
 
 	function getBoardHistory(_moves: Move[]) {
 		const movesList = _moves
@@ -302,7 +302,7 @@ export function notationFromCoords(coords: Coords) {
 	return String.fromCharCode('a'.charCodeAt(0) + coords.x) + (coords.y + 1)
 }
 
-export function candidateMoveToSelectedMove(move: CandidateMove): SelectedMove {
+export function candidateMoveToSelectedMove(move: CandidateMove): InProgressMove {
 	let disambiguation: MoveDisambiguation | undefined
 	if (move.promotion) {
 		disambiguation = { type: 'promotion', piece: move.promotion }
@@ -313,7 +313,7 @@ export function candidateMoveToSelectedMove(move: CandidateMove): SelectedMove {
 		from: notationFromCoords(move.from),
 		to: notationFromCoords(move.to),
 		disambiguation,
-	} satisfies SelectedMove
+	} satisfies InProgressMove
 }
 
 export function getMoveHistoryAsNotation(history: MoveHistory) {
@@ -477,7 +477,7 @@ export function getGameOutcome(state: GameState, config: ParsedGameConfig) {
 //#region move application
 
 // returns new board and  returns null if move is invalid
-export function validateAndPlayMove(move: SelectedMove, game: GameState, variant: Variant) {
+export function validateAndPlayMove(move: InProgressMove, game: GameState, variant: Variant) {
 	if (!getBoard(game).pieces[move.from] || getBoard(game).pieces[move.from].color !== getBoard(game).toMove) {
 		return
 	}
@@ -511,6 +511,11 @@ export function validateAndPlayMove(move: SelectedMove, game: GameState, variant
 // board should already have been modified by whatever move we're making this turn
 export function validateDuckPlacement(duck: string, board: Board) {
 	return !board.pieces[duck]
+}
+
+export function applyInProgressMoveToBoardInPlace(move: { from: string; to: string }, board: Board) {
+	board.pieces[move.to] = board.pieces[move.from]
+	delete board.pieces[move.from]
 }
 
 // Uncritically apply a move to the board. Does not mutate input.

@@ -4,7 +4,7 @@ import { Accessor, createSignal } from 'solid-js'
 
 import * as G from '~/systems/game/game.ts'
 import * as GL from '~/systems/game/gameLogic.ts'
-import { SelectedMove } from '~/systems/game/gameLogic.ts'
+import { InProgressMove } from '~/systems/game/gameLogic.ts'
 import { type Bot } from '~/systems/vsBot.ts'
 import { loadScript } from '~/utils/loadScript.ts'
 import { sleep } from '~/utils/time'
@@ -16,7 +16,7 @@ type UCIFromEngineMsg =
 	  }
 	| {
 			type: 'bestmove'
-			move: SelectedMove
+			move: InProgressMove
 	  }
 
 export class StockfishBot implements Bot {
@@ -114,7 +114,7 @@ export class StockfishBot implements Bot {
 		this.sf.postMessage(msg)
 	}
 
-	async makeMove(state: GL.GameState, clock?: G.Game['clock']): Promise<GL.SelectedMove> {
+	async makeMove(state: GL.GameState, clock?: G.Game['clock']): Promise<GL.InProgressMove> {
 		await until(this.engineReady)
 		const minResponsePromise = sleep(this.artificialMinResponseTime)
 		let serializedMoves = ''
@@ -146,7 +146,7 @@ export class StockfishBot implements Bot {
 	}
 }
 
-function toLongForm(move: GL.SelectedMove) {
+function toLongForm(move: GL.InProgressMove) {
 	let mv = ` ${move.from}${move.to} `
 	if (move.disambiguation && move.disambiguation?.type === 'promotion') {
 		mv += GL.toShortPieceName(move.disambiguation.piece).toLowerCase()
@@ -154,7 +154,7 @@ function toLongForm(move: GL.SelectedMove) {
 	return mv
 }
 
-function fromLongForm(move: string): GL.SelectedMove {
+function fromLongForm(move: string): GL.InProgressMove {
 	const from = move.slice(0, 2)
 	const to = move.slice(2, 4)
 	const promotion = move.slice(4) ?? null

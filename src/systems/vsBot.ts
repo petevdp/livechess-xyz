@@ -16,7 +16,7 @@ export const BOT_COMPATIBLE_VARIANTS = ['regular', 'fischer-random']
 export interface Bot {
 	name: string
 
-	makeMove(state: GL.GameState): Promise<GL.SelectedMove>
+	makeMove(state: GL.GameState): Promise<GL.InProgressMove>
 
 	dispose(): void
 }
@@ -82,7 +82,7 @@ export function setupVsBot() {
 		cleanedUp = true
 	})
 
-	function makeMove(move: GL.SelectedMove) {
+	function makeMove(move: GL.InProgressMove) {
 		if (cleanedUp) return
 		ctx.game!.makeMoveProgrammatic(move, BOT_ID)
 	}

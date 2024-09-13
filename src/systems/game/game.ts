@@ -9,7 +9,7 @@ import * as SS from '~/sharedStore/sharedStore.ts'
 import { PUSH, StoreMutation } from '~/sharedStore/sharedStore.ts'
 import { createId } from '~/utils/ids.ts'
 import { deepClone } from '~/utils/obj.ts'
-import { storeToSignal } from '~/utils/solid.ts'
+import { createSignalProperty, storeToSignal } from '~/utils/solid.ts'
 import { unit } from '~/utils/unit.ts'
 
 import * as P from '../player.ts'
@@ -43,10 +43,15 @@ export type GameEvent =
 			playerId: string
 			gameId: string
 	  }
+	| {
+			type: 'committed-in-progress-move'
+			playerId: string
+			gameId: string
+	  }
 
-export type MakeMoveResult =
+export type ValidateMoveResult =
 	| { type: 'invalid' }
-	| { type: 'accepted'; move: GL.Move }
+	| { type: 'valid'; move: GL.Move }
 	| { type: 'ambiguous' }
 	| {
 			type: 'placing-duck'
@@ -86,6 +91,7 @@ export type RootGameState = {
 	gameConfig: GL.GameConfig
 	moves: GL.Move[]
 	outcome?: GL.GameOutcome
+	inProgressMove?: GL.InProgressMove
 	activeGameId?: string
 	drawOffers: { [key in GL.Color]: number }
 }
@@ -178,43 +184,73 @@ export class Game {
 
 	//#region move selection, validation and updates
 
-	currentMove = unit as unknown as Accessor<GL.SelectedMove | null>
-	setCurrentMove = unit as (move: GL.SelectedMove | null) => void
-	placingDuck = unit as unknown as Accessor<false>
-	setPlacingDuck = unit as (placing: boolean) => void
-
-	currentDuckPlacement() {
-		return this.currentMove()?.duck
+	inProgressMoveLocal = createSignalProperty<GL.InProgressMove | undefined>(undefined)
+	get inProgressMove() {
+		return this.gameContext.rollbackState.inProgressMove
+	}
+	get comittedInProgressMove() {
+		return this.gameContext.rollbackState.inProgressMove
+	}
+	setBaseInProgressMove(move: { from: string; to: string }) {
+		this.inProgressMoveLocal.set(move)
 	}
 
-	setCurrentDisambiguation(disambiguation?: undefined | GL.MoveDisambiguation) {
-		const currentMove = this.currentMove()
-		if (!currentMove) return
-		this.setCurrentMove({ ...currentMove, disambiguation })
+	// boardcasts in progress move to other clients
+	async commitInProgressMove() {
+		await this.gameContext.sharedStore.setStoreWithRetries(() => {
+			if (!this.isActiveGame || !this.isThisPlayersTurn() || !this.inProgressMoveLocal.get()) return
+
+			return {
+				events: [
+					{
+						type: 'committed-in-progress-move',
+						gameId: this.gameId,
+						playerId: this.bottomPlayer.id,
+						move: this.inProgressMoveLocal.get(),
+					},
+				],
+				mutations: [{ path: ['inProgressMove'], value: this.inProgressMoveLocal.get() }],
+			}
+		})
+	}
+	async setDuck(duckSquare: string) {
+		const m = this.inProgressMoveLocal.get()!
+		if (!m) throw new Error('tried to set duck without setting base move')
+		const newMove: GL.InProgressMove = { ...m, duck: duckSquare }
+		this.inProgressMoveLocal.set(newMove)
+		await this.tryMakeMove()
 	}
 
-	private boardWithCurrentMove = unit as unknown as Accessor<null | GL.Board>
-	setBoardWithCurrentMove = unit as (board: null | GL.Board) => void
-	private _candidateMovesForSelected = unit as unknown as Accessor<any[] | GL.CandidateMove[]>
+	get isPlacingDuck() {
+		return !!this.inProgressMoveLocal.get()?.duck
+	}
+
+	async selectPromotion(piece: GL.PromotionPiece) {
+		this.inProgressMoveLocal.set((m) => ({ ...m!, disambiguation: { type: 'promotion', piece } }))
+		await this.tryMakeMove()
+	}
+
+	async setIsCastling(isCastling: boolean) {
+		this.inProgressMoveLocal.set((m) => ({ ...m!, disambiguation: { type: 'castle', castling: isCastling } }))
+		await this.tryMakeMove()
+	}
+
+	private = unit as unknown as Accessor<null | GL.Board>
+	_candidateMovesForSelected() {
+		const currentMove = this.inProgressMoveLocal.get()
+		if (!currentMove) return []
+		return this.getLegalMovesForSquare(currentMove.from).filter((move) => GL.notationFromCoords(move.to) === currentMove!.to)
+	}
 	lastSubmittedMoveValid = unit as unknown as Accessor<boolean>
 	setLastSubmittedMoveValid = unit as unknown as (moveIndex: boolean) => void
 
 	setupMoveSelectionAndValidation() {
-		;[this.currentMove, this.setCurrentMove] = createSignal(null as null | GL.SelectedMove)
-		;[this.boardWithCurrentMove, this.setBoardWithCurrentMove] = createSignal(null as null | GL.Board)
-		;[this.placingDuck, this.setPlacingDuck] = createSignal(false)
 		;[this.lastSubmittedMoveValid, this.setLastSubmittedMoveValid] = createSignal(false)
-
-		this._candidateMovesForSelected = () => {
-			const currentMove = this.currentMove()
-			if (!currentMove) return []
-			return this.getLegalMovesForSquare(currentMove.from).filter((move) => GL.notationFromCoords(move.to) === currentMove!.to)
-		}
 	}
 
 	get currentMoveAmbiguity(): MoveAmbiguity | null {
-		const currentMove = this.currentMove()
-		if (!currentMove || this.currentMove()?.disambiguation) return null
+		const currentMove = this.inProgressMoveLocal.get()
+		if (!currentMove || currentMove?.disambiguation) return null
 		const candidateMoves = this.candidateMovesFromSelected
 		if (candidateMoves.length <= 1) return null
 		if (candidateMoves.some((move) => move.promotion)) {
@@ -242,7 +278,7 @@ export class Game {
 		return GL.getLegalMoves([GL.coordsFromNotation(startingSquare)], this.stateSignal(), this.gameConfig.variant)
 	}
 
-	makeMoveProgrammatic(move: GL.SelectedMove, playerId: string) {
+	makeMoveProgrammatic(move: GL.InProgressMove, playerId: string) {
 		const result = GL.validateAndPlayMove(move, this.stateSignal(), this.gameConfig.variant)
 		if (!result) {
 			throw new Error(`invalid move: ${JSON.stringify(result)}`)
@@ -254,14 +290,14 @@ export class Game {
 			return this.getMoveTransaction(result, this.state, playerId)
 		})
 	}
-
-	async tryMakeMove(move?: GL.SelectedMove): Promise<MakeMoveResult> {
+	async validateInProgressMove(): Promise<ValidateMoveResult> {
+		const move = this.inProgressMoveLocal.get()
+		if (!move) throw new Error('no in progress move')
 		if (!this.isClientPlayerParticipating) return { type: 'invalid' }
-		if (move) this.setCurrentMove(move)
-		if (this.outcome || !this.currentMove) return { type: 'invalid' }
-		const currentMove = this.currentMove()!
+		if (this.outcome) return { type: 'invalid' }
+
 		const getResult = () => {
-			const result = GL.validateAndPlayMove(currentMove, this.stateSignal(), this.gameConfig.variant)
+			const result = GL.validateAndPlayMove(move, this.stateSignal(), this.gameConfig.variant)
 			this.setLastSubmittedMoveValid(!!result)
 			return result
 		}
@@ -271,19 +307,65 @@ export class Game {
 			if (!result) return { type: 'invalid' }
 			if (this.currentMoveAmbiguity.type === 'promotion') {
 				// while we're promoting, display the promotion square as containing the pawn
-				result.board.pieces[currentMove.to] = {
+				result.board.pieces[move.to] = {
 					type: 'pawn',
 					color: this.board.toMove,
 				}
 			}
 			if (this.currentMoveAmbiguity.type === 'castle') {
 				// while we're castling/moving the king, display the king in the destination square
-				result.board.pieces[currentMove.to] = {
+				result.board.pieces[move.to] = {
 					type: 'king',
 					color: this.board.toMove,
 				}
 			}
-			this.setBoardWithCurrentMove(result.board)
+			return { type: 'ambiguous' }
+		}
+
+		if (this.gameConfig.variant === 'duck' && !this.currentDuckPlacement) {
+			const result = getResult()
+			if (!result) return { type: 'invalid' }
+			if (!GL.kingCaptured(result.board)) {
+				this.setPlacingDuck(true)
+				this.setBoardWithCurrentMove(result.board)
+				const prevDuckPlacement = Object.keys(this.board.pieces).find((square) => this.board.pieces[square]!.type === 'duck')
+				if (prevDuckPlacement) {
+					// render previous duck while we're placing the new one, so it's clear that the duck can't be placed in the same spot twice
+					result.board.pieces[prevDuckPlacement] = GL.DUCK
+				}
+				return { type: 'accepted', move: result.move }
+			}
+		}
+	}
+
+	async tryMakeMove(): Promise<ValidateMoveResult> {
+		const move = this.inProgressMoveLocal.get()
+		if (!move) throw new Error('no in progress move')
+		if (!this.isClientPlayerParticipating) return { type: 'invalid' }
+		if (this.outcome) return { type: 'invalid' }
+		const getResult = () => {
+			const result = GL.validateAndPlayMove(move, this.stateSignal(), this.gameConfig.variant)
+			this.setLastSubmittedMoveValid(!!result)
+			return result
+		}
+
+		if (this.currentMoveAmbiguity) {
+			const result = getResult()
+			if (!result) return { type: 'invalid' }
+			if (this.currentMoveAmbiguity.type === 'promotion') {
+				// while we're promoting, display the promotion square as containing the pawn
+				result.board.pieces[move.to] = {
+					type: 'pawn',
+					color: this.board.toMove,
+				}
+			}
+			if (this.currentMoveAmbiguity.type === 'castle') {
+				// while we're castling/moving the king, display the king in the destination square
+				result.board.pieces[move.to] = {
+					type: 'king',
+					color: this.board.toMove,
+				}
+			}
 			return { type: 'ambiguous' }
 		}
 
@@ -323,11 +405,11 @@ export class Game {
 				return
 			}
 			const board = GL.getBoard(state)
-			if (!GL.isPlayerTurn(board, this.bottomPlayer.color) || !board.pieces[currentMove.from]) {
+			if (!GL.isPlayerTurn(board, this.bottomPlayer.color) || !board.pieces[move.from]) {
 				setAcceptedMove(false)
 				return
 			}
-			const result = GL.validateAndPlayMove(currentMove, state, this.gameConfig.variant)
+			const result = GL.validateAndPlayMove(move, state, this.gameConfig.variant)
 			if (!result) {
 				setAcceptedMove(false)
 				return
@@ -632,6 +714,10 @@ export class Game {
 
 	isPlayerTurn(color: GL.Color) {
 		return GL.isPlayerTurn(this.board, color)
+	}
+
+	isThisPlayersTurn() {
+		return this.isClientPlayerParticipating && this.isPlayerTurn(this.bottomPlayer.color)
 	}
 
 	//#endregion

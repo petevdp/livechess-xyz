@@ -10,7 +10,7 @@ export class RandomBot implements Bot {
 	setDifficulty(difficulty: number) {
 		this.difficulty = difficulty
 	}
-	async makeMove(state: GL.GameState): Promise<GL.SelectedMove> {
+	async makeMove(state: GL.GameState): Promise<GL.InProgressMove> {
 		const moves = GL.getAllLegalMoves(state, this.variant)
 		const candidateMove = moves[Math.floor(Math.random() * moves.length)]
 		return GL.candidateMoveToSelectedMove(candidateMove)

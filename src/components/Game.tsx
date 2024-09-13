@@ -56,6 +56,9 @@ const [S, setS] = createStore(
 )
 let gameCount = 0
 
+//@ts-expect-error
+window.S = S
+
 export default function Game(props: { game: G.Game }) {
 	onMount(() => {
 		gameCount++
@@ -145,9 +148,27 @@ export default function Game(props: { game: G.Game }) {
 	const grabbedPieceCanvas = (<canvas {...canvasProps()} />) as HTMLCanvasElement
 
 	//#region mouse events
-	async function makeMove(move?: GL.SelectedMove, animate: boolean = false) {
-		const resPromise = S.game.tryMakeMove(move)
-		const res = await resPromise
+	// TODO change move type
+	async function makeMove(move?: GL.InProgressMove, animate: boolean = false) {
+		S.game.inProgressMoveLocal.set(move)
+		const validationRes = await S.game.validateInProgressMove()
+		if (validationRes.type === 'invalid') {
+			console.warn('Invalid move')
+			return
+		}
+		if (validationRes.type === 'placing-duck') {
+			S.game.commitInProgressMove()
+			S.boardCtx.visualizeMove(S.game.inProgressMoveLocal.get()!, true)
+		}
+		if (validationRes.type === 'ambiguous') {
+			const ambiguity = S.game.currentMoveAmbiguity!
+			if (ambiguity.type === 'promotion') {
+				S.game.commitInProgressMove()
+				S.boardCtx.visualizeMove(S.game.inProgressMoveLocal.get()!, true)
+				return
+			}
+		}
+
 		const newBoardIndex = S.game.state.boardHistory.length - 1
 		if (res.type === 'accepted' && animate) {
 			S.boardCtx.updateBoardAnimated(newBoardIndex)

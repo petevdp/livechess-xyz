@@ -2,7 +2,7 @@ import { until } from '@solid-primitives/promise'
 import { Accessor, createEffect, createMemo, getOwner } from 'solid-js'
 import { unwrap } from 'solid-js/store'
 
-import { BOARD_COLORS } from '~/config'
+import * as C from '~/config'
 import * as G from '~/systems/game/game.ts'
 import * as GL from '~/systems/game/gameLogic.ts'
 import * as Pieces from '~/systems/piece.tsx'
@@ -27,14 +27,12 @@ type BoardViewState = {
 // alias for semantic clarity
 type DisplayCoords = GL.Coords
 
-type PieceAnimation = PieceAnimationArgs & { currentFrame: number }
+type PieceAnimation = PieceAnimationArgs & { currentFrame: number; boardBefore: GL.Board }
 type PieceAnimationArgs = {
 	// in frames for now
-	duration: number
-	boardBefore: GL.Board
 	movedPieces: MovedPiece[]
-	addedPieces: GL.Board['pieces']
-	removedPieceSquares: string[]
+	addedPieces?: GL.Board['pieces']
+	removedPieceSquares?: string[]
 	storeUpdates?: Partial<BoardViewState>
 }
 type MovedPiece = { to: string; from: string }
@@ -49,7 +47,8 @@ export class BoardViewContext {
 	}
 	legalMovesForActiveSquare: Accessor<string[]>
 	grabbedPiecePos: Accessor<{ x: number; y: number } | null>
-	activeBoard: Accessor<GL.Board>
+	/** the board which moves can actually be played on, aka the latest board  */
+	inPlayBoard: Accessor<GL.Board>
 	visibleSquares: Accessor<Set<string>>
 
 	constructor(private game: G.Game) {
@@ -79,8 +78,15 @@ export class BoardViewContext {
 		const shouldHideNonVisible = () => false
 		this.visibleSquares = () => new Set<string>()
 		const lastMove = () => game.state.moveHistory[this.s.state.boardIndex - 1] || null
-		const placingDuck = () => game.placingDuck()
-		this.activeBoard = () => game.state.boardHistory[this.s.state.boardIndex].board
+		const placingDuck = () => game.isPlacingDuck
+		this.inPlayBoard = () => {
+			const board = deepClone(unwrap(game.state.boardHistory[this.s.state.boardIndex].board))
+			const inProgressMove = game.inProgressMove
+			if (inProgressMove) {
+				GL.applyInProgressMoveToBoardInPlace(inProgressMove, board)
+			}
+			return board
+		}
 
 		const hoveredSquare = createMemo(() => {
 			if (!this.s.state.mousePos) return null
@@ -156,7 +162,7 @@ export class BoardViewContext {
 				squareSize: this.s.state.squareSize,
 				grabbedPiecePos: this.grabbedPiecePos(),
 				activeSquare: this.s.state.activeSquare,
-				grabbedPiece: this.grabbedPiecePos() && this.s.state.activeSquare ? this.activeBoard().pieces[this.s.state.activeSquare] : null,
+				grabbedPiece: this.grabbedPiecePos() && this.s.state.activeSquare ? this.inPlayBoard().pieces[this.s.state.activeSquare] : null,
 				placingDuck: placingDuck(),
 				touchScreen: P.settings.usingTouch,
 			}
@@ -174,9 +180,8 @@ export class BoardViewContext {
 			return
 		}
 		args.storeUpdates ??= {}
-		// eslint-disable-next-line @typescript-eslint/no-this-alias
 		const animationAlreadyRunning = !!this.s.state.animation
-		this.s.set({ ...args.storeUpdates, animation: { ...args, currentFrame: 0 } })
+		this.s.set({ ...args.storeUpdates, animation: { ...args, currentFrame: 0, boardBefore: deepClone(unwrap(this.s.state.board)) } })
 
 		// just highjack the existing animation loop if it's already running
 		if (animationAlreadyRunning) return
@@ -185,7 +190,7 @@ export class BoardViewContext {
 				this.pieceAnimationDone.set(true)
 				return
 			}
-			if (this.s.state.animation!.currentFrame >= this.s.state.animation!.duration) {
+			if (this.s.state.animation!.currentFrame >= C.PIECE_ANIMATION_NUM_FRAMES) {
 				this.s.set({ animation: null })
 				this.pieceAnimationDone.set(true)
 				return
@@ -229,17 +234,39 @@ export class BoardViewContext {
 	}
 
 	squareContainsPlayerPiece(square: string) {
-		return this.activeBoard().pieces[square]?.color === this.game.bottomPlayer.color
+		return this.inPlayBoard().pieces[square]?.color === this.game.bottomPlayer.color
 	}
 
 	async updateBoardStatic(boardIndex: number) {
+		let board: GL.Board
+
+		if (boardIndex === this.game.state.boardHistory.length - 1) {
+			board = this.inPlayBoard()
+		} else {
+			board = deepClone(unwrap(this.game.state.boardHistory[boardIndex].board))
+		}
 		this.s.set({
 			boardIndex,
-			board: this.game.state.boardHistory[boardIndex].board,
+			board,
 			animation: null,
 			activeSquare: null,
 			grabbingActivePiece: false,
 		})
+	}
+
+	async visualizeMove(move: { from: string; to: string }, animate: boolean = false) {
+		if (animate) {
+			await this.runPieceAnimation({ movedPieces: [move] })
+		} else {
+			const newBoard = deepClone(unwrap(this.s.state.board))
+			GL.applyInProgressMoveToBoardInPlace(move, newBoard)
+			this.s.set({
+				board: newBoard,
+				animation: null,
+				activeSquare: null,
+				grabbingActivePiece: false,
+			})
+		}
 	}
 
 	async updateBoardAnimated(boardIndex: number) {
@@ -283,8 +310,6 @@ export class BoardViewContext {
 		}
 
 		const animDone = this.runPieceAnimation({
-			boardBefore,
-			duration: 20,
 			movedPieces,
 			addedPieces,
 			removedPieceSquares,
@@ -369,8 +394,8 @@ function renderPieces(ctx: CanvasRenderingContext2D, args: RenderPiecesArgs) {
 			const distanceX = toDisp.x - fromDisp.x
 			const distanceY = toDisp.y - fromDisp.y
 
-			const stepX = distanceX / args.animation.duration
-			const stepY = distanceY / args.animation.duration
+			const stepX = distanceX / C.PIECE_ANIMATION_NUM_FRAMES
+			const stepY = distanceY / C.PIECE_ANIMATION_NUM_FRAMES
 
 			dispCoords.x += stepX * args.animation.currentFrame
 			dispCoords.y += stepY * args.animation.currentFrame

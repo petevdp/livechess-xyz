@@ -92,6 +92,11 @@ export function createNetwork(log: FastifyBaseLogger) {
 			log.trace('updated paths: %s', msg.mutation.mutations.map((m) => m.path).join(','), msg.mutation.mutations)
 		}
 	})
+	message$.subscribe({
+		complete: () => {
+			log.info('message complete')
+		},
+	})
 	createRoot((disposeRoot) => {
 		const leaderTransport: Transport<Msg> = {
 			message$,
@@ -105,7 +110,7 @@ export function createNetwork(log: FastifyBaseLogger) {
 				for (const client of clients.values()) {
 					client.destroy()
 				}
-				message$.unsubscribe()
+				message$.complete()
 				disposeRoot()
 				disposed$.next()
 				disposed$.complete()
@@ -168,7 +173,7 @@ export function handleNewConnection(socket: ws.WebSocket, networkId: string, log
 	//#region client message handling
 
 	// have leader process client messages
-	client.sub.add(client.message$.subscribe(network.message$))
+	client.sub.add(client.message$.subscribe((msg) => network.message$.next(msg)))
 
 	// forward client-controlled-states to all clients
 	client.sub.add(
