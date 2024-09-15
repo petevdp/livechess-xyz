@@ -4,6 +4,7 @@ import 'solid-devtools'
 import { render } from 'solid-js/web'
 
 import App from './App'
+import { Board } from './components/htmlBoard'
 import './index.css'
 
 console.debug({
@@ -15,7 +16,7 @@ console.debug({
 })
 
 const root = document.getElementById('root')!
-render(App, root)
+render(Board, root)
 
 if (!import.meta.env.PROD) {
 	import('~/console.ts')

@@ -16,7 +16,7 @@ export default defineConfig(() => {
 	const httpTarget = `http://${ENV.HOSTNAME}:${ENV.PORT}`
 	const wsTarget = `ws://${ENV.HOSTNAME}:${ENV.PORT}`
 	const config = {
-		plugins: [devtools({ autoname: true }), solid(), solidSvg(), tsconfigPaths()],
+		plugins: [devtools({ autoname: true }), solid(), tsconfigPaths()],
 		build: {
 			sourcemap: true,
 		},

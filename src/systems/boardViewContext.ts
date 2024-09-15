@@ -17,15 +17,15 @@ type BoardViewState = {
 	boardFlipped: boolean
 	boardIndex: number
 	// may not match board in the game's history
-	board: GL.Board
 	mousePos: { x: number; y: number } | null
 	grabbingActivePiece: boolean
 	activeSquare: string | null
+	board: GL.Board
 	animation: PieceAnimation | null
 }
 
 // alias for semantic clarity
-type DisplayCoords = GL.Coords
+export type DisplayCoords = GL.Coords
 
 type PieceAnimation = PieceAnimationArgs & { currentFrame: number; boardBefore: GL.Board }
 type PieceAnimationArgs = {
@@ -50,6 +50,11 @@ export class BoardViewContext {
 	/** the board which moves can actually be played on, aka the latest board  */
 	inPlayBoard: Accessor<GL.Board>
 	visibleSquares: Accessor<Set<string>>
+	pieceAnimation: PieceAnimation | null = null
+
+	renderPiecesArgs!: RenderPiecesArgs
+	lastMove: Accessor<GL.Move | null>
+	hoveredSquare: Accessor<string | null>
 
 	constructor(private game: G.Game) {
 		if (!getOwner()) throw new Error('Owner not set')
@@ -59,12 +64,12 @@ export class BoardViewContext {
 			boardSize: 100,
 			boardSizeCss: 100,
 			activeSquare: null,
-			board: deepClone(unwrap(game.board)),
 			boardFlipped: game.bottomPlayer.color === 'black',
 			boardIndex: game.state.boardHistory.length - 1,
-			animation: null,
 			grabbingActivePiece: false,
 			mousePos: null,
+			board: deepClone(unwrap(game.boardWithInProgressMove())),
+			animation: null,
 		})
 
 		this.legalMovesForActiveSquare = createMemo(() => {
@@ -77,18 +82,13 @@ export class BoardViewContext {
 
 		const shouldHideNonVisible = () => false
 		this.visibleSquares = () => new Set<string>()
-		const lastMove = () => game.state.moveHistory[this.s.state.boardIndex - 1] || null
+		this.lastMove = () => game.state.moveHistory[this.s.state.boardIndex - 1] || null
 		const placingDuck = () => game.isPlacingDuck
 		this.inPlayBoard = () => {
-			const board = deepClone(unwrap(game.state.boardHistory[this.s.state.boardIndex].board))
-			const inProgressMove = game.inProgressMove
-			if (inProgressMove) {
-				GL.applyInProgressMoveToBoardInPlace(inProgressMove, board)
-			}
-			return board
+			return game.boardWithInProgressMove()
 		}
 
-		const hoveredSquare = createMemo(() => {
+		this.hoveredSquare = createMemo(() => {
 			if (!this.s.state.mousePos) return null
 			return this.getSquareFromDisplayCoords(this.s.state.mousePos)
 		})
@@ -97,111 +97,49 @@ export class BoardViewContext {
 			if (!this.s.state.grabbingActivePiece && !placingDuck()) return null
 			return this.s.state.mousePos
 		})
-
-		//#region canvas rendering
-
-		//#region render board
-		createEffect(() => {
-			const ctx = this.contexts.board
-			scaleAndReset(ctx, this.s.state.boardSizeCss)
-			const args: RenderBoardArgs = {
-				squareSize: this.s.state.squareSize,
-				boardFlipped: this.s.state.boardFlipped,
-				visibleSquares: this.visibleSquares(),
-				shouldHideNonVisible: shouldHideNonVisible(),
-			}
-			renderBoard(ctx, args)
-		})
-		//#endregion
-
-		//#region render pieces
-		createEffect(() => {
-			const ctx = this.contexts.pieces
-			if (!Pieces.initialized()) return
-			scaleAndReset(ctx, this.s.state.boardSizeCss)
-			const animation = this.s.state.animation ? trackAndUnwrap(this.s.state.animation) : null
-			const args: RenderPiecesArgs = {
-				squareSize: this.s.state.squareSize,
-				activeSquare: this.s.state.activeSquare,
-				animation,
-				board: trackAndUnwrap(this.s.state.board),
-				boardFlipped: this.s.state.boardFlipped,
-				grabbedPiecePos: this.grabbedPiecePos(),
-				visibleSquares: this.visibleSquares(),
-				shouldHideNonVisible: shouldHideNonVisible(),
-			}
-			renderPieces(ctx, args)
-		})
-		//#endregion
-
-		//#region render highlights
-		createEffect(() => {
-			const ctx = this.contexts.highlights
-			scaleAndReset(ctx, this.s.state.boardSizeCss)
-			const args: RenderHighlightsArgs = {
-				squareSize: this.s.state.squareSize,
-				activeSquare: this.s.state.activeSquare,
-				renderedBoard: trackAndUnwrap(this.s.state.board),
-				boardFlipped: this.s.state.boardFlipped,
-				hoveredSquare: hoveredSquare(),
-				visibleSquares: this.visibleSquares(),
-				shouldHideNonVisible: shouldHideNonVisible(),
-				lastMove: lastMove(),
-				legalMovesForActiveSquare: this.legalMovesForActiveSquare(),
-				playerColor: game.bottomPlayer.color,
-			}
-			renderHighlights(ctx, args)
-		})
-		//#endregion
-
-		//#region render grabbed piece
-		createEffect(() => {
-			const ctx = this.contexts.grabbedPiece
-			scaleAndReset(ctx, this.s.state.boardSizeCss)
-			const args: RenderGrabbedPieceArgs = {
-				squareSize: this.s.state.squareSize,
-				grabbedPiecePos: this.grabbedPiecePos(),
-				activeSquare: this.s.state.activeSquare,
-				grabbedPiece: this.grabbedPiecePos() && this.s.state.activeSquare ? this.inPlayBoard().pieces[this.s.state.activeSquare] : null,
-				placingDuck: placingDuck(),
-				touchScreen: P.settings.usingTouch,
-			}
-			renderGrabbedPiece(ctx, args)
-		})
-		//#endregion
-
-		//#endregion
 	}
 
 	pieceAnimationDone = createSignalProperty(false)
 	async runPieceAnimation(args: PieceAnimationArgs) {
+		console.log('animation started', args)
 		if (this.game.gameConfig.variant === 'fog-of-war') {
 			console.error('animations not supported in fog-of-war variant')
 			return
 		}
 		args.storeUpdates ??= {}
-		const animationAlreadyRunning = !!this.s.state.animation
-		this.s.set({ ...args.storeUpdates, animation: { ...args, currentFrame: 0, boardBefore: deepClone(unwrap(this.s.state.board)) } })
+		const animationAlreadyRunning = !!this.pieceAnimation
+		this.s.set({ ...args.storeUpdates })
+		this.pieceAnimation = { ...args, currentFrame: 0, boardBefore: deepClone(this.board) }
+		this.pieceAnimation.currentFrame = 0
+		this.pieceAnimation.boardBefore = deepClone(this.board)
+		this.renderPiecesArgs.animation = this.pieceAnimation
+		this.renderPiecesArgs.board = this.board
 
 		// just highjack the existing animation loop if it's already running
 		if (animationAlreadyRunning) return
 		const runInner = () => {
-			if (!this.s.state.animation === null) {
+			const t0 = performance.now()
+			if (this.pieceAnimation === null) {
 				this.pieceAnimationDone.set(true)
 				return
 			}
-			if (this.s.state.animation!.currentFrame >= C.PIECE_ANIMATION_NUM_FRAMES) {
-				this.s.set({ animation: null })
+			if (this.pieceAnimation.currentFrame >= C.PIECE_ANIMATION_NUM_FRAMES) {
+				this.pieceAnimation = null
 				this.pieceAnimationDone.set(true)
 				return
 			}
-			// renderPieces(this.contexts.pieces, this.s.state)
-			this.s.set('animation', 'currentFrame', (f) => f + 1)
+			const t1 = performance.now()
+			console.log('frame', this.pieceAnimation.currentFrame, 'took', t1 - t0, 'ms')
+			renderPieces(this.contexts.pieces, this.renderPiecesArgs)
+			this.pieceAnimation.currentFrame++
 			requestAnimationFrame(runInner)
 		}
 		runInner()
 		await until(this.pieceAnimationDone.get)
 		this.pieceAnimationDone.set(false)
+		console.log('animation done')
+		console.log('-----------------------------')
+		console.log('-----------------------------')
 	}
 
 	getSquareFromDisplayCoords({ x, y }: { x: number; y: number }) {
@@ -237,14 +175,17 @@ export class BoardViewContext {
 		return this.inPlayBoard().pieces[square]?.color === this.game.bottomPlayer.color
 	}
 
-	async updateBoardStatic(boardIndex: number) {
-		let board: GL.Board
-
+	getBoardByIndex(boardIndex: number) {
 		if (boardIndex === this.game.state.boardHistory.length - 1) {
-			board = this.inPlayBoard()
+			return this.inPlayBoard()
 		} else {
-			board = deepClone(unwrap(this.game.state.boardHistory[boardIndex].board))
+			return unwrap(this.game.state.boardHistory[boardIndex].board)
 		}
+	}
+
+	async updateBoardStatic(boardIndex: number) {
+		let board = this.getBoardByIndex(boardIndex)
+		board = deepClone(board)
 		this.s.set({
 			boardIndex,
 			board,
@@ -258,14 +199,10 @@ export class BoardViewContext {
 		if (animate) {
 			await this.runPieceAnimation({ movedPieces: [move] })
 		} else {
-			const newBoard = deepClone(unwrap(this.s.state.board))
+			const newBoard = deepClone(this.board)
 			GL.applyInProgressMoveToBoardInPlace(move, newBoard)
-			this.s.set({
-				board: newBoard,
-				animation: null,
-				activeSquare: null,
-				grabbingActivePiece: false,
-			})
+			this.board = newBoard
+			this.pieceAnimation = null
 		}
 	}
 
@@ -274,8 +211,8 @@ export class BoardViewContext {
 		if (boardIndex < 0 || boardIndex >= this.game.state.boardHistory.length) {
 			throw new Error(`invalid board index: ${boardIndex}`)
 		}
-		const boardBefore = this.game.state.boardHistory[this.s.state.boardIndex].board
-		const boardAfter = this.game.state.boardHistory[boardIndex].board
+		const boardBefore = this.getBoardByIndex(this.s.state.boardIndex)
+		const boardAfter = this.getBoardByIndex(boardIndex)
 		const movedPieces: { from: string; to: string }[] = []
 		const removedPieceSquares: string[] = []
 		const addedPieces: GL.Board['pieces'] = {}
@@ -313,7 +250,7 @@ export class BoardViewContext {
 			movedPieces,
 			addedPieces,
 			removedPieceSquares,
-			storeUpdates: { boardIndex, activeSquare: null, grabbingActivePiece: false, board: boardAfter },
+			storeUpdates: { boardIndex, activeSquare: null, grabbingActivePiece: false },
 		})
 		await animDone
 	}
@@ -330,11 +267,11 @@ type RenderBoardArgs = {
 
 function renderBoard(ctx: CanvasRenderingContext2D, args: RenderBoardArgs) {
 	// fill in light squares as background
-	ctx.fillStyle = args.shouldHideNonVisible ? BOARD_COLORS.lightFog : BOARD_COLORS.light
+	ctx.fillStyle = args.shouldHideNonVisible ? C.BOARD_COLORS.lightFog : C.BOARD_COLORS.light
 	ctx.fillRect(0, 0, args.squareSize * 8, args.squareSize * 8)
 
 	if (args.shouldHideNonVisible) {
-		ctx.fillStyle = BOARD_COLORS.light
+		ctx.fillStyle = C.BOARD_COLORS.light
 		for (const square of args.visibleSquares) {
 			const coords = GL.coordsFromNotation(square)
 			if ((coords.x + coords.y) % 2 === 0) continue
@@ -357,13 +294,13 @@ function renderBoard(ctx: CanvasRenderingContext2D, args: RenderBoardArgs) {
 
 			const { x, y } = boardCoordsToDisplayCoords({ x: j, y: i }, args.boardFlipped, args.squareSize)
 
-			ctx.fillStyle = visible ? BOARD_COLORS.dark : BOARD_COLORS.darkFog
+			ctx.fillStyle = visible ? C.BOARD_COLORS.dark : C.BOARD_COLORS.darkFog
 			ctx.fillRect(x, y, args.squareSize, args.squareSize)
 		}
 	}
 }
 
-type RenderPiecesArgs = {
+export type RenderPiecesArgs = {
 	animation: PieceAnimation | null
 	board: GL.Board
 	visibleSquares: Set<string>
@@ -405,7 +342,7 @@ function renderPieces(ctx: CanvasRenderingContext2D, args: RenderPiecesArgs) {
 
 	if (!args.animation) return
 	if (args.activeSquare && args.animation) throw new Error('active square should not be set during animation')
-	for (const [square, piece] of Object.entries(args.animation.addedPieces)) {
+	for (const [square, piece] of Object.entries(args.animation.addedPieces ?? [])) {
 		if ((args.grabbedPiecePos && args.activeSquare === square) || (args.shouldHideNonVisible ? !args.visibleSquares.has(square) : false)) {
 			continue
 		}
