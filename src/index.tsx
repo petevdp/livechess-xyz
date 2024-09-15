@@ -16,7 +16,7 @@ console.debug({
 })
 
 const root = document.getElementById('root')!
-render(Board, root)
+render(App, root)
 
 if (!import.meta.env.PROD) {
 	import('~/console.ts')

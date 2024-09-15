@@ -3,21 +3,7 @@ import { createMediaQuery } from '@solid-primitives/media'
 import { until } from '@solid-primitives/promise'
 import { makeResizeObserver } from '@solid-primitives/resize-observer'
 import { Subscription, filter, first, from as rxFrom, skip } from 'rxjs'
-import {
-	For,
-	Match,
-	ParentProps,
-	Show,
-	Switch,
-	batch,
-	createEffect,
-	createMemo,
-	createSignal,
-	observable,
-	on,
-	onCleanup,
-	onMount,
-} from 'solid-js'
+import { For, Match, ParentProps, Show, Switch, batch, createEffect, createSignal, observable, on, onCleanup, onMount } from 'solid-js'
 import { createStore } from 'solid-js/store'
 import toast from 'solid-toast'
 
@@ -36,7 +22,7 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from '~/components/ui/h
 import { cn } from '~/lib/utils.ts'
 import * as Audio from '~/systems/audio.ts'
 import * as BVC from '~/systems/boardViewContext.ts'
-import { BoardViewContext, squareNotationToDisplayCoords } from '~/systems/boardViewContext.ts'
+import { BoardViewContext } from '~/systems/boardViewContext.ts'
 import * as G from '~/systems/game/game.ts'
 import * as GL from '~/systems/game/gameLogic.ts'
 import * as Pieces from '~/systems/piece.tsx'
@@ -65,12 +51,6 @@ export default function Game(props: { game: G.Game }) {
 		gameCount++
 		if (gameCount > 1) {
 			throw new Error('Game component is currently a singleton')
-		}
-		S.boardCtx.contexts = {
-			board: boardCanvas.getContext('2d')!,
-			highlights: highlightsCanvas.getContext('2d')!,
-			pieces: piecesCanvas.getContext('2d')!,
-			grabbedPiece: grabbedPieceCanvas.getContext('2d')!,
 		}
 	})
 	onCleanup(() => {
@@ -106,16 +86,7 @@ export default function Game(props: { game: G.Game }) {
 
 	// eslint-disable-next-line prefer-const
 	let boardRef = null as unknown as HTMLDivElement
-	const canvasProps = createMemo(() => {
-		const size = S.boardCtx.s.state.boardSize
-		const sizeCss = S.boardCtx.s.state.boardSizeCss
-		return {
-			class: 'object-contain',
-			style: { width: `${sizeCss}px`, height: `${sizeCss}px` },
-			width: size,
-			height: size,
-		}
-	})
+
 	{
 		const isPortrait = createMediaQuery('(max-aspect-ratio: 7/6')
 		const { observe, unobserve } = makeResizeObserver(handleObserverCallback)
@@ -135,245 +106,85 @@ export default function Game(props: { game: G.Game }) {
 			minHeight -= baseOffset
 			minWidth -= baseOffset
 			const size = Math.min(minWidth, minHeight)
-			const adjustedSize = size * window.devicePixelRatio
-			S.boardCtx.s.set({ boardSize: adjustedSize, boardSizeCss: size, squareSize: size / 8 })
+			S.boardCtx.s.set({ boardSize: size, squareSize: size / 8 })
 		}
 	}
 	//#endregion
 
-	//#region board rendering and mouse events
+	// //#region promotion
 
-	const boardCanvas = (<canvas {...canvasProps()} />) as HTMLCanvasElement
-	const highlightsCanvas = (<canvas {...canvasProps()} />) as HTMLCanvasElement
-	const piecesCanvas = (<canvas {...canvasProps()} />) as HTMLCanvasElement
-	const grabbedPieceCanvas = (<canvas {...canvasProps()} />) as HTMLCanvasElement
+	// const promoteModalPosition = () => {
+	// 	if (!S.game.currentMoveAmbiguity) return undefined
+	// 	let { x, y } = squareNotationToDisplayCoords(S.game.inProgressMove!.to, S.boardCtx.s.state.boardFlipped, S.boardCtx.s.state.squareSize)
+	// 	y += boardCanvas.getBoundingClientRect().top + window.scrollY
+	// 	x += boardCanvas.getBoundingClientRect().left + window.scrollX
+	// 	if (S.boardCtx.s.state.boardSize / 2 < x) {
+	// 		x -= 180
+	// 	}
 
-	//#region mouse events
-	// TODO change move type
-	async function makeMove(move?: GL.InProgressMove, animate: boolean = false) {
-		S.game.inProgressMoveLocal.set(move)
-		const validationRes = await S.game.validateInProgressMove()
-		if (validationRes.code === 'invalid') {
-			console.warn('Invalid move')
-			return
-		}
-		if (validationRes.code === 'placing-duck') {
-			S.game.commitInProgressMove()
-			S.boardCtx.visualizeMove(S.game.inProgressMoveLocal.get()!, animate)
-		}
-		if (validationRes.code === 'ambiguous') {
-			const ambiguity = S.game.currentMoveAmbiguity!
-			if (ambiguity.type === 'promotion') {
-				S.game.commitInProgressMove()
-				S.boardCtx.visualizeMove(S.game.inProgressMoveLocal.get()!, animate)
-			}
-			return
-		}
+	// 	return [`${x}px`, `${y}px`] as [string, string]
+	// }
 
-		if (validationRes.code === 'valid') {
-			await S.game.makePlayerMove()
-			const boardIndex = S.game.state.boardHistory.length - 1
-			animate ? S.boardCtx.updateBoardAnimated(boardIndex) : S.boardCtx.updateBoardStatic(boardIndex)
-			return
-		}
-
-		throw new Error('unknown code ' + validationRes.code)
-	}
-
-	onMount(() => {
-		const touchOffsetX = () => {
-			switch (P.settings.touchOffsetDirection) {
-				case 'left':
-					return -20
-				case 'right':
-					return 20
-				case 'none':
-					return 0
-			}
-		}
-		const touchOffsetY = () => (P.settings.touchOffsetDirection !== 'none' ? -Math.abs(touchOffsetX()) : 0)
-		grabbedPieceCanvas.addEventListener('mousemove', (e) => mouseMoveListener(e.clientX, e.clientY))
-		grabbedPieceCanvas.addEventListener('touchmove', (e) => {
-			if (e.targetTouches.length === 0) return
-			const touch = e.targetTouches[0]
-			const touchingPiece = mouseMoveListener(touch.clientX + touchOffsetX(), touch.clientY + touchOffsetY())
-			if (touchingPiece) {
-				e.preventDefault()
-			}
-		})
-
-		function mouseMoveListener(clientX: number, clientY: number) {
-			const modified = false
-			if (!S.game.isClientPlayerParticipating) return modified
-			batch(() => {
-				const rect = grabbedPieceCanvas.getBoundingClientRect()
-				const x = clientX - rect.left
-				const y = clientY - rect.top
-				// TODO check if mouse has left board for a certain period and reset grabbed piece
-
-				S.boardCtx.s.set({ mousePos: { x, y } })
-			})
-			return modified
-		}
-
-		grabbedPieceCanvas.addEventListener('mousedown', (e) => {
-			e.button === 0 && handlePrimaryPress(e.clientX, e.clientY)
-		})
-
-		grabbedPieceCanvas.addEventListener('contextmenu', (e) => {
-			e.preventDefault()
-			handleSecondaryPress()
-		})
-
-		grabbedPieceCanvas.addEventListener('touchstart', (e) => {
-			if (e.targetTouches.length === 0) return
-			const touch = e.targetTouches[0]
-			handlePrimaryPress(touch.clientX, touch.clientY)
-		})
-
-		function handlePrimaryPress(clientX: number, clientY: number) {
-			if (!S.game.isClientPlayerParticipating || !S.boardCtx.viewingLiveBoard) return
-			const rect = grabbedPieceCanvas.getBoundingClientRect()
-			const clickCoords = { x: clientX - rect.left, y: clientY - rect.top }
-			const mouseSquare = S.boardCtx.getSquareFromDisplayCoords(clickCoords)
-			if (S.game.isPlacingDuck) {
-				S.game.setDuck(mouseSquare)
-				return
-			}
-
-			if (S.boardCtx.s.state.activeSquare) {
-				if (S.boardCtx.isLegalForActive(mouseSquare)) {
-					makeMove({ from: S.boardCtx.s.state.activeSquare, to: mouseSquare }, true)
-					return
-				}
-
-				if (S.boardCtx.squareContainsPlayerPiece(mouseSquare)) {
-					S.boardCtx.s.set({ activeSquare: mouseSquare, grabbingActivePiece: true })
-					return
-				}
-
-				S.boardCtx.s.set({ activeSquare: null })
-				return
-			}
-
-			if (S.boardCtx.squareContainsPlayerPiece(mouseSquare)) {
-				S.boardCtx.s.set({ activeSquare: mouseSquare, grabbingActivePiece: true })
-				return
-			} else {
-				S.boardCtx.s.set({ activeSquare: null })
-			}
-		}
-
-		function handleSecondaryPress() {
-			if (!S.game.isClientPlayerParticipating || !S.boardCtx.viewingLiveBoard) return
-			// TODO draw arrows
-			if (S.boardCtx.s.state.grabbingActivePiece) {
-				S.boardCtx.s.set({ grabbingActivePiece: false })
-			} else {
-				S.boardCtx.s.set({ activeSquare: null })
-			}
-		}
-
-		grabbedPieceCanvas.addEventListener('mouseup', (e) => {
-			if (e.button === 0) handlePrimaryRelease(e.clientX, e.clientY)
-		})
-		grabbedPieceCanvas.addEventListener('touchend', (e) => {
-			if (e.changedTouches.length === 0) return
-			const touch = e.changedTouches[0]
-			handlePrimaryRelease(touch.clientX + touchOffsetX(), touch.clientY + touchOffsetY())
-		})
-
-		function handlePrimaryRelease(clientX: number, clientY: number) {
-			if (!S.game.isClientPlayerParticipating || !S.boardCtx.viewingLiveBoard) return
-			const rect = grabbedPieceCanvas.getBoundingClientRect()
-			const square = S.boardCtx.getSquareFromDisplayCoords({ x: clientX - rect.left, y: clientY - rect.top })
-
-			if (S.boardCtx.s.state.grabbingActivePiece && S.boardCtx.isLegalForActive(square)) {
-				makeMove({ from: S.boardCtx.s.state.activeSquare!, to: square })
-			} else if (S.boardCtx.s.state.grabbingActivePiece) {
-				S.boardCtx.s.set({ grabbingActivePiece: false })
-			}
-		}
-	})
-
-	//#endregion
-
-	//#endregion
-
-	//#region promotion
-
-	const promoteModalPosition = () => {
-		if (!S.game.currentMoveAmbiguity) return undefined
-		let { x, y } = squareNotationToDisplayCoords(S.game.inProgressMove!.to, S.boardCtx.s.state.boardFlipped, S.boardCtx.s.state.squareSize)
-		y += boardCanvas.getBoundingClientRect().top + window.scrollY
-		x += boardCanvas.getBoundingClientRect().left + window.scrollX
-		if (S.boardCtx.s.state.boardSize / 2 < x) {
-			x -= 180
-		}
-
-		return [`${x}px`, `${y}px`] as [string, string]
-	}
-
-	Modal.addModal({
-		title: null,
-		render: () => (
-			<Switch>
-				<Match when={S.game.currentMoveAmbiguity?.type === 'promotion'}>
-					<div class="flex w-[180px] flex-row justify-between space-x-1">
-						<For each={GL.PROMOTION_PIECES}>
-							{(pp) => {
-								const Piece = Pieces.getPieceSvg({ type: pp, color: S.game.bottomPlayer.color })
-								return (
-									<Button
-										classList={{ 'bg-neutral-200': S.game.bottomPlayer.color !== 'white' }}
-										variant={S.game.bottomPlayer.color === 'white' ? 'ghost' : 'default'}
-										size="icon"
-										onclick={() => {
-											if (S.game.currentMoveAmbiguity?.type !== 'promotion') return
-											S.game.selectPromotion(pp)
-										}}
-									>
-										<Piece />
-									</Button>
-								)
-							}}
-						</For>
-					</div>
-				</Match>
-				<Match when={S.game.currentMoveAmbiguity?.type === 'castle'}>
-					<div class="flex flex-col items-center">
-						<h3>Castle?</h3>
-						<div class="flex space-between space-x-1">
-							<Button
-								onclick={() => {
-									if (S.game.currentMoveAmbiguity?.type !== 'castle')
-										throw new Error("This shouldn't happen, if it does that's interesting at least")
-									S.game.selectIsCaslting(true)
-								}}
-							>
-								Yes
-							</Button>
-							<Button
-								onclick={() => {
-									if (S.game.currentMoveAmbiguity?.type !== 'castle')
-										throw new Error("This shouldn't happen, if it does that's interesting at least")
-									S.game.selectIsCaslting(false)
-								}}
-							>
-								No
-							</Button>
-						</div>
-					</div>
-				</Match>
-			</Switch>
-		),
-		position: promoteModalPosition,
-		visible: () => !!S.game.currentMoveAmbiguity,
-		closeOnEscape: false,
-		closeOnOutsideClick: false,
-		setVisible: () => {},
-	})
-	//#endregion
+	// Modal.addModal({
+	// 	title: null,
+	// 	render: () => (
+	// 		<Switch>
+	// 			<Match when={S.game.currentMoveAmbiguity?.type === 'promotion'}>
+	// 				<div class="flex w-[180px] flex-row justify-between space-x-1">
+	// 					<For each={GL.PROMOTION_PIECES}>
+	// 						{(pp) => {
+	// 							const Piece = Pieces.getPieceSvg({ type: pp, color: S.game.bottomPlayer.color })
+	// 							return (
+	// 								<Button
+	// 									classList={{ 'bg-neutral-200': S.game.bottomPlayer.color !== 'white' }}
+	// 									variant={S.game.bottomPlayer.color === 'white' ? 'ghost' : 'default'}
+	// 									size="icon"
+	// 									onclick={() => {
+	// 										if (S.game.currentMoveAmbiguity?.type !== 'promotion') return
+	// 										S.game.selectPromotion(pp)
+	// 									}}
+	// 								>
+	// 									<Piece />
+	// 								</Button>
+	// 							)
+	// 						}}
+	// 					</For>
+	// 				</div>
+	// 			</Match>
+	// 			<Match when={S.game.currentMoveAmbiguity?.type === 'castle'}>
+	// 				<div class="flex flex-col items-center">
+	// 					<h3>Castle?</h3>
+	// 					<div class="flex space-between space-x-1">
+	// 						<Button
+	// 							onclick={() => {
+	// 								if (S.game.currentMoveAmbiguity?.type !== 'castle')
+	// 									throw new Error("This shouldn't happen, if it does that's interesting at least")
+	// 								S.game.selectIsCaslting(true)
+	// 							}}
+	// 						>
+	// 							Yes
+	// 						</Button>
+	// 						<Button
+	// 							onclick={() => {
+	// 								if (S.game.currentMoveAmbiguity?.type !== 'castle')
+	// 									throw new Error("This shouldn't happen, if it does that's interesting at least")
+	// 								S.game.selectIsCaslting(false)
+	// 							}}
+	// 						>
+	// 							No
+	// 						</Button>
+	// 					</div>
+	// 				</div>
+	// 			</Match>
+	// 		</Switch>
+	// 	),
+	// 	position: promoteModalPosition,
+	// 	visible: () => !!S.game.currentMoveAmbiguity,
+	// 	closeOnEscape: false,
+	// 	closeOnOutsideClick: false,
+	// 	setVisible: () => {},
+	// })
+	// //#endregion
 
 	//#region draw offer events
 	{
@@ -564,14 +375,7 @@ export default function Game(props: { game: G.Game }) {
 				color={S.game.topPlayer.color}
 			/>
 			<CapturedPieces class={styles.capturedPiecesContainer} />
-			<div class={`${styles.board} grid place-items-center`} ref={boardRef}>
-				<div>
-					<span>{boardCanvas}</span>
-					<span class="absolute -translate-y-full">{highlightsCanvas}</span>
-					<span class="absolute -translate-y-full">{piecesCanvas}</span>
-					<span class="absolute -translate-y-full">{grabbedPieceCanvas}</span>
-				</div>
-			</div>
+			<Board />
 			<Show when={S.game.isClientPlayerParticipating} fallback={<div class={styles.bottomLeftActions} />}>
 				<ActionsPanel class={styles.bottomLeftActions} placingDuck={S.game.isPlacingDuck} />
 			</Show>
@@ -662,10 +466,7 @@ function Player(props: { player: G.PlayerWithColor; class: string }) {
 
 //#region board
 
-type BoardProps = {
-	containerRef: HTMLElement
-}
-export function Board(props: BoardProps) {
+export function Board() {
 	const s = () => S.boardCtx.s.state
 	const pieces = () => Object.entries(s().board.pieces) as [string, GL.ColoredPiece][]
 	// eslint-disable-next-line prefer-const
@@ -820,10 +621,18 @@ export function Board(props: BoardProps) {
 	})
 
 	return (
-		<div ref={boardRef} class="bg-board-brown" style={{ width: `${s().boardSize}px`, height: `${s().boardSize}px` }}>
+		<div ref={boardRef} class={`bg-board-brown ${styles.board}`} style={{ width: `${s().boardSize}px`, height: `${s().boardSize}px` }}>
 			<For each={pieces()}>
 				{([square, piece]) => {
-					return <Piece boardFlipped={s().boardFlipped} square={square} squareSize={s().squareSize} piece={piece} />
+					return (
+						<Piece
+							position={S.boardCtx.getPieceAnimatedDispCoords(square) ?? undefined}
+							boardFlipped={s().boardFlipped}
+							square={square}
+							squareSize={s().squareSize}
+							piece={piece}
+						/>
+					)
 				}}
 			</For>
 		</div>

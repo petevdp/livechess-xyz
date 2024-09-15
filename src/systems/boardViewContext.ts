@@ -39,19 +39,11 @@ type MovedPiece = { to: string; from: string }
 
 export class BoardViewContext {
 	s: StoreProperty<BoardViewState>
-	contexts!: {
-		board: CanvasRenderingContext2D
-		pieces: CanvasRenderingContext2D
-		highlights: CanvasRenderingContext2D
-		grabbedPiece: CanvasRenderingContext2D
-	}
 	legalMovesForActiveSquare: Accessor<string[]>
 	grabbedPiecePos: Accessor<{ x: number; y: number } | null>
 	/** the board which moves can actually be played on, aka the latest board  */
 	inPlayBoard: Accessor<GL.Board>
 	visibleSquares: Accessor<Set<string>>
-	pieceAnimation: PieceAnimation | null = null
-
 	renderPiecesArgs!: RenderPiecesArgs
 	lastMove: Accessor<GL.Move | null>
 	hoveredSquare: Accessor<string | null>
@@ -107,31 +99,33 @@ export class BoardViewContext {
 			return
 		}
 		args.storeUpdates ??= {}
-		const animationAlreadyRunning = !!this.pieceAnimation
-		this.s.set({ ...args.storeUpdates })
-		this.pieceAnimation = { ...args, currentFrame: 0, boardBefore: deepClone(this.board) }
-		this.pieceAnimation.currentFrame = 0
-		this.pieceAnimation.boardBefore = deepClone(this.board)
-		this.renderPiecesArgs.animation = this.pieceAnimation
-		this.renderPiecesArgs.board = this.board
+		const animationAlreadyRunning = !!this.s.state.animation
+		this.s.set({
+			...args.storeUpdates,
+			animation: {
+				currentFrame: 0,
+				boardBefore: deepClone(this.s.state.board),
+				...args,
+			},
+		})
 
 		// just highjack the existing animation loop if it's already running
 		if (animationAlreadyRunning) return
 		const runInner = () => {
 			const t0 = performance.now()
-			if (this.pieceAnimation === null) {
+			if (this.s.state.animation === null) {
 				this.pieceAnimationDone.set(true)
 				return
 			}
-			if (this.pieceAnimation.currentFrame >= C.PIECE_ANIMATION_NUM_FRAMES) {
-				this.pieceAnimation = null
+			if (this.s.state.animation.currentFrame >= C.PIECE_ANIMATION_NUM_FRAMES) {
+				this.s.set(['animation'], null)
 				this.pieceAnimationDone.set(true)
 				return
 			}
 			const t1 = performance.now()
-			console.log('frame', this.pieceAnimation.currentFrame, 'took', t1 - t0, 'ms')
-			renderPieces(this.contexts.pieces, this.renderPiecesArgs)
-			this.pieceAnimation.currentFrame++
+			console.log('frame', this.s.state.animation.currentFrame, 'took', t1 - t0, 'ms')
+			//@ts-expect-error
+			this.s.set(['animation', 'currentFrame'], (f) => f + 1)
 			requestAnimationFrame(runInner)
 		}
 		runInner()
@@ -140,6 +134,29 @@ export class BoardViewContext {
 		console.log('animation done')
 		console.log('-----------------------------')
 		console.log('-----------------------------')
+	}
+
+	getPieceAnimatedDispCoords(square: string) {
+		const s = this.s.state
+		if (!s.animation) return null
+
+		const dispCoords = boardCoordsToDisplayCoords(GL.coordsFromNotation(square), s.boardFlipped, s.squareSize)
+		let movedPiece: MovedPiece | undefined
+		if (s.animation && (movedPiece = s.animation.movedPieces.find((m) => m.from === square))) {
+			const to = GL.coordsFromNotation(movedPiece.to)
+			const fromDisp = dispCoords
+			const toDisp = boardCoordsToDisplayCoords(to, s.boardFlipped, s.squareSize)
+
+			const distanceX = toDisp.x - fromDisp.x
+			const distanceY = toDisp.y - fromDisp.y
+
+			const stepX = distanceX / C.PIECE_ANIMATION_NUM_FRAMES
+			const stepY = distanceY / C.PIECE_ANIMATION_NUM_FRAMES
+
+			dispCoords.x += stepX * s.animation.currentFrame
+			dispCoords.y += stepY * s.animation.currentFrame
+		}
+		return dispCoords
 	}
 
 	getSquareFromDisplayCoords({ x, y }: { x: number; y: number }) {
@@ -199,10 +216,9 @@ export class BoardViewContext {
 		if (animate) {
 			await this.runPieceAnimation({ movedPieces: [move] })
 		} else {
-			const newBoard = deepClone(this.board)
+			const newBoard = deepClone(this.s.state.board)
 			GL.applyInProgressMoveToBoardInPlace(move, newBoard)
-			this.board = newBoard
-			this.pieceAnimation = null
+			this.s.set({ board: newBoard, animation: null })
 		}
 	}
 
