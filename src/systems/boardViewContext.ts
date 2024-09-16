@@ -5,10 +5,9 @@ import { unwrap } from 'solid-js/store'
 import * as C from '~/config'
 import * as G from '~/systems/game/game.ts'
 import * as GL from '~/systems/game/gameLogic.ts'
-import * as Pieces from '~/systems/piece.tsx'
 import * as P from '~/systems/player.ts'
 import { deepClone } from '~/utils/obj.ts'
-import { StoreProperty, createSignalProperty, createStoreProperty, trackAndUnwrap } from '~/utils/solid'
+import { StoreProperty, createSignalProperty, createStoreProperty } from '~/utils/solid'
 
 type BoardViewState = {
 	squareSize: number
@@ -93,6 +92,7 @@ export class BoardViewContext {
 
 	pieceAnimationDone = createSignalProperty(false)
 	async runPieceAnimation(args: PieceAnimationArgs) {
+		return
 		console.log('animation started', args)
 		if (this.game.gameConfig.variant === 'fog-of-war') {
 			console.error('animations not supported in fog-of-war variant')
@@ -136,12 +136,23 @@ export class BoardViewContext {
 		console.log('-----------------------------')
 	}
 
+	attackedSquares() {
+		if (!this.s.state.activeSquare || !this.viewingLiveBoard) return
+		const attacked: string[] = []
+		for (const square of this.legalMovesForActiveSquare()) {
+			if (this.inPlayBoard().pieces[square]?.color === this.game.topPlayer.color) attacked.push(square)
+		}
+		return attacked
+	}
+
 	getPieceAnimatedDispCoords(square: string) {
 		const s = this.s.state
-		if (!s.animation) return null
+		if (s.grabbingActivePiece && s.activeSquare === square && s.mousePos) {
+			return { x: s.mousePos!.x - s.squareSize / 2, y: s.mousePos!.y - s.squareSize / 2 }
+		}
 
-		const dispCoords = boardCoordsToDisplayCoords(GL.coordsFromNotation(square), s.boardFlipped, s.squareSize)
 		let movedPiece: MovedPiece | undefined
+		const dispCoords = boardCoordsToDisplayCoords(GL.coordsFromNotation(square), s.boardFlipped, s.squareSize)
 		if (s.animation && (movedPiece = s.animation.movedPieces.find((m) => m.from === square))) {
 			const to = GL.coordsFromNotation(movedPiece.to)
 			const fromDisp = dispCoords
@@ -155,8 +166,9 @@ export class BoardViewContext {
 
 			dispCoords.x += stepX * s.animation.currentFrame
 			dispCoords.y += stepY * s.animation.currentFrame
+			return dispCoords
 		}
-		return dispCoords
+		return null
 	}
 
 	getSquareFromDisplayCoords({ x, y }: { x: number; y: number }) {
@@ -353,7 +365,7 @@ function renderPieces(ctx: CanvasRenderingContext2D, args: RenderPiecesArgs) {
 			dispCoords.x += stepX * args.animation.currentFrame
 			dispCoords.y += stepY * args.animation.currentFrame
 		}
-		ctx.drawImage(Pieces.getCachedPiece(piece), dispCoords.x, dispCoords.y, args.squareSize, args.squareSize)
+		// ctx.drawImage(Pieces.getCachedPiece(piece), dispCoords.x, dispCoords.y, args.squareSize, args.squareSize)
 	}
 
 	if (!args.animation) return
@@ -364,7 +376,7 @@ function renderPieces(ctx: CanvasRenderingContext2D, args: RenderPiecesArgs) {
 		}
 
 		const dispCoords = boardCoordsToDisplayCoords(GL.coordsFromNotation(square), args.boardFlipped, args.squareSize)
-		ctx.drawImage(Pieces.getCachedPiece(piece), dispCoords.x, dispCoords.y, args.squareSize, args.squareSize)
+		// ctx.drawImage(Pieces.getCachedPiece(piece), dispCoords.x, dispCoords.y, args.squareSize, args.squareSize)
 	}
 }
 
@@ -468,12 +480,12 @@ function renderGrabbedPiece(ctx: CanvasRenderingContext2D, args: RenderGrabbedPi
 	if (args.grabbedPiecePos && args.grabbedPiece) {
 		const x = args.grabbedPiecePos!.x
 		const y = args.grabbedPiecePos!.y
-		ctx.drawImage(Pieces.getCachedPiece(args.grabbedPiece), x - size / 2, y - size / 2, size, size)
+		// ctx.drawImage(Pieces.getCachedPiece(args.grabbedPiece), x - size / 2, y - size / 2, size, size)
 	}
 
 	if (args.placingDuck && args.grabbedPiecePos) {
 		const { x, y } = args.grabbedPiecePos!
-		ctx.drawImage(Pieces.getCachedPiece(GL.DUCK), x - size / 2, y - size / 2, size, size)
+		// ctx.drawImage(Pieces.getCachedPiece(GL.DUCK), x - size / 2, y - size / 2, size, size)
 	}
 }
 

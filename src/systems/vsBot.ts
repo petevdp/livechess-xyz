@@ -1,5 +1,5 @@
 import { NEVER, Observable, Subscription } from 'rxjs'
-import { createEffect, createSignal, getOwner, on, onCleanup, runWithOwner } from 'solid-js'
+import { createEffect, createRenderEffect, createSignal, getOwner, on, onCleanup, runWithOwner, untrack } from 'solid-js'
 
 // import { RandomBot } from '~/bots/randomBot.ts'
 import { StockfishBot } from '~/bots/stockfish.ts'
@@ -72,6 +72,17 @@ export function setupVsBot() {
 
 	const sub = new Subscription()
 	const ctx = new VsBotContext(store, bot)
+	createEffect(() => {
+		const gameId = store.lockstepState.activeGameId
+		if (gameId === undefined) {
+			ctx.setGame(null)
+			return
+		}
+		untrack(() => {
+			ctx.setGame(new G.Game(gameId, ctx, ctx.state.gameConfig))
+		})
+	})
+
 	setVsBotContext(ctx)
 	let cleanedUp = false
 	onCleanup(() => {

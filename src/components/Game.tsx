@@ -1,9 +1,29 @@
 import { useColorMode } from '@kobalte/core'
 import { createMediaQuery } from '@solid-primitives/media'
 import { until } from '@solid-primitives/promise'
+import { combineProps } from '@solid-primitives/props'
 import { makeResizeObserver } from '@solid-primitives/resize-observer'
 import { Subscription, filter, first, from as rxFrom, skip } from 'rxjs'
-import { For, Match, ParentProps, Show, Switch, batch, createEffect, createSignal, observable, on, onCleanup, onMount } from 'solid-js'
+import {
+	ComponentProps,
+	For,
+	JSX,
+	JSXElement,
+	Match,
+	ParentProps,
+	Show,
+	Switch,
+	batch,
+	createEffect,
+	createMemo,
+	createRenderEffect,
+	createSignal,
+	mergeProps,
+	observable,
+	on,
+	onCleanup,
+	onMount,
+} from 'solid-js'
 import { createStore } from 'solid-js/store'
 import toast from 'solid-toast'
 
@@ -27,6 +47,7 @@ import * as G from '~/systems/game/game.ts'
 import * as GL from '~/systems/game/gameLogic.ts'
 import * as Pieces from '~/systems/piece.tsx'
 import * as P from '~/systems/player.ts'
+import { trackAndUnwrap } from '~/utils/solid.ts'
 
 import styles from './Game.module.css'
 import { Button } from './ui/button.tsx'
@@ -56,8 +77,7 @@ export default function Game(props: { game: G.Game }) {
 	onCleanup(() => {
 		gameCount--
 
-		//@ts-expect-error
-		setS({ game: null, boardCtx: null })
+		// setS({ game: null, boardCtx: null })
 
 		// for development
 		//@ts-expect-error
@@ -65,10 +85,15 @@ export default function Game(props: { game: G.Game }) {
 		//@ts-expect-error
 		window.boardCtx = null
 	})
+	createEffect(() => {
+		console.log({ props: trackAndUnwrap(props) })
+	})
 
-	setS({
-		game: props.game,
-		boardCtx: new BoardViewContext(props.game),
+	createRenderEffect(() => {
+		setS({
+			game: props.game,
+			boardCtx: new BoardViewContext(props.game),
+		})
 	})
 
 	// for development
@@ -111,80 +136,7 @@ export default function Game(props: { game: G.Game }) {
 	}
 	//#endregion
 
-	// //#region promotion
-
-	// const promoteModalPosition = () => {
-	// 	if (!S.game.currentMoveAmbiguity) return undefined
-	// 	let { x, y } = squareNotationToDisplayCoords(S.game.inProgressMove!.to, S.boardCtx.s.state.boardFlipped, S.boardCtx.s.state.squareSize)
-	// 	y += boardCanvas.getBoundingClientRect().top + window.scrollY
-	// 	x += boardCanvas.getBoundingClientRect().left + window.scrollX
-	// 	if (S.boardCtx.s.state.boardSize / 2 < x) {
-	// 		x -= 180
-	// 	}
-
-	// 	return [`${x}px`, `${y}px`] as [string, string]
-	// }
-
-	// Modal.addModal({
-	// 	title: null,
-	// 	render: () => (
-	// 		<Switch>
-	// 			<Match when={S.game.currentMoveAmbiguity?.type === 'promotion'}>
-	// 				<div class="flex w-[180px] flex-row justify-between space-x-1">
-	// 					<For each={GL.PROMOTION_PIECES}>
-	// 						{(pp) => {
-	// 							const Piece = Pieces.getPieceSvg({ type: pp, color: S.game.bottomPlayer.color })
-	// 							return (
-	// 								<Button
-	// 									classList={{ 'bg-neutral-200': S.game.bottomPlayer.color !== 'white' }}
-	// 									variant={S.game.bottomPlayer.color === 'white' ? 'ghost' : 'default'}
-	// 									size="icon"
-	// 									onclick={() => {
-	// 										if (S.game.currentMoveAmbiguity?.type !== 'promotion') return
-	// 										S.game.selectPromotion(pp)
-	// 									}}
-	// 								>
-	// 									<Piece />
-	// 								</Button>
-	// 							)
-	// 						}}
-	// 					</For>
-	// 				</div>
-	// 			</Match>
-	// 			<Match when={S.game.currentMoveAmbiguity?.type === 'castle'}>
-	// 				<div class="flex flex-col items-center">
-	// 					<h3>Castle?</h3>
-	// 					<div class="flex space-between space-x-1">
-	// 						<Button
-	// 							onclick={() => {
-	// 								if (S.game.currentMoveAmbiguity?.type !== 'castle')
-	// 									throw new Error("This shouldn't happen, if it does that's interesting at least")
-	// 								S.game.selectIsCaslting(true)
-	// 							}}
-	// 						>
-	// 							Yes
-	// 						</Button>
-	// 						<Button
-	// 							onclick={() => {
-	// 								if (S.game.currentMoveAmbiguity?.type !== 'castle')
-	// 									throw new Error("This shouldn't happen, if it does that's interesting at least")
-	// 								S.game.selectIsCaslting(false)
-	// 							}}
-	// 						>
-	// 							No
-	// 						</Button>
-	// 					</div>
-	// 				</div>
-	// 			</Match>
-	// 		</Switch>
-	// 	),
-	// 	position: promoteModalPosition,
-	// 	visible: () => !!S.game.currentMoveAmbiguity,
-	// 	closeOnEscape: false,
-	// 	closeOnOutsideClick: false,
-	// 	setVisible: () => {},
-	// })
-	// //#endregion
+	//#region promotion
 
 	//#region draw offer events
 	{
@@ -375,7 +327,7 @@ export default function Game(props: { game: G.Game }) {
 				color={S.game.topPlayer.color}
 			/>
 			<CapturedPieces class={styles.capturedPiecesContainer} />
-			<Board />
+			<Board ref={boardRef} />
 			<Show when={S.game.isClientPlayerParticipating} fallback={<div class={styles.bottomLeftActions} />}>
 				<ActionsPanel class={styles.bottomLeftActions} placingDuck={S.game.isPlacingDuck} />
 			</Show>
@@ -466,9 +418,8 @@ function Player(props: { player: G.PlayerWithColor; class: string }) {
 
 //#region board
 
-export function Board() {
+export function Board(props: { ref: HTMLDivElement }) {
 	const s = () => S.boardCtx.s.state
-	const pieces = () => Object.entries(s().board.pieces) as [string, GL.ColoredPiece][]
 	// eslint-disable-next-line prefer-const
 	let boardRef = null as unknown as HTMLDivElement
 
@@ -527,17 +478,13 @@ export function Board() {
 		})
 
 		function mouseMoveListener(clientX: number, clientY: number) {
-			const modified = false
-			if (!S.game.isClientPlayerParticipating) return modified
-			batch(() => {
-				const rect = boardRef.getBoundingClientRect()
-				const x = clientX - rect.left
-				const y = clientY - rect.top
-				// TODO check if mouse has left board for a certain period and reset grabbed piece
-
-				S.boardCtx.s.set({ mousePos: { x, y } })
-			})
-			return modified
+			if (!S.game.isClientPlayerParticipating) return false
+			const rect = boardRef.getBoundingClientRect()
+			const x = clientX - rect.left
+			const y = clientY - rect.top
+			// TODO check if mouse has left board for a certain period and reset grabbed piece
+			S.boardCtx.s.set({ mousePos: { x, y } })
+			return true
 		}
 
 		boardRef.addEventListener('mousedown', (e) => {
@@ -619,56 +566,142 @@ export function Board() {
 			}
 		}
 	})
+	const promoteModalPosition = () => {
+		if (!S.game.currentMoveAmbiguity) return undefined
+		let { x, y } = squareNotationToDisplayCoords(S.game.inProgressMove!.to, S.boardCtx.s.state.boardFlipped, S.boardCtx.s.state.squareSize)
+		y += boardCanvas.getBoundingClientRect().top + window.scrollY
+		x += boardCanvas.getBoundingClientRect().left + window.scrollX
+		if (S.boardCtx.s.state.boardSize / 2 < x) {
+			x -= 180
+		}
+
+		return [`${x}px`, `${y}px`] as [string, string]
+	}
+
+	Modal.addModal({
+		title: null,
+		render: () => (
+			<Switch>
+				<Match when={S.game.currentMoveAmbiguity?.type === 'promotion'}>
+					<div class="flex w-[180px] flex-row justify-between space-x-1">
+						<For each={GL.PROMOTION_PIECES}>
+							{(pp) => {
+								const Piece = Pieces.getPieceSvg({ type: pp, color: S.game.bottomPlayer.color })
+								return (
+									<Button
+										classList={{ 'bg-neutral-200': S.game.bottomPlayer.color !== 'white' }}
+										variant={S.game.bottomPlayer.color === 'white' ? 'ghost' : 'default'}
+										size="icon"
+										onclick={() => {
+											if (S.game.currentMoveAmbiguity?.type !== 'promotion') return
+											S.game.selectPromotion(pp)
+										}}
+									>
+										<Piece />
+									</Button>
+								)
+							}}
+						</For>
+					</div>
+				</Match>
+				<Match when={S.game.currentMoveAmbiguity?.type === 'castle'}>
+					<div class="flex flex-col items-center">
+						<h3>Castle?</h3>
+						<div class="flex space-between space-x-1">
+							<Button
+								onclick={() => {
+									if (S.game.currentMoveAmbiguity?.type !== 'castle')
+										throw new Error("This shouldn't happen, if it does that's interesting at least")
+									S.game.selectIsCaslting(true)
+								}}
+							>
+								Yes
+							</Button>
+							<Button
+								onclick={() => {
+									if (S.game.currentMoveAmbiguity?.type !== 'castle')
+										throw new Error("This shouldn't happen, if it does that's interesting at least")
+									S.game.selectIsCaslting(false)
+								}}
+							>
+								No
+							</Button>
+						</div>
+					</div>
+				</Match>
+			</Switch>
+		),
+		position: promoteModalPosition,
+		visible: () => !!S.game.currentMoveAmbiguity,
+		closeOnEscape: false,
+		closeOnOutsideClick: false,
+		setVisible: () => {},
+	})
+	//#endregion
+	const pieces = () => Object.entries(trackAndUnwrap(s().board.pieces)) as [string, GL.ColoredPiece][]
 
 	return (
-		<div ref={boardRef} class={`bg-board-brown ${styles.board}`} style={{ width: `${s().boardSize}px`, height: `${s().boardSize}px` }}>
-			<For each={pieces()}>
-				{([square, piece]) => {
-					return (
-						<Piece
-							position={S.boardCtx.getPieceAnimatedDispCoords(square) ?? undefined}
-							boardFlipped={s().boardFlipped}
-							square={square}
-							squareSize={s().squareSize}
-							piece={piece}
-						/>
-					)
-				}}
-			</For>
+		<div class={`w-full h-full ${styles.board}`} ref={props.ref}>
+			<div ref={boardRef} class="bg-board-brown relative mx-auto" style={{ width: `${s().boardSize}px`, height: `${s().boardSize}px` }}>
+				<Show when={s().activeSquare}>
+					<div class={cn(GRID_ALIGNED_CLASSES, `bg-blue-200`)} style={gridAlignedStyles(s().activeSquare!)} />
+				</Show>
+				<For each={S.boardCtx.attackedSquares()}>
+					{(square) => <div class={cn(GRID_ALIGNED_CLASSES, `bg-red-400`)} style={gridAlignedStyles(square)} />}
+				</For>
+				<For each={S.boardCtx.legalMovesForActiveSquare()}>
+					{(square) => (
+						<div class={cn(GRID_ALIGNED_CLASSES)} style={gridAlignedStyles(square)}>
+							<span class="absolute w-[20%] h-[20%] bg-green-600 rounded-full translate-x-[200%] translate-y-[200%]" />
+						</div>
+					)}
+				</For>
+				<For each={pieces()}>
+					{([square, piece]) => {
+						const position = createMemo(() => S.boardCtx.getPieceAnimatedDispCoords(square) ?? undefined)
+						return <Piece pieceGrabbed={!!position()} position={position()} piece={piece} square={position() ? undefined : square} />
+					}}
+				</For>
+			</div>
 		</div>
 	)
 }
 
 type PieceProps = {
-	squareSize: number
 	square?: string
 	position?: BVC.DisplayCoords
 	piece: GL.ColoredPiece
-	boardFlipped: boolean
+	pieceGrabbed: boolean
 }
 
 function Piece(props: PieceProps) {
-	const position = () => {
-		if (props.position) {
-			return props.position
-		}
-		if (props.square) {
-			return BVC.squareNotationToDisplayCoords(props.square, props.boardFlipped, props.squareSize)
-		}
-		throw new Error('Piece must have either a square or a position')
-	}
-
-	const url = () => Pieces.getPieceSrc(props.piece)
-
+	const size = () => (props.pieceGrabbed ? 'h-[15%] w-[15%] z-10' : 'h-[12.5%] w-[12.5%] z-5')
 	return (
-		<span
-			class={`absolute top-0 left-0 ${props.piece.color} ${props.piece.type} w-[12.5%] h-[12.5%] will-change-transform`}
+		<div
+			class={cn(GRID_ALIGNED_CLASSES, size(), props.pieceGrabbed ? 'cursor-grabbing' : 'cursor-grab')}
 			style={{
-				background: `url('${url()}')`,
-				transform: `translate(${position().x}px, ${position().y}px)`,
+				...gridAlignedStyles(props.square, props.position),
+				'background-image': `url(${Pieces.getPieceSrc(props.piece)})`,
 			}}
 		/>
 	)
+}
+
+type GridAlignedProps = {
+	square: string
+	class: string
+	style?: JSX.HTMLAttributes<HTMLDivElement>['style']
+}
+
+function Highlight(props: GridAlignedProps) {
+	return <div class={cn(GRID_ALIGNED_CLASSES, props.class)} style={mergeProps(gridAlignedStyles(props.square), props.style ?? {})} />
+}
+
+const GRID_ALIGNED_CLASSES = 'absolute top-0 left-0 w-[12.5%] h-[12.5%] will-change-transform'
+function gridAlignedStyles(square?: string, position?: BVC.DisplayCoords) {
+	const finalPosition =
+		position ?? BVC.squareNotationToDisplayCoords(square!, S.boardCtx.s.state.boardFlipped, S.boardCtx.s.state.squareSize)
+	return { transform: `translate(${finalPosition.x}px, ${finalPosition.y}px)` }
 }
 
 //#endregion
@@ -789,6 +822,7 @@ function DrawHoverCard(props: ParentProps) {
 
 function MoveHistory(props: MoveNavProps) {
 	const itemClass = 'grid grid-cols-[min-content_1fr_1fr] gap-1 text-xs items-center'
+
 	return (
 		<div class={`${styles.moveHistoryContainer} grid grid-cols-2 h-max max-h-full gap-x-4 min-w-96 gap-y-1 p-1 overflow-y-auto`}>
 			<div class={itemClass}>
@@ -802,7 +836,7 @@ function MoveHistory(props: MoveNavProps) {
 					Start
 				</Button>
 			</div>
-			<For each={GL.getMoveHistoryAsNotation(S.game.stateSignal().moveHistory)}>
+			<For each={GL.getMoveHistoryAsNotation(S.game.state.moveHistory)}>
 				{(moves, index) => {
 					const viewingFirstMove = () => props.viewedMoveIndex === index() * 2
 					const viewingSecondMove = () => props.viewedMoveIndex === index() * 2 + 1
