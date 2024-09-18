@@ -3,6 +3,7 @@ import { Accessor, createEffect, createMemo, getOwner } from 'solid-js'
 import { unwrap } from 'solid-js/store'
 
 import * as C from '~/config'
+import * as DS from '~/systems/debugSystem.ts'
 import * as G from '~/systems/game/game.ts'
 import * as GL from '~/systems/game/gameLogic.ts'
 import * as P from '~/systems/player.ts'
@@ -89,10 +90,7 @@ export class BoardViewContext {
 			return this.s.state.mousePos
 		})
 
-		createEffect(() => {
-			const s = trackAndUnwrap(this.s.state)
-			console.log(s)
-		})
+		DS.addHook('boardCtx', () => this.s.state, getOwner()!)
 	}
 
 	pieceAnimationDone = createSignalProperty(false)

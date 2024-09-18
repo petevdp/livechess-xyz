@@ -7,6 +7,7 @@ import { unwrap } from 'solid-js/store'
 
 import * as SS from '~/sharedStore/sharedStore.ts'
 import { PUSH, StoreMutation } from '~/sharedStore/sharedStore.ts'
+import * as DS from '~/systems/debugSystem.ts'
 import { createId } from '~/utils/ids.ts'
 import { deepClone } from '~/utils/obj.ts'
 import { SignalProperty, createSignalProperty, storeToSignal, trackAndUnwrap } from '~/utils/solid.ts'
@@ -187,15 +188,8 @@ export class Game {
 				return state
 			})
 		)
-		const owner = getOwner()!
-		;(async () => {
-			const DS = await import('~/systems/debugSystem.ts')
-			runWithOwner(owner, () => {
-				createEffect(() => {
-					DS.setValue('gameState', this.stateSignal())
-				})
-			})
-		})()
+
+		DS.addHook('board', () => this.board, getOwner()!)
 
 		this.inProgressMoveLocal = createSignalProperty<GL.InProgressMove | undefined>(
 			this.isThisPlayersTurn() ? this.gameContext.rollbackState.inProgressMove : undefined

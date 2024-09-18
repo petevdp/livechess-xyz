@@ -1,7 +1,8 @@
 import { FloatingElement } from '@floating-ui/dom'
+import stringifyCompact from 'json-stringify-pretty-compact'
 import { useFloating } from 'solid-floating-ui'
-import { AiFillBug } from 'solid-icons/ai'
-import { For, batch, createMemo, onMount } from 'solid-js'
+import { AiFillBug, AiFillMinusCircle } from 'solid-icons/ai'
+import { For, Show, batch, createMemo, onMount } from 'solid-js'
 import { createSignal } from 'solid-js'
 import { onCleanup } from 'solid-js'
 
@@ -22,7 +23,6 @@ type DebugDisplayDetails = {
 const [displayState, setDisplayState] = makePersistedStore('debugDisplays', {} as Record<string, DebugDisplayDetails | undefined>)
 
 export default function DebugDisplays() {
-	const [selectedKey, setSelectedKey] = createSignal('<none>')
 	return (
 		<>
 			<DropdownMenu>
@@ -34,14 +34,26 @@ export default function DebugDisplays() {
 				<DropdownMenuContent class="w-56">
 					<For each={DS.debugKeys()}>
 						{(key) => (
-							<DropdownMenuCheckboxItem checked={selectedKey() === key} onClick={() => setSelectedKey(key)}>
+							<DropdownMenuCheckboxItem
+								checked={displayState[key]!.visible}
+								onChange={() => {
+									console.log('changed')
+									setDisplayState(key, 'visible', (s) => !s)
+								}}
+							>
 								{key}
 							</DropdownMenuCheckboxItem>
 						)}
 					</For>
 				</DropdownMenuContent>
 			</DropdownMenu>
-			<For each={DS.debugKeys()}>{(key) => <DebugDisplay key={key} />}</For>
+			<For each={DS.debugKeys()}>
+				{(key) => (
+					<Show when={displayState[key]!.visible}>
+						<DebugDisplay key={key} />
+					</Show>
+				)}
+			</For>
 		</>
 	)
 }
@@ -104,6 +116,7 @@ export function DebugDisplay(props: DebugDisplayProps) {
 	}
 
 	function mouseDownListener(evt: MouseEvent) {
+		// dismiss if minus button is clicked
 		batch(() => {
 			setClientCoords({ x: evt.clientX, y: evt.clientY })
 			setDragging(true)
@@ -131,7 +144,7 @@ export function DebugDisplay(props: DebugDisplayProps) {
 
 	return (
 		<div
-			class="flex flex-col rounded-lg border shadow-sm bg-card select-none w-[400px] h-[200px]"
+			class="flex flex-col absolute rounded-lg border shadow-sm bg-card select-none z-50 min-w-0  min-h-0"
 			ref={setFloating}
 			style={{
 				position: position.strategy,
@@ -139,12 +152,26 @@ export function DebugDisplay(props: DebugDisplayProps) {
 				left: `${position.x ?? 0}px`,
 			}}
 		>
-			<div ref={floatingWindowBarRef} class="bg-gray-950 py-2 cursor-grab">
-				<pre>
-					<code>{JSON.stringify(trackAndUnwrap(displayState[props.key] || {}), null, 2)}</code>
+			<div class="flex flex-col" ref={floatingWindowBarRef}>
+				<div class="bg-gray-950 py-2 cursor-grab flex justify-between items-center p-2">
+					<h3>{props.key}</h3>
+					<Button
+						size="icon"
+						class="minus-button"
+						variant="ghost"
+						onmousedown={(e) => {
+							console.log('click')
+							setDisplayState(props.key, 'visible', false)
+							e.stopPropagation()
+						}}
+					>
+						<AiFillMinusCircle />
+					</Button>
+				</div>
+				<pre class="flex-grow w-max overflow-y-scroll">
+					<code>{stringifyCompact(trackAndUnwrap(DS.values[props.key] || {}))}</code>
 				</pre>
 			</div>
-			<div>content</div>
 		</div>
 	)
 }
