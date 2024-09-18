@@ -1,30 +1,25 @@
 import { useColorMode } from '@kobalte/core'
 import { createMediaQuery } from '@solid-primitives/media'
 import { until } from '@solid-primitives/promise'
-import { combineProps } from '@solid-primitives/props'
 import { makeResizeObserver } from '@solid-primitives/resize-observer'
 import { Subscription, filter, first, from as rxFrom, skip } from 'rxjs'
 import {
-	ComponentProps,
 	For,
 	JSX,
-	JSXElement,
 	Match,
 	ParentProps,
 	Show,
 	Switch,
-	batch,
+	createContext,
 	createEffect,
 	createMemo,
-	createRenderEffect,
 	createSignal,
-	mergeProps,
 	observable,
 	on,
 	onCleanup,
 	onMount,
+	useContext,
 } from 'solid-js'
-import { createStore } from 'solid-js/store'
 import toast from 'solid-toast'
 
 import * as Svgs from '~/components/Svgs.tsx'
@@ -53,21 +48,10 @@ import styles from './Game.module.css'
 import { Button } from './ui/button.tsx'
 import * as Modal from './utils/Modal.tsx'
 
-//TODO component duplicates on reload sometimes for some reason
-
-// shared state, terser alternative to contexts until we need to render multiple games
-const [S, setS] = createStore(
-	{} as unknown as {
-		game: G.Game
-		boardCtx: BoardViewContext
-	}
-)
+const GameContext = createContext(null as unknown as { game: G.Game; boardCtx: BoardViewContext })
 let gameCount = 0
 
-//@ts-expect-error
-window.S = S
-
-export default function Game(props: { game: G.Game }) {
+export default function GameWrapper(props: { game: G.Game }) {
 	onMount(() => {
 		gameCount++
 		if (gameCount > 1) {
@@ -85,27 +69,21 @@ export default function Game(props: { game: G.Game }) {
 		//@ts-expect-error
 		window.boardCtx = null
 	})
-	createEffect(() => {
-		console.log({ props: trackAndUnwrap(props) })
-	})
-
-	createRenderEffect(() => {
-		setS({
-			game: props.game,
-			boardCtx: new BoardViewContext(props.game),
-		})
-	})
-
-	// for development
+	const boardCtx = new BoardViewContext(props.game)
 	//@ts-expect-error
-	window.game = S.game
+	window.game = props.game
 	//@ts-expect-error
-	window.boardCtx = S.boardCtx
+	window.boardCtx = boardCtx
+	return (
+		<GameContext.Provider value={{ boardCtx, game: props.game }}>
+			<Game />
+		</GameContext.Provider>
+	)
+}
 
+export function Game() {
+	const S = useContext(GameContext)
 	//#region calc board sizes
-	// let BOARD_SIZE = 600
-	// let SQUARE_SIZE = BOARD_SIZE / 8
-
 	// eslint-disable-next-line prefer-const
 	let boardContainerRef = null as unknown as HTMLDivElement
 
@@ -351,6 +329,7 @@ export default function Game(props: { game: G.Game }) {
 
 //#region subcomponents
 function GameOutcomeDialog() {
+	const S = useContext(GameContext)
 	const [open, setOpen] = createSignal(false)
 	const [showedOutcome, setShowedOutcome] = createSignal(false)
 	createEffect(() => {
@@ -380,6 +359,7 @@ function GameOutcomeDialog() {
 }
 
 function Player(props: { player: G.PlayerWithColor; class: string }) {
+	const S = useContext(GameContext)
 	const { colorMode } = useColorMode()
 	const isPlayerTurn = () => S.game.isPlayerTurn(props.player.color)
 	const font = () => {
@@ -419,6 +399,7 @@ function Player(props: { player: G.PlayerWithColor; class: string }) {
 //#region board
 
 export function Board(props: { ref: HTMLDivElement }) {
+	const S = useContext(GameContext)
 	const s = () => S.boardCtx.s.state
 	// eslint-disable-next-line prefer-const
 	let boardRef = null as unknown as HTMLDivElement
@@ -568,9 +549,13 @@ export function Board(props: { ref: HTMLDivElement }) {
 	})
 	const promoteModalPosition = () => {
 		if (!S.game.currentMoveAmbiguity) return undefined
-		let { x, y } = squareNotationToDisplayCoords(S.game.inProgressMove!.to, S.boardCtx.s.state.boardFlipped, S.boardCtx.s.state.squareSize)
-		y += boardCanvas.getBoundingClientRect().top + window.scrollY
-		x += boardCanvas.getBoundingClientRect().left + window.scrollX
+		let { x, y } = BVC.squareNotationToDisplayCoords(
+			S.game.inProgressMove!.to,
+			S.boardCtx.s.state.boardFlipped,
+			S.boardCtx.s.state.squareSize
+		)
+		y += boardRef.getBoundingClientRect().top + window.scrollY
+		x += boardRef.getBoundingClientRect().left + window.scrollX
 		if (S.boardCtx.s.state.boardSize / 2 < x) {
 			x -= 180
 		}
@@ -644,31 +629,50 @@ export function Board(props: { ref: HTMLDivElement }) {
 		<div class={`w-full h-full ${styles.board}`} ref={props.ref}>
 			<div ref={boardRef} class="bg-board-brown relative mx-auto" style={{ width: `${s().boardSize}px`, height: `${s().boardSize}px` }}>
 				<Show when={s().activeSquare}>
-					<div class={cn(GRID_ALIGNED_CLASSES, `bg-blue-200`)} style={gridAlignedStyles(s().activeSquare!)} />
+					<HighlightOutlineSvg
+						class={cn(GRID_ALIGNED_CLASSES)}
+						stroke="rgb(96 165 250)"
+						style={gridAlignedStyles(BVC.squareNotationToDisplayCoords(s().activeSquare!, s().boardFlipped, s().squareSize))}
+					/>
 				</Show>
 				<For each={S.boardCtx.attackedSquares()}>
-					{(square) => <div class={cn(GRID_ALIGNED_CLASSES, `bg-red-400`)} style={gridAlignedStyles(square)} />}
+					{(square) => (
+						<div
+							class={cn(GRID_ALIGNED_CLASSES, `bg-red-400`)}
+							style={gridAlignedStyles(BVC.squareNotationToDisplayCoords(square, s().boardFlipped, s().squareSize))}
+						/>
+					)}
 				</For>
 				<For each={S.boardCtx.legalMovesForActiveSquare()}>
 					{(square) => (
-						<div class={cn(GRID_ALIGNED_CLASSES)} style={gridAlignedStyles(square)}>
-							<span class="absolute w-[20%] h-[20%] bg-green-600 rounded-full translate-x-[200%] translate-y-[200%]" />
+						<div
+							class={cn(GRID_ALIGNED_CLASSES, 'grid place-items-center')}
+							style={gridAlignedStyles(BVC.squareNotationToDisplayCoords(square, s().boardFlipped, s().squareSize))}
+						>
+							<span class="w-[20%] h-[20%] bg-green-600 rounded-full" />
 						</div>
 					)}
 				</For>
 				<For each={pieces()}>
 					{([square, piece]) => {
 						const position = createMemo(() => S.boardCtx.getPieceAnimatedDispCoords(square) ?? undefined)
-						return <Piece pieceGrabbed={!!position()} position={position()} piece={piece} square={position() ? undefined : square} />
+						return <Piece pieceGrabbed={!!position()} position={position()} piece={piece} square={square} />
 					}}
 				</For>
 			</div>
 		</div>
 	)
 }
+function HighlightOutlineSvg(props: JSX.SvgSVGAttributes<SVGSVGElement>) {
+	return (
+		<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+			<rect x="0" y="0" width="100" height="100" stroke-width="8" fill="none" />
+		</svg>
+	)
+}
 
 type PieceProps = {
-	square?: string
+	square: string
 	position?: BVC.DisplayCoords
 	piece: GL.ColoredPiece
 	pieceGrabbed: boolean
@@ -676,32 +680,23 @@ type PieceProps = {
 
 function Piece(props: PieceProps) {
 	const size = () => (props.pieceGrabbed ? 'h-[15%] w-[15%] z-10' : 'h-[12.5%] w-[12.5%] z-5')
+	const S = useContext(GameContext)
 	return (
 		<div
 			class={cn(GRID_ALIGNED_CLASSES, size(), props.pieceGrabbed ? 'cursor-grabbing' : 'cursor-grab')}
 			style={{
-				...gridAlignedStyles(props.square, props.position),
+				...gridAlignedStyles(
+					BVC.squareNotationToDisplayCoords(props.square, S.boardCtx.s.state.boardFlipped, S.boardCtx.s.state.squareSize)
+				),
 				'background-image': `url(${Pieces.getPieceSrc(props.piece)})`,
 			}}
 		/>
 	)
 }
 
-type GridAlignedProps = {
-	square: string
-	class: string
-	style?: JSX.HTMLAttributes<HTMLDivElement>['style']
-}
-
-function Highlight(props: GridAlignedProps) {
-	return <div class={cn(GRID_ALIGNED_CLASSES, props.class)} style={mergeProps(gridAlignedStyles(props.square), props.style ?? {})} />
-}
-
 const GRID_ALIGNED_CLASSES = 'absolute top-0 left-0 w-[12.5%] h-[12.5%] will-change-transform'
-function gridAlignedStyles(square?: string, position?: BVC.DisplayCoords) {
-	const finalPosition =
-		position ?? BVC.squareNotationToDisplayCoords(square!, S.boardCtx.s.state.boardFlipped, S.boardCtx.s.state.squareSize)
-	return { transform: `translate(${finalPosition.x}px, ${finalPosition.y}px)` }
+function gridAlignedStyles(postiion: BVC.DisplayCoords) {
+	return { transform: `translate(${postiion.x}px, ${postiion.y}px)` }
 }
 
 //#endregion
@@ -736,6 +731,7 @@ function Clock(props: { clock: number; class: string; ticking: boolean; timeCont
 }
 
 function ActionsPanel(props: { class: string; placingDuck: boolean }) {
+	const S = useContext(GameContext)
 	return (
 		<span class={props.class}>
 			<Switch>
@@ -768,6 +764,7 @@ function ActionsPanel(props: { class: string; placingDuck: boolean }) {
 }
 
 function ResignButton() {
+	const S = useContext(GameContext)
 	const [open, setOpen] = createSignal(false)
 
 	return (
@@ -796,6 +793,7 @@ function ResignButton() {
 }
 
 function DrawHoverCard(props: ParentProps) {
+	const S = useContext(GameContext)
 	return (
 		<HoverCard placement="bottom" open={!!S.game.drawIsOfferedBy}>
 			<HoverCardTrigger>{props.children}</HoverCardTrigger>
@@ -821,6 +819,7 @@ function DrawHoverCard(props: ParentProps) {
 }
 
 function MoveHistory(props: MoveNavProps) {
+	const S = useContext(GameContext)
 	const itemClass = 'grid grid-cols-[min-content_1fr_1fr] gap-1 text-xs items-center'
 
 	return (
@@ -901,6 +900,7 @@ function MoveNav(props: MoveNavProps) {
 
 //#region captured pieces
 export function CapturedPieces(props: { class: string }) {
+	const S = useContext(GameContext)
 	return (
 		<div class={cn(props.class, 'flex flex-col wc:flex-row justify-between space-y-1 wc:space-y-0 wc:space-x-1')}>
 			<CapturedPiecesForColor pieces={S.game.capturedPieces(S.game.bottomPlayer.color)} capturedBy={'top-player'} />
@@ -939,6 +939,7 @@ function CapturedPiecesForColor(props: { pieces: GL.ColoredPiece[]; capturedBy: 
 
 //#region helpers
 function showGameOutcome(outcome: GL.GameOutcome): [string, string] {
+	const S = useContext(GameContext)
 	const winner = outcome.winner ? S.game.players.find((p) => p.color === outcome.winner)! : null
 	const winnerTitle = `${winner?.name} (${winner?.color})`
 	switch (outcome.reason) {

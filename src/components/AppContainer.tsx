@@ -13,6 +13,7 @@ import * as P from '~/systems/player.ts'
 import * as R from '~/systems/room.ts'
 
 import styles from './AppContainer.module.css'
+import DebugDisplay from './DebugDisplay.tsx'
 import * as Svgs from './Svgs.tsx'
 import { ModalContainer } from './utils/Modal.tsx'
 
@@ -34,6 +35,7 @@ export function AppContainer(props: ParentProps) {
 					<div class="flex items-center justify-end space-x-1 font-light">
 						<Show when={R.room() && !R.room()!.isPlayerParticipating}>Spectating</Show>
 					</div>
+					<DebugDisplay />
 				</div>
 			</nav>
 			<Switch>

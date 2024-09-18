@@ -2,7 +2,7 @@ import { until } from '@solid-primitives/promise'
 import deepEquals from 'fast-deep-equal'
 import { Observable, ReplaySubject, distinctUntilChanged, filter, first, from as rxFrom } from 'rxjs'
 import { map } from 'rxjs/operators'
-import { Accessor, createEffect, createMemo, createRoot, createSignal, observable, on, onCleanup } from 'solid-js'
+import { Accessor, createEffect, createMemo, createRoot, createSignal, getOwner, observable, on, onCleanup, runWithOwner } from 'solid-js'
 import { unwrap } from 'solid-js/store'
 
 import * as SS from '~/sharedStore/sharedStore.ts'
@@ -187,6 +187,16 @@ export class Game {
 				return state
 			})
 		)
+		const owner = getOwner()!
+		;(async () => {
+			const DS = await import('~/systems/debugSystem.ts')
+			runWithOwner(owner, () => {
+				createEffect(() => {
+					DS.setValue('gameState', this.stateSignal())
+				})
+			})
+		})()
+
 		this.inProgressMoveLocal = createSignalProperty<GL.InProgressMove | undefined>(
 			this.isThisPlayersTurn() ? this.gameContext.rollbackState.inProgressMove : undefined
 		)

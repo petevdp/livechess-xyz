@@ -1,7 +1,7 @@
 import { createEffect } from 'solid-js'
 
 import { createId } from '~/utils/ids.ts'
-import { makePersisted } from '~/utils/makePersisted.ts'
+import { makePersistedSignal } from '~/utils/makePersisted.ts'
 
 import * as R from './room.ts'
 
@@ -39,11 +39,11 @@ const defaultSettings: PlayerSettings = {
 export const settings: { [key in keyof PlayerSettings]: PlayerSettings[key] } = {}
 
 for (const [key, value] of Object.entries(defaultSettings)) {
-	const [get, set] = makePersisted(key, value)
+	const [get, set] = makePersistedSignal(key, value)
 	Object.defineProperty(settings, key, { get, set })
 }
 
-const [_playerId, setPlayerId] = makePersisted('playerId:v2', null as string | null)
+const [_playerId, setPlayerId] = makePersistedSignal('playerId:v2', null as string | null)
 export const playerId = _playerId
 
 let setup = false

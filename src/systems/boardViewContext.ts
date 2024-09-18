@@ -7,7 +7,7 @@ import * as G from '~/systems/game/game.ts'
 import * as GL from '~/systems/game/gameLogic.ts'
 import * as P from '~/systems/player.ts'
 import { deepClone } from '~/utils/obj.ts'
-import { StoreProperty, createSignalProperty, createStoreProperty } from '~/utils/solid'
+import { StoreProperty, createSignalProperty, createStoreProperty, trackAndUnwrap } from '~/utils/solid'
 
 type BoardViewState = {
 	squareSize: number
@@ -87,6 +87,11 @@ export class BoardViewContext {
 		this.grabbedPiecePos = createMemo(() => {
 			if (!this.s.state.grabbingActivePiece && !placingDuck()) return null
 			return this.s.state.mousePos
+		})
+
+		createEffect(() => {
+			const s = trackAndUnwrap(this.s.state)
+			console.log(s)
 		})
 	}
 

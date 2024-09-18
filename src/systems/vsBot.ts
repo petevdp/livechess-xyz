@@ -1,3 +1,4 @@
+import { until } from '@solid-primitives/promise'
 import { NEVER, Observable, Subscription } from 'rxjs'
 import { createEffect, createRenderEffect, createSignal, getOwner, on, onCleanup, runWithOwner, untrack } from 'solid-js'
 
@@ -72,16 +73,19 @@ export function setupVsBot() {
 
 	const sub = new Subscription()
 	const ctx = new VsBotContext(store, bot)
-	createEffect(() => {
-		const gameId = store.lockstepState.activeGameId
-		if (gameId === undefined) {
-			ctx.setGame(null)
-			return
-		}
-		untrack(() => {
-			ctx.setGame(new G.Game(gameId, ctx, ctx.state.gameConfig))
-		})
-	})
+	createEffect(
+		on(
+			() => store.lockstepState.activeGameId,
+			(gameId) => {
+				if (gameId === undefined) {
+					ctx.setGame(null)
+					return
+				}
+				bot.initialize()
+				ctx.setGame(new G.Game(gameId, ctx, ctx.state.gameConfig))
+			}
+		)
+	)
 
 	setVsBotContext(ctx)
 	let cleanedUp = false
@@ -97,22 +101,6 @@ export function setupVsBot() {
 		if (cleanedUp) return
 		ctx.game!.makeMoveProgrammatic(move, BOT_ID)
 	}
-
-	const ownerContext = getOwner()
-
-	sub.add(
-		ctx.event$.subscribe((e) => {
-			if (e.type !== 'new-game') return
-			runWithOwner(ownerContext, () => {
-				const game = new G.Game(store.lockstepState.activeGameId!, ctx, ctx.state.gameConfig)
-				ctx.setGame(game)
-				bot.initialize()
-				if (ctx.botParticipant.color === 'white') {
-					bot.makeMove(game.state).then(makeMove)
-				}
-			})
-		})
-	)
 
 	createEffect(
 		on(
@@ -158,7 +146,9 @@ export class VsBotContext implements G.RootGameContext {
 	get game() {
 		return this._game.get()
 	}
+
 	setGame(game: G.Game | null) {
+		console.log('setting game', game)
 		this.game?.dispose()
 		this._game.set(game)
 	}
