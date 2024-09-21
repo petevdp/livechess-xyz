@@ -185,6 +185,7 @@ export function Game() {
 				// TODO we need to play the appropriate sound effect here instead of a generic one
 				Audio.playSound('moveOpponent')
 			}
+			// TODO this is a bug because this move may have happened in a different client
 			if (event.type !== 'make-move' || event.playerId === P.playerId()) return
 			// to get around moveHistory not being updated by the time the event is dispatched Sadge
 			const move = await until(() => S.game.state.moveHistory[event.moveIndex])

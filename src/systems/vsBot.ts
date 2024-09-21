@@ -5,6 +5,7 @@ import { createEffect, createRenderEffect, createSignal, getOwner, on, onCleanup
 // import { RandomBot } from '~/bots/randomBot.ts'
 import { StockfishBot } from '~/bots/stockfish.ts'
 import * as SS from '~/sharedStore/sharedStore.ts'
+import * as DS from '~/systems/debugSystem.ts'
 import { createSignalProperty } from '~/utils/solid.ts'
 import { unit } from '~/utils/unit.ts'
 
@@ -69,6 +70,7 @@ export function setupVsBot() {
 		},
 	}
 	const store = SS.initLeaderStore<G.RootGameState, object, G.GameEvent>(transport, startingState)
+	DS.addHook('vsBotStore', () => store.rollbackState, getOwner()!)
 	const bot = new StockfishBot(store.lockstepState.gameConfig.bot!.difficulty, GL.parseGameConfig(store.lockstepState.gameConfig))
 
 	const sub = new Subscription()
