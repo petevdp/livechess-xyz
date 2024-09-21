@@ -41,6 +41,9 @@ importers:
       '@solid-primitives/resize-observer':
         specifier: ^2.0.23
         version: 2.0.23(solid-js@1.8.11)
+      '@solid-primitives/set':
+        specifier: ^0.4.12
+        version: 0.4.12(solid-js@1.8.11)
       '@solidjs/router':
         specifier: ^0.10.9
         version: 0.10.9(solid-js@1.8.11)
@@ -890,6 +893,11 @@ packages:
     peerDependencies:
       solid-js: ^1.6.12
 
+  '@solid-primitives/set@0.4.12':
+    resolution: {integrity: sha512-p0CTabELYGK0oHDpET0f0p9CZtOqPocPDlZxL5MFSke0ewUByNVfNssK6aOECwvvYWL/rinFOUneOC/KLAXmwA==}
+    peerDependencies:
+      solid-js: ^1.6.12
+
   '@solid-primitives/static-store@0.0.5':
     resolution: {integrity: sha512-ssQ+s/wrlFAEE4Zw8GV499yBfvWx7SMm+ZVc11wvao4T5xg9VfXCL9Oa+x4h+vPMvSV/Knv5LrsLiUa+wlJUXQ==}
     peerDependencies:
@@ -916,6 +924,11 @@ packages:
 
   '@solid-primitives/styles@0.0.111':
     resolution: {integrity: sha512-1mBxOGAPXmfD5oYCvqjKBDN7SuNjz2qz7RdH7KtsuNLQh6lpuSKadtHnLvru0Y8Vz1InqTJisBIy/6P5kyDmPw==}
+    peerDependencies:
+      solid-js: ^1.6.12
+
+  '@solid-primitives/trigger@1.0.11':
+    resolution: {integrity: sha512-4oc8grBzBit7ByXgE1aZ0QXfhdlhXaiFjDKYsOhRyUJa8fN4hdr2IgsYqjmHwxyjK+Dm2OUwkCI1bGkaLgtgXg==}
     peerDependencies:
       solid-js: ^1.6.12
 
@@ -3861,6 +3874,11 @@ snapshots:
     dependencies:
       solid-js: 1.8.11
 
+  '@solid-primitives/set@0.4.12(solid-js@1.8.11)':
+    dependencies:
+      '@solid-primitives/trigger': 1.0.11(solid-js@1.8.11)
+      solid-js: 1.8.11
+
   '@solid-primitives/static-store@0.0.5(solid-js@1.8.11)':
     dependencies:
       '@solid-primitives/utils': 6.2.2(solid-js@1.8.11)
@@ -3885,6 +3903,11 @@ snapshots:
     dependencies:
       '@solid-primitives/rootless': 1.4.3(solid-js@1.8.11)
       '@solid-primitives/utils': 6.2.2(solid-js@1.8.11)
+      solid-js: 1.8.11
+
+  '@solid-primitives/trigger@1.0.11(solid-js@1.8.11)':
+    dependencies:
+      '@solid-primitives/utils': 6.2.3(solid-js@1.8.11)
       solid-js: 1.8.11
 
   '@solid-primitives/trigger@1.0.9(solid-js@1.8.11)':

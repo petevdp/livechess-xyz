@@ -90,7 +90,7 @@ export function ensureSetupPieceSystem() {
 	setInitialized(true)
 }
 
-function getPieceKey(piece: GL.ColoredPiece) {
+export function getPieceKey(piece: GL.ColoredPiece) {
 	if (piece.type === 'duck') return 'duck'
 	const colorPrefix = piece.color === 'white' ? 'w' : 'b'
 	return `${colorPrefix}${piece.type}` as keyof typeof pieceSvgs

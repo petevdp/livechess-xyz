@@ -85,3 +85,43 @@
 .capturedPiecesContainer {
 	grid-area: captured-pieces;
 }
+
+.piece.wqueen {
+	background-image: url('src/assets/pieces/wQueen.svg');
+}
+.piece.wbishop {
+	background-image: url('src/assets/pieces/wBishop.svg');
+}
+.piece.wking {
+	background-image: url('src/assets/pieces/wKing.svg');
+}
+.piece.wknight {
+	background-image: url('src/assets/pieces/wKnight.svg');
+}
+.piece.wpawn {
+	background-image: url('src/assets/pieces/wPawn.svg');
+}
+.piece.wrook {
+	background-image: url('src/assets/pieces/wRook.svg');
+}
+.piece.bqueen {
+	background-image: url('src/assets/pieces/bQueen.svg');
+}
+.piece.bbishop {
+	background-image: url('src/assets/pieces/bBishop.svg');
+}
+.piece.bking {
+	background-image: url('src/assets/pieces/bKing.svg');
+}
+.piece.bknight {
+	background-image: url('src/assets/pieces/bKnight.svg');
+}
+.piece.bpawn {
+	background-image: url('src/assets/pieces/bPawn.svg');
+}
+.piece.brook {
+	background-image: url('src/assets/pieces/bRook.svg');
+}
+.piece.duck {
+	background-image: url('src/assets/pieces/duck.svg');
+}

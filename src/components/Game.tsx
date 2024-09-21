@@ -2,6 +2,7 @@ import { useColorMode } from '@kobalte/core'
 import { createMediaQuery } from '@solid-primitives/media'
 import { until } from '@solid-primitives/promise'
 import { makeResizeObserver } from '@solid-primitives/resize-observer'
+import { ReactiveSet } from '@solid-primitives/set'
 import { Subscription, filter, first, from as rxFrom, skip } from 'rxjs'
 import {
 	For,
@@ -13,6 +14,7 @@ import {
 	createContext,
 	createEffect,
 	createMemo,
+	createRenderEffect,
 	createSignal,
 	observable,
 	on,
@@ -49,26 +51,8 @@ import { Button } from './ui/button.tsx'
 import * as Modal from './utils/Modal.tsx'
 
 const GameContext = createContext(null as unknown as { game: G.Game; boardCtx: BoardViewContext })
-let gameCount = 0
 
 export default function GameWrapper(props: { game: G.Game }) {
-	onMount(() => {
-		gameCount++
-		if (gameCount > 1) {
-			throw new Error('Game component is currently a singleton')
-		}
-	})
-	onCleanup(() => {
-		gameCount--
-
-		// setS({ game: null, boardCtx: null })
-
-		// for development
-		//@ts-expect-error
-		window.game = null
-		//@ts-expect-error
-		window.boardCtx = null
-	})
 	const boardCtx = new BoardViewContext(props.game)
 	//@ts-expect-error
 	window.game = props.game
@@ -464,7 +448,11 @@ export function Board(props: { ref: HTMLDivElement }) {
 			const x = clientX - rect.left
 			const y = clientY - rect.top
 			// TODO check if mouse has left board for a certain period and reset grabbed piece
-			S.boardCtx.s.set({ mousePos: { x, y } })
+			const update = { mousePos: { x, y } } as Partial<BVC.BoardViewState>
+			if (S.boardCtx.s.state.grabbingActivePiece && !S.boardCtx.s.state.mouseMovedAfterGrab) {
+				update.mouseMovedAfterGrab = true
+			}
+			S.boardCtx.s.set(update)
 			return true
 		}
 
@@ -500,19 +488,19 @@ export function Board(props: { ref: HTMLDivElement }) {
 				}
 
 				if (S.boardCtx.squareContainsPlayerPiece(mouseSquare)) {
-					S.boardCtx.s.set({ activeSquare: mouseSquare, grabbingActivePiece: true })
+					S.boardCtx.s.set({ activeSquare: mouseSquare, grabbingActivePiece: true, mouseMovedAfterGrab: false })
 					return
 				}
 
-				S.boardCtx.s.set({ activeSquare: null })
+				S.boardCtx.s.set({ activeSquare: null, mouseMovedAfterGrab: false })
 				return
 			}
 
 			if (S.boardCtx.squareContainsPlayerPiece(mouseSquare)) {
-				S.boardCtx.s.set({ activeSquare: mouseSquare, grabbingActivePiece: true })
+				S.boardCtx.s.set({ activeSquare: mouseSquare, grabbingActivePiece: true, mouseMovedAfterGrab: false })
 				return
 			} else {
-				S.boardCtx.s.set({ activeSquare: null })
+				S.boardCtx.s.set({ activeSquare: null, mouseMovedAfterGrab: false })
 			}
 		}
 
@@ -520,7 +508,7 @@ export function Board(props: { ref: HTMLDivElement }) {
 			if (!S.game.isClientPlayerParticipating || !S.boardCtx.viewingLiveBoard) return
 			// TODO draw arrows
 			if (S.boardCtx.s.state.grabbingActivePiece) {
-				S.boardCtx.s.set({ grabbingActivePiece: false })
+				S.boardCtx.s.set({ grabbingActivePiece: false, mouseMovedAfterGrab: false })
 			} else {
 				S.boardCtx.s.set({ activeSquare: null })
 			}
@@ -543,7 +531,7 @@ export function Board(props: { ref: HTMLDivElement }) {
 			if (S.boardCtx.s.state.grabbingActivePiece && S.boardCtx.isLegalForActive(square)) {
 				makeMove({ from: S.boardCtx.s.state.activeSquare!, to: square })
 			} else if (S.boardCtx.s.state.grabbingActivePiece) {
-				S.boardCtx.s.set({ grabbingActivePiece: false })
+				S.boardCtx.s.set({ grabbingActivePiece: false, mouseMovedAfterGrab: false })
 			}
 		}
 	})
@@ -597,7 +585,7 @@ export function Board(props: { ref: HTMLDivElement }) {
 								onclick={() => {
 									if (S.game.currentMoveAmbiguity?.type !== 'castle')
 										throw new Error("This shouldn't happen, if it does that's interesting at least")
-									S.game.selectIsCaslting(true)
+									S.game.selectIsCastling(true)
 								}}
 							>
 								Yes
@@ -606,7 +594,7 @@ export function Board(props: { ref: HTMLDivElement }) {
 								onclick={() => {
 									if (S.game.currentMoveAmbiguity?.type !== 'castle')
 										throw new Error("This shouldn't happen, if it does that's interesting at least")
-									S.game.selectIsCaslting(false)
+									S.game.selectIsCastling(false)
 								}}
 							>
 								No
@@ -623,23 +611,39 @@ export function Board(props: { ref: HTMLDivElement }) {
 		setVisible: () => {},
 	})
 	//#endregion
-	const pieces = () => Object.entries(trackAndUnwrap(s().board.pieces)) as [string, GL.ColoredPiece][]
+	const occupiedSquares = new ReactiveSet()
+	createRenderEffect(() => {
+		Object.keys(trackAndUnwrap(s().board.pieces)).forEach((square) => {
+			occupiedSquares.add(square)
+		})
+	})
 
 	return (
 		<div class={`w-full h-full ${styles.board}`} ref={props.ref}>
-			<div ref={boardRef} class="bg-board-brown relative mx-auto" style={{ width: `${s().boardSize}px`, height: `${s().boardSize}px` }}>
+			<div
+				ref={boardRef}
+				class="bg-board-brown bg-blue-400 relative mx-auto"
+				style={{ width: `${s().boardSize}px`, height: `${s().boardSize}px` }}
+			>
 				<Show when={s().activeSquare}>
 					<HighlightOutlineSvg
 						class={cn(GRID_ALIGNED_CLASSES)}
 						stroke="rgb(96 165 250)"
-						style={gridAlignedStyles(BVC.squareNotationToDisplayCoords(s().activeSquare!, s().boardFlipped, s().squareSize))}
+						style={gridAlignedStyles(S.boardCtx.squareNotationToDisplayCoords(s().activeSquare!))}
+					/>
+				</Show>
+				<Show when={S.boardCtx.hoveredSquare()}>
+					<HighlightOutlineSvg
+						class={cn(GRID_ALIGNED_CLASSES)}
+						style={gridAlignedStyles(S.boardCtx.squareNotationToDisplayCoords(S.boardCtx.hoveredSquare()!))}
+						stroke="white"
 					/>
 				</Show>
 				<For each={S.boardCtx.attackedSquares()}>
 					{(square) => (
 						<div
 							class={cn(GRID_ALIGNED_CLASSES, `bg-red-400`)}
-							style={gridAlignedStyles(BVC.squareNotationToDisplayCoords(square, s().boardFlipped, s().squareSize))}
+							style={gridAlignedStyles(S.boardCtx.squareNotationToDisplayCoords(square))}
 						/>
 					)}
 				</For>
@@ -647,22 +651,27 @@ export function Board(props: { ref: HTMLDivElement }) {
 					{(square) => (
 						<div
 							class={cn(GRID_ALIGNED_CLASSES, 'grid place-items-center')}
-							style={gridAlignedStyles(BVC.squareNotationToDisplayCoords(square, s().boardFlipped, s().squareSize))}
+							style={gridAlignedStyles(S.boardCtx.squareNotationToDisplayCoords(square))}
 						>
-							<span class="w-[20%] h-[20%] bg-green-600 rounded-full" />
+							<span class="w-[12%] h-[12%] bg-zinc-50 rounded-full" />
 						</div>
 					)}
 				</For>
-				<For each={pieces()}>
-					{([square, piece]) => {
-						const position = createMemo(() => S.boardCtx.getPieceAnimatedDispCoords(square) ?? undefined)
-						return <Piece pieceGrabbed={!!position()} position={position()} piece={piece} square={square} />
+				<For each={GL.ALL_SQUARES}>
+					{(square) => {
+						const res = createMemo(() => S.boardCtx.getPieceDisplayDetails(square)!)
+						return (
+							<Show when={occupiedSquares.has(square) && res()}>
+								<Piece pieceGrabbed={res().isGrabbed} position={res().coords} piece={s().board.pieces[square]} />
+							</Show>
+						)
 					}}
 				</For>
 			</div>
 		</div>
 	)
 }
+
 function HighlightOutlineSvg(props: JSX.SvgSVGAttributes<SVGSVGElement>) {
 	return (
 		<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
@@ -672,29 +681,27 @@ function HighlightOutlineSvg(props: JSX.SvgSVGAttributes<SVGSVGElement>) {
 }
 
 type PieceProps = {
-	square: string
-	position?: BVC.DisplayCoords
+	position: BVC.DisplayCoords
 	piece: GL.ColoredPiece
 	pieceGrabbed: boolean
 }
 
+const GRID_ALIGNED_CLASSES = 'absolute top-0 left-0 w-[12.5%] h-[12.5%] will-change-transform'
 function Piece(props: PieceProps) {
 	const size = () => (props.pieceGrabbed ? 'h-[15%] w-[15%] z-10' : 'h-[12.5%] w-[12.5%] z-5')
-	const S = useContext(GameContext)
 	return (
 		<div
-			class={cn(GRID_ALIGNED_CLASSES, size(), props.pieceGrabbed ? 'cursor-grabbing' : 'cursor-grab')}
-			style={{
-				...gridAlignedStyles(
-					BVC.squareNotationToDisplayCoords(props.square, S.boardCtx.s.state.boardFlipped, S.boardCtx.s.state.squareSize)
-				),
-				'background-image': `url(${Pieces.getPieceSrc(props.piece)})`,
-			}}
+			class={cn(
+				GRID_ALIGNED_CLASSES,
+				size(),
+				`${styles.piece} ${styles[Pieces.getPieceKey(props.piece)]}`,
+				props.pieceGrabbed ? 'cursor-grabbing' : 'cursor-grab'
+			)}
+			style={gridAlignedStyles(props.position)}
 		/>
 	)
 }
 
-const GRID_ALIGNED_CLASSES = 'absolute top-0 left-0 w-[12.5%] h-[12.5%] will-change-transform'
 function gridAlignedStyles(postiion: BVC.DisplayCoords) {
 	return { transform: `translate(${postiion.x}px, ${postiion.y}px)` }
 }

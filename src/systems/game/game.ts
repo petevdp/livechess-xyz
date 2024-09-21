@@ -257,7 +257,7 @@ export class Game {
 		this.makePlayerMove()
 	}
 
-	async selectIsCaslting(isCastling: boolean) {
+	async selectIsCastling(isCastling: boolean) {
 		this.inProgressMoveLocal.set((m) => ({ ...m!, disambiguation: { type: 'castle', castling: isCastling } }))
 		this.makePlayerMove()
 	}

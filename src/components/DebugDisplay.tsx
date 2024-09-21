@@ -2,7 +2,7 @@ import { FloatingElement } from '@floating-ui/dom'
 import stringifyCompact from 'json-stringify-pretty-compact'
 import { useFloating } from 'solid-floating-ui'
 import { AiFillBug, AiFillMinusCircle } from 'solid-icons/ai'
-import { For, Show, batch, createMemo, onMount } from 'solid-js'
+import { For, Show, batch, createMemo, createRenderEffect, on, onMount } from 'solid-js'
 import { createSignal } from 'solid-js'
 import { onCleanup } from 'solid-js'
 
@@ -23,6 +23,14 @@ type DebugDisplayDetails = {
 const [displayState, setDisplayState] = makePersistedStore('debugDisplays', {} as Record<string, DebugDisplayDetails | undefined>)
 
 export default function DebugDisplays() {
+	createRenderEffect(
+		on(DS.debugKeys, (keys) => {
+			for (const key of keys) {
+				if (!displayState[key]) setDisplayState([key], { coords: { x: 0, y: 0 }, dimensions: { x: 400, y: 200 }, visible: true })
+			}
+		})
+	)
+
 	return (
 		<>
 			<DropdownMenu>
@@ -65,14 +73,8 @@ export type DebugDisplayProps = {
 export function DebugDisplay(props: DebugDisplayProps) {
 	const [floating, setFloating] = createSignal(undefined as unknown as FloatingElement)
 	const [dragging, setDragging] = createSignal(false)
-
-	if (!displayState[props.key]) setDisplayState([props.key], { coords: { x: 0, y: 0 }, dimensions: { x: 400, y: 200 }, visible: true })
-
 	const clientCoords = () => displayState[props.key]!.coords
 	const setClientCoords = (coords: Coords) => setDisplayState(props.key, 'coords', coords)
-	// const windowDimensions = () => displayState[props.key]!.dimensions
-	// const setWindowDimensions = (dimensions: Coords) => setDisplayState(props.key, 'dimensions', dimensions)
-
 	const referenceEl = createMemo(() => {
 		const floatingWindowX = clientCoords().x
 		const floatingWindowY = clientCoords().y

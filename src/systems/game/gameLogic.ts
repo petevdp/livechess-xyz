@@ -72,6 +72,13 @@ export type MoveDisambiguation =
 			castling: boolean
 	  }
 
+export const ALL_SQUARES: string[] = []
+for (let x = 0; x < 8; x++) {
+	for (let y = 0; y < 8; y++) {
+		ALL_SQUARES.push(notationFromCoords({ x, y }))
+	}
+}
+
 export function getStartPos(config: GameConfig) {
 	if (config.variant === 'fischer-random') {
 		// https://en.wikipedia.org/wiki/Fischer_random_chess_numbering_scheme

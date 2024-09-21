@@ -1,4 +1,4 @@
-import { Owner, createEffect, createMemo, createSignal, runWithOwner } from 'solid-js'
+import { Owner, createDeferred, createEffect, createMemo, createSignal, runWithOwner } from 'solid-js'
 import { createStore } from 'solid-js/store'
 
 import { makePersistedSignal } from '~/utils/makePersisted'
@@ -10,7 +10,7 @@ export const debugKeys = createMemo(() => Object.keys(trackAndUnwrap(values)))
 
 export function addHook(key: string, cb: () => any, owner: Owner) {
 	runWithOwner(owner, () => {
-		createEffect(() => {
+		createDeferred(() => {
 			if (!debugVisible()) return
 			setValue(key, cb())
 		})
