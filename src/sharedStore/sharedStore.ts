@@ -114,14 +114,14 @@ export interface SharedStore<State extends object, CCS extends ClientControlledS
 
 function applyMutationsToStore(mutations: StoreMutation[], setStore: (...args: any[]) => any, store: any) {
 	for (const mutation of mutations) {
-		if (mutation.path.includes('outcome')) debugger
+		// if (mutation.path.includes('outcome')) debugger
 		const container = unwrap(resolveValue(mutation.path.slice(0, -1), store))
 		if (mutation.value === DELETE && container instanceof Array) {
 			setStore(
 				...mutation.path.slice(0, -1),
 				(container as any[]).filter((_, i) => i !== mutation.path[mutation.path.length - 1])
 			)
-			return
+			continue
 		} else if (mutation.value === DELETE && typeof container === 'object') {
 			setStore(
 				produce((store) => {
@@ -129,7 +129,7 @@ function applyMutationsToStore(mutations: StoreMutation[], setStore: (...args: a
 					delete container[mutation.path[mutation.path.length - 1]]
 				})
 			)
-			return
+			continue
 		} else if (mutation.value === DELETE) {
 			throw new Error('unhandled type ' + typeof container)
 		}
@@ -155,7 +155,7 @@ async function setStoreWithRetries<State, Event>(
 		if (!res) return true
 		let transaction: NewSharedStoreOrderedTransaction<Event>
 		if ('mutations' in res) {
-			if (res.mutations.some((m) => m.path.includes('outcome'))) debugger
+			// if (res.mutations.some((m) => m.path.includes('outcome'))) debugger
 			transaction = {
 				index: appliedTransactions.length,
 				events: res.events,
@@ -322,7 +322,7 @@ export function initLeaderStore<State extends object, CCS extends ClientControll
 		}
 		broadcastAsCommitted(orderedTransaction)
 		appliedTransactions.push(orderedTransaction)
-		if (orderedTransaction.mutations.some((m) => m.path.includes('outcoome'))) debugger
+		// if (orderedTransaction.mutations.some((m) => m.path.includes('outcoome'))) debugger
 		batch(() => {
 			applyMutationsToStore(transaction.mutations, setStoreWithPath, store)
 		})
