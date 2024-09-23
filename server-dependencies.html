@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <title>dependency-cruiser output</title>
+  <style media="screen">
+    html {
+      font-family: sans-serif;
+      font-size: 10pt;
+    }
+
+    table {
+      overflow: hidden;
+    }
+
+    table,
+    td.controls {
+      transition-duration: 0.3s;
+    }
+
+    table,
+    th,
+    td {
+      border: solid black 1px;
+      border-collapse: collapse;
+      font-size: inherit;
+    }
+
+    td,
+    th {
+      position: relative;
+    }
+
+    th {
+      text-align: start;
+      vertical-align: bottom;
+      max-width: 1em;
+      max-height: 30em;
+      height: 20em;
+      font-weight: normal;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+
+    th div {
+      transform: rotateZ(-90deg);
+      transform-origin: 0.5em;
+      text-align: start;
+      height: 1em;
+      width: 30em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    td {
+      text-align: center;
+    }
+
+    td.first-cell {
+      text-align: left;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    td.top-left {
+      border-top: solid 1px transparent;
+      border-left: solid 1px transparent;
+    }
+
+    td.top-right {
+      border-top: solid 1px transparent;
+      border-right: solid 1px transparent;
+    }
+
+    td.bottom-left {
+      border-bottom: solid 1px transparent;
+      border-left: solid 1px transparent;
+    }
+
+    td.bottom-right {
+      border-bottom: solid 1px transparent;
+      border-right: solid 1px transparent;
+    }
+
+    tbody tr:hover {
+      background-color: lightgrey;
+    }
+
+    td:hover::after,
+    td:focus::after,
+    th:hover::after,
+    th:focus::after {
+      background-color: #00000077;
+      content: "";
+      height: 5000px;
+      left: 0;
+      position: absolute;
+      top: -2500px;
+      width: 100%;
+      z-index: -1;
+    }
+
+    #table-rotated:target {
+      transform: rotateZ(45deg);
+      transform-origin: bottom left;
+    }
+
+    #table-rotated:target #unrotate {
+      opacity: 1;
+    }
+
+    #table-rotated:target #rotate {
+      opacity: 0;
+    }
+
+    #unrotate {
+      opacity: 0;
+    }
+
+    #rotate {
+      opacity: 1;
+    }
+
+    .controls {
+      opacity: 0.2;
+      vertical-align: bottom;
+      padding: 0.5em;
+    }
+
+    .controls:hover {
+      opacity: 1;
+    }
+
+    .controls a {
+      font-style: normal;
+      text-decoration: none;
+      background-color: #eee;
+      padding: 0.2em 0.5em 0.2em 0.5em;
+    }
+
+    .cell-core-module {
+      color: grey;
+      font-style: italic;
+    }
+
+    .cell-unresolvable-module {
+      color: red;
+      font-style: italic;
+    }
+
+    .cell-true {
+      background-color: black;
+      opacity: 0.5;
+    }
+
+    .cell-false {
+      background-color: white;
+      opacity: 0.5;
+    }
+
+    .cell-error {
+      background-color: red;
+      opacity: 0.5;
+    }
+
+    .cell-warn {
+      background-color: orange;
+      opacity: 0.5;
+    }
+
+    .cell-info {
+      background-color: blue;
+      opacity: 0.5;
+    }
+  </style>
+</head>
+
+<body>
+  
+  <table id="table-rotated">
+    <thead>
+      <tr>
+        <td class="controls top-left">
+          <a id="rotate" href="#table-rotated">rotate</a>
+          <a id="unrotate" href="#">rotate back</a>
+        </td>
+        <th><div>src/api.ts</div></th><th><div>src/config.ts</div></th><th><div>src/env.ts</div></th><th><div>src/server/server.ts</div></th><th><div>src/server/serverSideRoomLogic.ts</div></th><th><div>src/server/systems/sharedStoreNetworks.ts</div></th><th><div>src/sharedStore/sharedStore.ts</div></th><th><div>src/sharedStore/wsTransport.ts</div></th><th><div>src/systems/debugSystem.ts</div></th><th><div>src/systems/errors.ts</div></th><th><div>src/systems/game/game.ts</div></th><th><div>src/systems/game/gameLogic.ts</div></th><th><div>src/systems/room.ts</div></th><th><div>src/utils/ids.ts</div></th><th><div>src/utils/makePersisted.ts</div></th><th><div>src/utils/obj.ts</div></th><th><div>src/utils/solid.ts</div></th><th><div>src/utils/unit.ts</div></th>
+        <td class="top-right"></td>
+      </tr>
+    </thead>
+    <tbody>
+    
+      <tr>
+        <td class="first-cell">src/api.ts</td>
+        <td class="cell cell-false"></td><td class="cell cell-true" title="src/api.ts -> src/config.ts"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-true" title="src/api.ts -> src/systems/errors.ts"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td>
+        <td class="first-cell">src/api.ts</td>
+      </tr>
+      <tr>
+        <td class="first-cell">src/config.ts</td>
+        <td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td>
+        <td class="first-cell">src/config.ts</td>
+      </tr>
+      <tr>
+        <td class="first-cell">src/env.ts</td>
+        <td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td>
+        <td class="first-cell">src/env.ts</td>
+      </tr>
+      <tr>
+        <td class="first-cell">src/server/server.ts</td>
+        <td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-true" title="src/server/server.ts -> src/env.ts"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-true" title="src/server/server.ts -> src/server/systems/sharedStoreNetworks.ts"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td>
+        <td class="first-cell">src/server/server.ts</td>
+      </tr>
+      <tr>
+        <td class="first-cell">src/server/serverSideRoomLogic.ts</td>
+        <td class="cell cell-false"></td><td class="cell cell-true" title="src/server/serverSideRoomLogic.ts -> src/config.ts"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-true" title="src/server/serverSideRoomLogic.ts -> src/sharedStore/sharedStore.ts"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-true" title="src/server/serverSideRoomLogic.ts -> src/systems/game/gameLogic.ts"></td><td class="cell cell-true" title="src/server/serverSideRoomLogic.ts -> src/systems/room.ts"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td>
+        <td class="first-cell">src/server/serverSideRoomLogic.ts</td>
+      </tr>
+      <tr>
+        <td class="first-cell">src/server/systems/sharedStoreNetworks.ts</td>
+        <td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-true" title="src/server/systems/sharedStoreNetworks.ts -> src/server/serverSideRoomLogic.ts"></td><td class="cell cell-false"></td><td class="cell cell-true" title="src/server/systems/sharedStoreNetworks.ts -> src/sharedStore/sharedStore.ts"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-true" title="src/server/systems/sharedStoreNetworks.ts -> src/utils/ids.ts"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td>
+        <td class="first-cell">src/server/systems/sharedStoreNetworks.ts</td>
+      </tr>
+      <tr>
+        <td class="first-cell">src/sharedStore/sharedStore.ts</td>
+        <td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td>
+        <td class="first-cell">src/sharedStore/sharedStore.ts</td>
+      </tr>
+      <tr>
+        <td class="first-cell">src/sharedStore/wsTransport.ts</td>
+        <td class="cell cell-false"></td><td class="cell cell-true" title="src/sharedStore/wsTransport.ts -> src/config.ts"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td>
+        <td class="first-cell">src/sharedStore/wsTransport.ts</td>
+      </tr>
+      <tr>
+        <td class="first-cell">src/systems/debugSystem.ts</td>
+        <td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-true" title="src/systems/debugSystem.ts -> src/utils/makePersisted.ts"></td><td class="cell cell-false"></td><td class="cell cell-true" title="src/systems/debugSystem.ts -> src/utils/solid.ts"></td><td class="cell cell-false"></td>
+        <td class="first-cell">src/systems/debugSystem.ts</td>
+      </tr>
+      <tr>
+        <td class="first-cell">src/systems/errors.ts</td>
+        <td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td>
+        <td class="first-cell">src/systems/errors.ts</td>
+      </tr>
+      <tr>
+        <td class="first-cell">src/systems/game/game.ts</td>
+        <td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-true" title="src/systems/game/game.ts -> src/sharedStore/sharedStore.ts"></td><td class="cell cell-false"></td><td class="cell cell-true" title="src/systems/game/game.ts -> src/systems/debugSystem.ts"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-true" title="src/systems/game/game.ts -> src/systems/game/gameLogic.ts"></td><td class="cell cell-false"></td><td class="cell cell-true" title="src/systems/game/game.ts -> src/utils/ids.ts"></td><td class="cell cell-false"></td><td class="cell cell-true" title="src/systems/game/game.ts -> src/utils/obj.ts"></td><td class="cell cell-true" title="src/systems/game/game.ts -> src/utils/solid.ts"></td><td class="cell cell-true" title="src/systems/game/game.ts -> src/utils/unit.ts"></td>
+        <td class="first-cell">src/systems/game/game.ts</td>
+      </tr>
+      <tr>
+        <td class="first-cell">src/systems/game/gameLogic.ts</td>
+        <td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td>
+        <td class="first-cell">src/systems/game/gameLogic.ts</td>
+      </tr>
+      <tr>
+        <td class="first-cell">src/systems/room.ts</td>
+        <td class="cell cell-true" title="src/systems/room.ts -> src/api.ts"></td><td class="cell cell-true" title="src/systems/room.ts -> src/config.ts"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-true" title="src/systems/room.ts -> src/sharedStore/sharedStore.ts"></td><td class="cell cell-true" title="src/systems/room.ts -> src/sharedStore/wsTransport.ts"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-true" title="src/systems/room.ts -> src/systems/game/game.ts"></td><td class="cell cell-true" title="src/systems/room.ts -> src/systems/game/gameLogic.ts"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-true" title="src/systems/room.ts -> src/utils/obj.ts"></td><td class="cell cell-true" title="src/systems/room.ts -> src/utils/solid.ts"></td><td class="cell cell-false"></td>
+        <td class="first-cell">src/systems/room.ts</td>
+      </tr>
+      <tr>
+        <td class="first-cell">src/utils/ids.ts</td>
+        <td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td>
+        <td class="first-cell">src/utils/ids.ts</td>
+      </tr>
+      <tr>
+        <td class="first-cell">src/utils/makePersisted.ts</td>
+        <td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-true" title="src/utils/makePersisted.ts -> src/utils/solid.ts"></td><td class="cell cell-false"></td>
+        <td class="first-cell">src/utils/makePersisted.ts</td>
+      </tr>
+      <tr>
+        <td class="first-cell">src/utils/obj.ts</td>
+        <td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td>
+        <td class="first-cell">src/utils/obj.ts</td>
+      </tr>
+      <tr>
+        <td class="first-cell">src/utils/solid.ts</td>
+        <td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-true" title="src/utils/solid.ts -> src/utils/obj.ts"></td><td class="cell cell-false"></td><td class="cell cell-false"></td>
+        <td class="first-cell">src/utils/solid.ts</td>
+      </tr>
+      <tr>
+        <td class="first-cell">src/utils/unit.ts</td>
+        <td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td><td class="cell cell-false"></td>
+        <td class="first-cell">src/utils/unit.ts</td>
+      </tr>
+    </tbody>
+    <tfoot>
+      <tr>
+        <td class="bottom-left"></td>
+        <th><div>src/api.ts</div></th><th><div>src/config.ts</div></th><th><div>src/env.ts</div></th><th><div>src/server/server.ts</div></th><th><div>src/server/serverSideRoomLogic.ts</div></th><th><div>src/server/systems/sharedStoreNetworks.ts</div></th><th><div>src/sharedStore/sharedStore.ts</div></th><th><div>src/sharedStore/wsTransport.ts</div></th><th><div>src/systems/debugSystem.ts</div></th><th><div>src/systems/errors.ts</div></th><th><div>src/systems/game/game.ts</div></th><th><div>src/systems/game/gameLogic.ts</div></th><th><div>src/systems/room.ts</div></th><th><div>src/utils/ids.ts</div></th><th><div>src/utils/makePersisted.ts</div></th><th><div>src/utils/obj.ts</div></th><th><div>src/utils/solid.ts</div></th><th><div>src/utils/unit.ts</div></th>
+        <td class="bottom-right"></td>
+      </tr>
+    </tfoot>
+  </table>
+
+</body>
+</html>

@@ -1,12 +1,11 @@
 import { until } from '@solid-primitives/promise'
-import { Accessor, batch, createEffect, createMemo, getOwner } from 'solid-js'
-import { reconcile, unwrap } from 'solid-js/store'
+import { Accessor, batch, createMemo, getOwner } from 'solid-js'
+import { produce, reconcile, unwrap } from 'solid-js/store'
 
 import * as C from '~/config'
-import * as DS from '~/systems/debugSystem.ts'
+import * as DS from '~/systems/debugSystem'
 import * as G from '~/systems/game/game.ts'
 import * as GL from '~/systems/game/gameLogic.ts'
-import * as P from '~/systems/player.ts'
 import { deepClone } from '~/utils/obj.ts'
 import { StoreProperty, createSignalProperty, createStoreProperty, trackAndUnwrap } from '~/utils/solid'
 
@@ -44,7 +43,6 @@ export class BoardViewContext {
 	/** the board which moves can actually be played on, aka the latest board  */
 	inPlayBoard: Accessor<GL.Board>
 	visibleSquares: Accessor<Set<string>>
-	renderPiecesArgs!: RenderPiecesArgs
 	lastMove: Accessor<GL.Move | null>
 	hoveredSquare: Accessor<string | null>
 
@@ -73,7 +71,6 @@ export class BoardViewContext {
 			return moves.map((m) => GL.notationFromCoords(m.to))
 		})
 
-		const shouldHideNonVisible = () => false
 		this.visibleSquares = () => new Set<string>()
 		this.lastMove = () => game.state.moveHistory[this.s.state.boardIndex - 1] || null
 		const placingDuck = () => game.isPlacingDuck
@@ -112,12 +109,13 @@ export class BoardViewContext {
 
 	pieceAnimationDone = createSignalProperty(false)
 	async runPieceAnimation(args: PieceAnimationArgs, storeUpdates?: Partial<BoardViewState>) {
-		console.log('animation started', args)
+		console.trace('animation started', args)
 		if (this.game.gameConfig.variant === 'fog-of-war') {
 			console.error('animations not supported in fog-of-war variant')
 			return
 		}
 		const animationAlreadyRunning = !!this.s.state.animation
+		console.log({ animationAlreadyRunning })
 		this.s.set({
 			...(storeUpdates ?? {}),
 			animation: {
@@ -144,7 +142,29 @@ export class BoardViewContext {
 			runInner()
 		}
 		await until(this.pieceAnimationDone.get)
-		if (animationAlreadyRunning) this.pieceAnimationDone.set(false)
+		this.pieceAnimationDone.set(false)
+		console.log('animation done')
+		batch(() => {
+			this.s.set('animation', null)
+			this.s.set(
+				'board',
+				produce((board) => {
+					for (const movedPiece of args.movedPieces) {
+						board.pieces[movedPiece.to] = board.pieces[movedPiece.from]
+						delete board.pieces[movedPiece.from]
+					}
+
+					if (args.addedPieces) {
+						Object.assign(board.pieces, args.addedPieces)
+					}
+
+					if (args.removedPieceSquares)
+						for (const square of args.removedPieceSquares) {
+							delete board.pieces[square]
+						}
+				})
+			)
+		})
 	}
 
 	attackedSquares() {
@@ -312,213 +332,6 @@ export class BoardViewContext {
 	}
 }
 
-//#region canvas rendering
-
-type RenderBoardArgs = {
-	squareSize: number
-	boardFlipped: boolean
-	visibleSquares: Set<string>
-	shouldHideNonVisible: boolean
-}
-
-function renderBoard(ctx: CanvasRenderingContext2D, args: RenderBoardArgs) {
-	// fill in light squares as background
-	ctx.fillStyle = args.shouldHideNonVisible ? C.BOARD_COLORS.lightFog : C.BOARD_COLORS.light
-	ctx.fillRect(0, 0, args.squareSize * 8, args.squareSize * 8)
-
-	if (args.shouldHideNonVisible) {
-		ctx.fillStyle = C.BOARD_COLORS.light
-		for (const square of args.visibleSquares) {
-			const coords = GL.coordsFromNotation(square)
-			if ((coords.x + coords.y) % 2 === 0) continue
-			const dispCoords = boardCoordsToDisplayCoords(coords, args.boardFlipped, args.squareSize)
-			ctx.fillRect(dispCoords.x, dispCoords.y, args.squareSize, args.squareSize)
-		}
-	}
-
-	// fill in dark squares
-	for (let i = 0; i < 8; i++) {
-		for (let j = i % 2; j < 8; j += 2) {
-			const visible =
-				!args.shouldHideNonVisible ||
-				args.visibleSquares.has(
-					GL.notationFromCoords({
-						x: j,
-						y: i,
-					})
-				)
-
-			const { x, y } = boardCoordsToDisplayCoords({ x: j, y: i }, args.boardFlipped, args.squareSize)
-
-			ctx.fillStyle = visible ? C.BOARD_COLORS.dark : C.BOARD_COLORS.darkFog
-			ctx.fillRect(x, y, args.squareSize, args.squareSize)
-		}
-	}
-}
-
-export type RenderPiecesArgs = {
-	animation: PieceAnimation | null
-	board: GL.Board
-	visibleSquares: Set<string>
-	shouldHideNonVisible: boolean
-	grabbedPiecePos: {
-		x: number
-		y: number
-	} | null
-	activeSquare: string | null
-	boardFlipped: boolean
-	squareSize: number
-}
-
-function renderPieces(ctx: CanvasRenderingContext2D, args: RenderPiecesArgs) {
-	const pieces = args.animation ? args.animation.boardBefore.pieces : args.board.pieces
-	for (const [square, piece] of Object.entries(pieces)) {
-		if ((args.grabbedPiecePos && args.activeSquare === square) || (args.shouldHideNonVisible ? !args.visibleSquares.has(square) : false)) {
-			continue
-		}
-
-		const dispCoords = boardCoordsToDisplayCoords(GL.coordsFromNotation(square), args.boardFlipped, args.squareSize)
-		let movedPiece: MovedPiece | undefined
-		if (args.animation && (movedPiece = args.animation.movedPieces.find((m) => m.from === square))) {
-			const to = GL.coordsFromNotation(movedPiece.to)
-			const fromDisp = dispCoords
-			const toDisp = boardCoordsToDisplayCoords(to, args.boardFlipped, args.squareSize)
-
-			const distanceX = toDisp.x - fromDisp.x
-			const distanceY = toDisp.y - fromDisp.y
-
-			const stepX = distanceX / C.PIECE_ANIMATION_NUM_FRAMES
-			const stepY = distanceY / C.PIECE_ANIMATION_NUM_FRAMES
-
-			dispCoords.x += stepX * args.animation.currentFrame
-			dispCoords.y += stepY * args.animation.currentFrame
-		}
-		// ctx.drawImage(Pieces.getCachedPiece(piece), dispCoords.x, dispCoords.y, args.squareSize, args.squareSize)
-	}
-
-	if (!args.animation) return
-	if (args.activeSquare && args.animation) throw new Error('active square should not be set during animation')
-	for (const [square, piece] of Object.entries(args.animation.addedPieces ?? [])) {
-		if ((args.grabbedPiecePos && args.activeSquare === square) || (args.shouldHideNonVisible ? !args.visibleSquares.has(square) : false)) {
-			continue
-		}
-
-		const dispCoords = boardCoordsToDisplayCoords(GL.coordsFromNotation(square), args.boardFlipped, args.squareSize)
-		// ctx.drawImage(Pieces.getCachedPiece(piece), dispCoords.x, dispCoords.y, args.squareSize, args.squareSize)
-	}
-}
-
-type RenderHighlightsArgs = {
-	renderedBoard: GL.Board
-	lastMove: GL.Move | null
-	visibleSquares: Set<string>
-	playerColor: GL.Color
-	shouldHideNonVisible: boolean
-	activeSquare: string | null
-	hoveredSquare: string | null
-	legalMovesForActiveSquare: string[]
-	boardFlipped: boolean
-	squareSize: number
-}
-
-function renderHighlights(ctx: CanvasRenderingContext2D, args: RenderHighlightsArgs) {
-	//#region draw last move highlight
-	const highlightColor = '#aff682'
-	if (args.lastMove && !args.shouldHideNonVisible) {
-		const highlightedSquares = [args.lastMove.from, args.lastMove.to]
-		for (const square of highlightedSquares) {
-			if (!square) continue
-			const { x, y } = squareNotationToDisplayCoords(square, args.boardFlipped, args.squareSize)
-			ctx.fillStyle = highlightColor
-			ctx.fillRect(x, y, args.squareSize, args.squareSize)
-		}
-	}
-	//#endregion
-
-	//#region draw legal move highlights
-	const dotColor = '#f2f2f2'
-	const captureHighlightColor = '#fc3c3c'
-	if (P.settings.showAvailablemoves) {
-		for (const moveTo of args.legalMovesForActiveSquare) {
-			// draw dot in center of move end
-			const moveToCoords = GL.coordsFromNotation(moveTo)
-			const { x, y } = boardCoordsToDisplayCoords(moveToCoords, args.boardFlipped, args.squareSize)
-			const piece = args.renderedBoard.pieces[GL.notationFromCoords(moveToCoords)]
-			// we need to check if the piece is our color we visually move pieces in the current board view while we're placing a duck and promoting
-			if (piece && piece.type !== 'duck' && piece.color !== args.playerColor) {
-				ctx.fillStyle = captureHighlightColor
-				ctx.fillRect(x, y, args.squareSize, args.squareSize)
-			} else {
-				ctx.fillStyle = dotColor
-				ctx.beginPath()
-				ctx.arc(x + args.squareSize / 2, y + args.squareSize / 2, args.squareSize / 10, 0, 2 * Math.PI)
-				ctx.fill()
-				ctx.closePath()
-			}
-		}
-	}
-
-	//#endregion
-
-	function renderHighlightRect(color: string, square: string) {
-		const { x, y } = squareNotationToDisplayCoords(square, args.boardFlipped, args.squareSize)
-		ctx.beginPath()
-		ctx.strokeStyle = color
-		const lineWidth = args.squareSize / 16
-		ctx.lineWidth = lineWidth
-		ctx.rect(x + lineWidth / 2, y + lineWidth / 2, args.squareSize - lineWidth, args.squareSize - lineWidth)
-		ctx.stroke()
-		ctx.closePath()
-	}
-
-	//#region draw hovered move highlight
-	const moveHighlightColor = '#ffffff'
-	if (args.hoveredSquare && args.activeSquare && args.legalMovesForActiveSquare.find((m) => m === args.hoveredSquare!)) {
-		// draw empty square in hovered square
-		renderHighlightRect(moveHighlightColor, args.hoveredSquare!)
-	}
-	//#endregion
-
-	//#region draw clicked move highlight
-	const clickedHighlightColor = '#809dfd'
-
-	if (args.activeSquare) {
-		renderHighlightRect(clickedHighlightColor, args.activeSquare)
-	}
-
-	//#endregion
-}
-
-type RenderGrabbedPieceArgs = {
-	grabbedPiecePos: {
-		x: number
-		y: number
-	} | null
-	squareSize: number
-	activeSquare: string | null
-	placingDuck: boolean
-	touchScreen: boolean
-	grabbedPiece: GL.ColoredPiece | null
-}
-
-function renderGrabbedPiece(ctx: CanvasRenderingContext2D, args: RenderGrabbedPieceArgs) {
-	// TODO fix
-	// const size = args.touchScreen ? args.squareSize * 1.5 : args.squareSize
-	const size = args.squareSize
-	if (args.grabbedPiecePos && args.grabbedPiece) {
-		const x = args.grabbedPiecePos!.x
-		const y = args.grabbedPiecePos!.y
-		// ctx.drawImage(Pieces.getCachedPiece(args.grabbedPiece), x - size / 2, y - size / 2, size, size)
-	}
-
-	if (args.placingDuck && args.grabbedPiecePos) {
-		const { x, y } = args.grabbedPiecePos!
-		// ctx.drawImage(Pieces.getCachedPiece(GL.DUCK), x - size / 2, y - size / 2, size, size)
-	}
-}
-
-//#endregion
-
 //#region helpers
 
 export function boardCoordsToDisplayCoords(square: GL.Coords, boardFlipped: boolean, squareSize: number) {
@@ -534,12 +347,6 @@ export function boardCoordsToDisplayCoords(square: GL.Coords, boardFlipped: bool
 function squareNotationToDisplayCoords(square: string, boardFlipped: boolean, squareSize: number) {
 	const { x, y } = GL.coordsFromNotation(square)
 	return boardCoordsToDisplayCoords({ x, y }, boardFlipped, squareSize)
-}
-
-function scaleAndReset(context: CanvasRenderingContext2D, size: number) {
-	context.clearRect(0, 0, size, size)
-	context.setTransform(1, 0, 0, 1, 0, 0)
-	context.scale(devicePixelRatio, devicePixelRatio)
 }
 
 //#endregion helpers

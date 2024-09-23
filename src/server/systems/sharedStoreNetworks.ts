@@ -5,7 +5,7 @@ import * as ws from 'ws'
 
 import { initServerSideRoomLogic } from '~/server/serverSideRoomLogic.ts'
 import { ClientConfig, type NewNetworkResponse, SharedStore, Transport, initLeaderStore } from '~/sharedStore/sharedStore.ts'
-import * as R from '~/systems/room.ts'
+import type * as R from '~/systems/room.ts'
 import { createId } from '~/utils/ids.ts'
 
 const NO_ACTIVITY_TIMEOUT = 1000 * 60 * 20

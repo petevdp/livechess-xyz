@@ -12,7 +12,7 @@ import { fileURLToPath } from 'url'
 import * as ws from 'ws'
 
 import { ENV, Env, ensureSetupEnv } from '../env.ts'
-import * as SSS from './systems/sharedStoreNetworks.ts'
+import * as SSN from './systems/sharedStoreNetworks.ts'
 
 ensureSetupEnv()
 
@@ -97,7 +97,7 @@ server.register(async function () {
 		const networkId: string = request.params!.networkId
 		const log = request.log.child({ networkId })
 
-		SSS.handleNewConnection(connection.socket as unknown as ws.WebSocket, networkId, log)
+		SSN.handleNewConnection(connection.socket as unknown as ws.WebSocket, networkId, log)
 	})
 })
 //#endregion
@@ -108,13 +108,13 @@ server.get('/api/ping', () => {
 })
 
 server.post('/api/networks', (req) => {
-	return SSS.createNetwork(req.log)
+	return SSN.createNetwork(req.log)
 })
 
 server.head('/api/networks/:networkId', (req, res) => {
 	//@ts-expect-error
 	const networkId: string = req.params.networkId
-	if (SSS.getNetwork(networkId)) {
+	if (SSN.getNetwork(networkId)) {
 		res.status(200).send()
 	} else {
 		res.status(404).send()
@@ -137,7 +137,7 @@ server.get('/api/qrcodes/:filename', async (req, res) => {
 	if (!filename.endsWith('.png')) {
 		return res.status(404).send('file not found')
 	}
-	const network = SSS.getNetwork(filename.split('.')[0])
+	const network = SSN.getNetwork(filename.split('.')[0])
 	if (!network) {
 		return res.status(404).send('network not found')
 	}
@@ -154,7 +154,7 @@ server.get('/api/qrcodes/:filename', async (req, res) => {
 
 //
 
-SSS.setupSharedStoreSystem(server.log)
+SSN.setupSharedStoreSystem(server.log)
 
 server.listen({ port: ENV.PORT, host: ENV.HOSTNAME }, (err) => {
 	if (err) {

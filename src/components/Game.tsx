@@ -538,11 +538,7 @@ export function Board(props: { ref: HTMLDivElement }) {
 	})
 	const promoteModalPosition = () => {
 		if (!S.game.currentMoveAmbiguity) return undefined
-		let { x, y } = BVC.squareNotationToDisplayCoords(
-			S.game.inProgressMove!.to,
-			S.boardCtx.s.state.boardFlipped,
-			S.boardCtx.s.state.squareSize
-		)
+		let { x, y } = S.boardCtx.squareNotationToDisplayCoords(S.game.inProgressMove!.to)
 		y += boardRef.getBoundingClientRect().top + window.scrollY
 		x += boardRef.getBoundingClientRect().left + window.scrollX
 		if (S.boardCtx.s.state.boardSize / 2 < x) {

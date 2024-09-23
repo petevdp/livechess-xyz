@@ -8,21 +8,20 @@ import { PLAYER_TIMEOUT } from '~/config.ts'
 import * as SS from '~/sharedStore/sharedStore.ts'
 import * as GL from '~/systems/game/gameLogic.ts'
 import * as R from '~/systems/room.ts'
-import { RoomMember, RoomState, RoomStoreHelpers } from '~/systems/room.ts'
 
 export function initServerSideRoomLogic(store: R.RoomStore, transport: SS.Transport<R.RoomMessage>) {
-	const room = new RoomStoreHelpers(store, transport)
+	const room = new R.RoomStoreHelpers(store, transport)
 
 	//#region set initial state
 	{
 		const state: R.RoomState = {
 			members: [],
 			status: 'pregame',
-			gameParticipants: {} as RoomState['gameParticipants'],
+			gameParticipants: {} as R.RoomState['gameParticipants'],
 			agreePieceSwap: null,
 			isReadyForGame: {},
 			gameConfig: GL.getDefaultGameConfig(),
-			drawOffers: {} as RoomState['drawOffers'],
+			drawOffers: {} as R.RoomState['drawOffers'],
 			moves: [],
 		}
 		void store.setStore({ path: [], value: state })
@@ -31,7 +30,7 @@ export function initServerSideRoomLogic(store: R.RoomStore, transport: SS.Transp
 
 	//#region player event tracking
 	{
-		const prevConnected: RoomMember[] = []
+		const prevConnected: R.RoomMember[] = []
 		const connectedPlayers = createMemo(() => {
 			const states = trackDeep(store.clientControlled.states)
 			const playerIds: string[] = Object.values(states).map((s) => s.playerId)

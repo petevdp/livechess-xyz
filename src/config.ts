@@ -19,4 +19,4 @@ export const BOARD_COLORS = {
 	darkFog: '#623211',
 }
 
-export const PIECE_ANIMATION_NUM_FRAMES = 20
+export const PIECE_ANIMATION_NUM_FRAMES = 15

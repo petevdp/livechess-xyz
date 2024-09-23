@@ -1,6 +1,7 @@
 import { captureStoreUpdates, trackStore } from '@solid-primitives/deep'
 import deepEquals from 'fast-deep-equal'
-import { Accessor, createEffect, createRoot, createSignal, untrack } from 'solid-js'
+import { Accessor, createEffect, createRoot, createSignal, getOwner, untrack } from 'solid-js'
+import { runWithOwner } from 'solid-js'
 import { createStore, unwrap } from 'solid-js/store'
 
 import { deepClone } from './obj'
@@ -91,3 +92,11 @@ export function createStoreProperty<T extends object>(value: T) {
 }
 
 export type StoreProperty<T extends object> = ReturnType<typeof createStoreProperty<T>>
+
+export function runWithOwnerOrCreateRoot(fn: () => any) {
+	const owner = getOwner()
+	if (!owner) {
+		return createRoot(fn)
+	}
+	return runWithOwner(owner, fn)
+}

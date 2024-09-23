@@ -62,8 +62,6 @@ const pieceSvgSrcs = {
 	duck: duckSrc,
 } as const
 
-const pieceSvgSrc = {}
-
 export const pieceCache = new Map<string, HTMLImageElement>()
 
 // so we can subscribe to when the pieces are updated

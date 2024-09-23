@@ -2,10 +2,9 @@ import { FloatingElement } from '@floating-ui/dom'
 import stringifyCompact from 'json-stringify-pretty-compact'
 import { useFloating } from 'solid-floating-ui'
 import { AiFillBug, AiFillMinusCircle } from 'solid-icons/ai'
-import { For, Show, batch, createEffect, createMemo, createRenderEffect, on, onMount } from 'solid-js'
+import { For, Show, batch, createMemo, createRenderEffect, on, onMount } from 'solid-js'
 import { createSignal } from 'solid-js'
 import { onCleanup } from 'solid-js'
-import { createStore, produce, unwrap } from 'solid-js/store'
 
 import { cn } from '~/lib/utils'
 import * as DS from '~/systems/debugSystem'
@@ -28,12 +27,17 @@ const [windowOrder, setWindowOrder] = makePersistedStore('debugWindowOrder', [] 
 const [resetCounter, reset] = createSignal(0)
 //@ts-expect-error
 window.resetDebugDisplays = () => {
-	for (const key of DS.debugKeys()) {
-		setDisplayState(key, { coords: { x: 0, y: 0 }, dimensions: { x: 400, y: 200 }, visible: true })
-	}
+	batch(() => {
+		reset((f) => f + 1)
+		for (const key of DS.debugKeys()) {
+			setDisplayState(key, { coords: { x: 0, y: 0 }, dimensions: { x: 400, y: 200 }, visible: true })
+		}
+	})
 }
 
 export default function DebugDisplays() {
+	// eslint-disable-next-line solid/components-return-once
+	if (import.meta.env.PROD) return null
 	createRenderEffect(
 		on(
 			() => {
@@ -54,7 +58,7 @@ export default function DebugDisplays() {
 	)
 
 	return (
-		<>
+		<Show when={DS.debugVisible()}>
 			<DropdownMenu>
 				<DropdownMenuTrigger>
 					<Button size={'icon'} variant="ghost">
@@ -67,7 +71,6 @@ export default function DebugDisplays() {
 							<DropdownMenuCheckboxItem
 								checked={displayState[key]!.visible}
 								onChange={() => {
-									console.log('changed')
 									setDisplayState(key, 'visible', (s) => !s)
 								}}
 							>
@@ -84,25 +87,26 @@ export default function DebugDisplays() {
 					</Show>
 				)}
 			</For>
-		</>
+		</Show>
 	)
 }
 
 export type DebugWindow = {
 	key: string
 }
-
 export function DebugWindow(props: DebugWindow) {
 	const [floating, setFloating] = createSignal(undefined as unknown as FloatingElement)
 	const [dragging, setDragging] = createSignal(false)
 	const [dragOffset, setDragOffset] = createSignal({ x: 0, y: 0 })
-	const windowCoords = () => displayState[props.key]!.coords
+	const windowCoords = () => trackAndUnwrap(displayState[props.key]!.coords)
+	const setWindowCoords = (coords: Coords) => setDisplayState(props.key, 'coords', coords)
+
 	const updateWindowFromCursor = (cursorCoords: Coords) => {
-		setDisplayState(props.key, 'coords', { x: cursorCoords.x - dragOffset().x, y: cursorCoords.y - dragOffset().y })
+		setWindowCoords({
+			x: cursorCoords.x - dragOffset().x,
+			y: cursorCoords.y - dragOffset().y,
+		})
 	}
-	createEffect(() => {
-		console.log('coords', trackAndUnwrap(windowCoords()))
-	})
 
 	const bringToFront = () => {
 		const index = windowOrder.indexOf(props.key)
@@ -116,18 +120,16 @@ export function DebugWindow(props: DebugWindow) {
 	}
 
 	const referenceEl = createMemo(() => {
-		const floatingWindowX = windowCoords().x
-		const floatingWindowY = windowCoords().y
-		// calculate cursor offset from window
+		const coords = windowCoords()
 		return {
 			getBoundingClientRect() {
 				return {
-					// x: floatingWindowX,
-					// y: floatingWindowY,
-					top: floatingWindowY,
-					left: floatingWindowX,
-					// bottom: floatingWindowY,
-					// right: floatingWindowX,
+					x: coords.x,
+					y: coords.y,
+					top: coords.y,
+					bottom: coords.y,
+					left: coords.x,
+					right: coords.x,
 					width: 0,
 					height: 0,
 				}
@@ -135,39 +137,26 @@ export function DebugWindow(props: DebugWindow) {
 		}
 	})
 
-	// eslint-disable-next-line prefer-const
-	let floatingWindowBarRef = null as unknown as HTMLDivElement
-	// const [referenceEl, setReferenceEl] = createSignal({
-	// 	getBoundingClientRect() {
-	// 		return {
-	// 			x: 0,
-	// 			y: 0,
-	// 			top: 200,
-	// 			left: 200,
-	// 			bottom: 20,
-	// 			right: 20,
-	// 			width: WIDTH,
-	// 			height: HEIGHT,
-	// 		}
-	// 	},
-	// })
+	let floatingWindowBarRef!: HTMLDivElement
 
-	const position = useFloating(referenceEl, floating)
-	async function moveListener(evt: MouseEvent) {
+	const position = useFloating(referenceEl, floating, { placement: 'right-start' })
+
+	function moveListener(evt: MouseEvent) {
 		if (!dragging()) return
 		updateWindowFromCursor({ x: evt.clientX, y: evt.clientY })
 	}
 
 	function mouseDownListener(evt: MouseEvent) {
-		// check if we're clicking anywhere in the window
 		if (!floating().contains(evt.target as Node)) return
 		if (!floatingWindowBarRef.contains(evt.target as Node) && !evt.altKey) return
 
 		const rect = floating().getBoundingClientRect()
-		setDragOffset({ x: evt.clientX - rect.left, y: evt.clientY - rect.top })
+		setDragOffset({
+			x: evt.clientX - rect.left,
+			y: evt.clientY - rect.top,
+		})
 
 		batch(() => {
-			updateWindowFromCursor({ x: evt.clientX, y: evt.clientY })
 			setDragging(true)
 			bringToFront()
 		})
@@ -175,22 +164,24 @@ export function DebugWindow(props: DebugWindow) {
 		document.body.style.cursor = 'grabbing'
 	}
 
-	function mouseUpListener() {
+	function release() {
+		if (!dragging()) return
 		setDragging(false)
-		setDragOffset({ x: 0, y: 0 })
 		document.body.style.cursor = ''
 	}
 
 	onMount(() => {
 		document.addEventListener('mousemove', moveListener)
 		document.addEventListener('mousedown', mouseDownListener)
-		document.addEventListener('mouseup', mouseUpListener)
+		document.addEventListener('mouseup', release)
+		document.addEventListener('mouseleave', release)
 	})
+
 	onCleanup(() => {
 		document.removeEventListener('mousemove', moveListener)
 		document.removeEventListener('mousedown', mouseDownListener)
-		document.removeEventListener('mouseup', mouseUpListener)
-		document.removeEventListener('mouseleave', mouseUpListener)
+		document.removeEventListener('mouseup', release)
+		document.removeEventListener('mouseleave', release)
 	})
 
 	return (
@@ -214,8 +205,7 @@ export function DebugWindow(props: DebugWindow) {
 						size="icon"
 						class="minus-button"
 						variant="ghost"
-						onmousedown={(e) => {
-							console.log('click')
+						onmousedown={(e: MouseEvent) => {
 							setDisplayState(props.key, 'visible', false)
 							e.stopPropagation()
 						}}
