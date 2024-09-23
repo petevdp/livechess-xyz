@@ -5,7 +5,7 @@ import { createEffect, createSignal, getOwner, on, onCleanup } from 'solid-js'
 import { StockfishBot } from '~/bots/stockfish.ts'
 import * as SS from '~/sharedStore/sharedStore.ts'
 import * as DS from '~/systems/debugSystem'
-import { createSignalProperty } from '~/utils/solid.ts'
+import { createSignalProperty, trackAndUnwrap } from '~/utils/solid.ts'
 import { unit } from '~/utils/unit.ts'
 
 import * as G from './game/game.ts'
@@ -44,31 +44,49 @@ export function setupVsBot() {
 	}
 	//@ts-expect-error
 	const drawOffers: G.RootGameState['drawOffers'] = {}
-	const startingState: G.RootGameState = {
-		drawOffers,
-		gameConfig: {
-			variant: 'regular',
-			timeControl: 'unlimited',
-			increment: '0',
-			fischerRandomSeed: GL.getFischerRandomSeed(),
-			bot: {
-				difficulty: 10,
-			},
-		},
-		outcome: undefined,
-		moves: [],
-		gameParticipants: {
-			white: {
-				id: P.playerId()!,
-				color: 'white',
-			},
-			black: {
-				id: BOT_ID,
-				color: 'black',
-			},
-		},
+	const localStorageKey = 'vsBotState'
+	let startingState: G.RootGameState | null = null
+	// increment when there's a breaking change in the storage format
+	const storageVersion = 'v1'
+	if (localStorage.getItem(localStorageKey)) {
+		const saved = JSON.parse(localStorage.getItem(localStorageKey)!)
+		if (saved.version !== storageVersion) localStorage.removeItem(localStorageKey)
+		else startingState = saved.state
 	}
+
+	if (startingState === null) {
+		startingState = {
+			drawOffers,
+			gameConfig: {
+				variant: 'regular',
+				timeControl: 'unlimited',
+				increment: '0',
+				fischerRandomSeed: GL.getFischerRandomSeed(),
+				bot: {
+					difficulty: 3,
+				},
+			},
+			outcome: undefined,
+			moves: [],
+			gameParticipants: {
+				white: {
+					id: P.playerId()!,
+					color: 'white',
+				},
+				black: {
+					id: BOT_ID,
+					color: 'black',
+				},
+			},
+		}
+	}
+
 	const store = SS.initLeaderStore<G.RootGameState, object, G.GameEvent>(transport, startingState)
+	createEffect(() => {
+		const state = trackAndUnwrap(store.rollbackState)
+		localStorage.setItem(localStorageKey, JSON.stringify({ state, version: storageVersion }))
+	})
+
 	DS.addHook('vsBotStore', () => store.rollbackState, getOwner()!)
 	const bot = new StockfishBot(store.lockstepState.gameConfig.bot!.difficulty, GL.parseGameConfig(store.lockstepState.gameConfig))
 
@@ -149,7 +167,6 @@ export class VsBotContext implements G.RootGameContext {
 	}
 
 	setGame(game: G.Game | null) {
-		console.log('setting game', game)
 		this.game?.dispose()
 		this._game.set(game)
 	}
