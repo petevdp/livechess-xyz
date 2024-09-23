@@ -16,9 +16,6 @@ export function setupDebugSystem() {
 	;[values, setValue] = createStore({} as Record<string, any>)
 	createRoot(() => {
 		debugKeys = createMemo(() => Object.keys(trackAndUnwrap(values)))
-		createEffect(() => {
-			console.log('debugKeys', debugKeys())
-		})
 	})
 }
 

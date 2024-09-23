@@ -91,6 +91,16 @@ export function setupVsBot() {
 	const bot = new StockfishBot(store.lockstepState.gameConfig.bot!.difficulty, GL.parseGameConfig(store.lockstepState.gameConfig))
 
 	const sub = new Subscription()
+	sub.add(
+		store.event$.subscribe((event) => {
+			console.log(`vsBotStore:${event.type}`, event)
+		})
+	)
+
+	createEffect(() => {
+		console.log('outcome: ', store.rollbackState.outcome)
+	})
+
 	const ctx = new VsBotContext(store, bot)
 	createEffect(
 		on(
@@ -209,10 +219,7 @@ export class VsBotContext implements G.RootGameContext {
 
 	async backToPregame() {
 		const res = await this.sharedStore.setStoreWithRetries(() => {
-			return [
-				{ path: ['status'], value: 'pregame' },
-				{ path: ['activeGameId'], value: undefined },
-			]
+			return [{ path: ['activeGameId'], value: undefined }]
 		})
 		if (!res) return
 		this.setGame(null)

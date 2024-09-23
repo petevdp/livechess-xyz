@@ -341,27 +341,30 @@ function candidateMoveToMove(candidateMove: CandidateMove, capture?: boolean, ch
 	const algebraic = (() =>
 		// get algebraic notation for move
 		{
-			const pieceStr = candidateMove.piece === 'pawn' ? '' : toShortPieceName(candidateMove.piece)
-			const captureStr = capture ? 'x' : ''
-			const toStr = notationFromCoords(candidateMove.to)
-			const promotionStr = candidateMove.promotion ? '=' + candidateMove.promotion.toUpperCase() : ''
+			let baseNotation: string
+			if (candidateMove.castle) {
+				baseNotation = candidateMove.castle === 'queen' ? 'O-O-O' : 'O-O'
+			} else {
+				let disambiguation = ''
+				for (const type of candidateMove.algebraicNotationAmbiguity) {
+					if (type === 'rank') {
+						disambiguation += notationFromCoords(candidateMove.from).charAt(1)
+					} else if (type === 'file') {
+						disambiguation += notationFromCoords(candidateMove.from).charAt(0)
+					}
+				}
+
+				const pieceStr = candidateMove.piece === 'pawn' ? '' : toShortPieceName(candidateMove.piece)
+				const captureStr = capture ? 'x' : ''
+				const toStr = notationFromCoords(candidateMove.to)
+				const promotionStr = candidateMove.promotion ? '=' + candidateMove.promotion.toUpperCase() : ''
+
+				baseNotation = pieceStr + disambiguation + captureStr + toStr + promotionStr
+			}
+
 			const checkStr = check ? '+' : ''
 			const checkmateStr = checkmate ? '#' : ''
-
-			if (candidateMove.castle) {
-				return candidateMove.castle === 'queen' ? 'O-O-O' : 'O-O'
-			}
-
-			let disambiguation = ''
-			for (const type of candidateMove.algebraicNotationAmbiguity) {
-				if (type === 'rank') {
-					disambiguation += notationFromCoords(candidateMove.from).charAt(1)
-				} else if (type === 'file') {
-					disambiguation += notationFromCoords(candidateMove.from).charAt(0)
-				}
-			}
-
-			return pieceStr + disambiguation + captureStr + toStr + promotionStr + checkStr + checkmateStr
+			return baseNotation + checkStr + checkmateStr
 		})()
 
 	return {
@@ -645,8 +648,11 @@ function getMovesFromCoords(
 			return bishopMoves(coords, board)
 		case 'rook':
 			return rookMoves(coords, board)
-		case 'queen':
-			return [...rookMoves(coords, board), ...bishopMoves(coords, board)]
+		case 'queen': {
+			const moves = [...rookMoves(coords, board), ...bishopMoves(coords, board)]
+			for (const move of moves) move.piece = 'queen'
+			return moves
+		}
 		case 'king':
 			return kingMoves(coords, board, history, checkCastling, allowSelfChecks)
 		case 'duck':

@@ -109,13 +109,11 @@ export class BoardViewContext {
 
 	pieceAnimationDone = createSignalProperty(false)
 	async runPieceAnimation(args: PieceAnimationArgs, storeUpdates?: Partial<BoardViewState>) {
-		console.trace('animation started', args)
 		if (this.game.gameConfig.variant === 'fog-of-war') {
 			console.error('animations not supported in fog-of-war variant')
 			return
 		}
 		const animationAlreadyRunning = !!this.s.state.animation
-		console.log({ animationAlreadyRunning })
 		this.s.set({
 			...(storeUpdates ?? {}),
 			animation: {
@@ -143,7 +141,6 @@ export class BoardViewContext {
 		}
 		await until(this.pieceAnimationDone.get)
 		this.pieceAnimationDone.set(false)
-		console.log('animation done')
 		batch(() => {
 			this.s.set('animation', null)
 			this.s.set(
@@ -253,7 +250,7 @@ export class BoardViewContext {
 		}
 	}
 
-	async updateBoardStatic(boardIndex: number) {
+	updateBoardStatic(boardIndex: number) {
 		const board = this.getBoardByIndex(boardIndex)
 		batch(() => {
 			this.s.set({

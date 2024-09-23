@@ -154,7 +154,7 @@ export class Game {
 		return this.gameContext.rollbackState.activeGameId === this.gameId
 	}
 
-	stateSignal = unit as unknown as Accessor<GL.GameState>
+	stateSignal!: Accessor<GL.GameState>
 
 	get state(): GL.GameState {
 		return this.stateSignal()
@@ -300,7 +300,7 @@ export class Game {
 		void this.gameContext.sharedStore.setStoreWithRetries(() => {
 			if (!this.isActiveGame) return
 			if (this.state.moveHistory.length !== expectedMoveIndex) return
-			return this.getMoveTransaction(result, this.state, playerId)
+			return this.getMoveTransaction(result, this.state)
 		})
 	}
 	async validateInProgressMove(): Promise<ValidateMoveResult> {
@@ -361,7 +361,7 @@ export class Game {
 				setCancelled(true)
 				return
 			}
-			return this.getMoveTransaction(result, state, this.bottomPlayer.id)
+			return this.getMoveTransaction(result, state)
 		})
 		this.inProgressMoveLocal.set(undefined)
 		await until(() => {
@@ -369,7 +369,7 @@ export class Game {
 		})
 	}
 
-	private getMoveTransaction(_result: ReturnType<typeof GL.validateAndPlayMove>, state: GL.GameState, playerId: string) {
+	private getMoveTransaction(_result: ReturnType<typeof GL.validateAndPlayMove>, state: GL.GameState) {
 		const result = _result!
 		const mutations: StoreMutation[] = [
 			{
@@ -381,6 +381,8 @@ export class Game {
 				value: SS.DELETE,
 			},
 		]
+		const toMove = state.boardHistory[state.boardHistory.length - 1].board.toMove
+		const playerId = Object.keys(state.players).find((id) => state.players[id] === toMove)!
 		const events: GameEvent[] = [
 			{
 				type: 'make-move',
@@ -395,6 +397,7 @@ export class Game {
 		}
 		const outcome = GL.getGameOutcome(newState, this.parsedGameConfig)
 		if (outcome) {
+			console.log('outcome: ', outcome)
 			mutations.push({
 				path: ['outcome'],
 				value: outcome,

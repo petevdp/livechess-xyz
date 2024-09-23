@@ -98,8 +98,6 @@ export function Game() {
 	}
 	//#endregion
 
-	//#region promotion
-
 	//#region draw offer events
 	{
 		let sub: Subscription | undefined
@@ -174,36 +172,6 @@ export function Game() {
 		})
 	}
 
-	//#endregion
-
-	//#region board updates sound effects for incoming moves
-	{
-		async function onEvent(event: G.GameEvent) {
-			if (event.type === 'committed-in-progress-move' && event.playerId !== S.game.bottomPlayer.id) {
-				if (!S.boardCtx.viewingLiveBoard) return
-				S.boardCtx.visualizeMove(S.game.inProgressMove!)
-				// TODO we need to play the appropriate sound effect here instead of a generic one
-				Audio.playSound('moveOpponent')
-			}
-			// TODO this is a bug because this move may have happened in a different client
-			if (event.type !== 'make-move' || event.playerId === P.playerId()) return
-			// to get around moveHistory not being updated by the time the event is dispatched Sadge
-			const move = await until(() => S.game.state.moveHistory[event.moveIndex])
-			await S.boardCtx.snapBackToLive()
-			const isVisible = S.game.gameConfig.variant !== 'fog-of-war' || S.boardCtx.visibleSquares().has(move.to)
-			if (!move) return
-			Audio.playSoundEffectForMove(move, false, isVisible)
-			Audio.vibrate()
-		}
-		let sub: Subscription | undefined
-		createEffect(() => {
-			sub?.unsubscribe()
-			sub = S.game.gameContext.sharedStore.event$.subscribe(onEvent)
-		})
-		onCleanup(() => {
-			sub?.unsubscribe()
-		})
-	}
 	//#endregion
 
 	//#region game outcome sound effects
@@ -388,6 +356,55 @@ export function Board(props: { ref: HTMLDivElement }) {
 	const s = () => S.boardCtx.s.state
 	// eslint-disable-next-line prefer-const
 	let boardRef = null as unknown as HTMLDivElement
+
+	//#region board updates sound effects for incoming moves
+	{
+		async function onEvent(event: G.GameEvent) {
+			if (event.type === 'committed-in-progress-move' && event.playerId !== S.game.bottomPlayer.id) {
+				if (!S.boardCtx.viewingLiveBoard) return
+				S.boardCtx.visualizeMove(S.game.inProgressMove!)
+				// TODO we need to play the appropriate sound effect here instead of a generic one
+				Audio.playSound('moveOpponent')
+			}
+			// TODO this is a bug because this move may have happened in a different client
+			if (event.type !== 'make-move' || event.playerId === P.playerId()) return
+			// to get around moveHistory not being updated by the time the event is dispatched Sadge
+			const move = await until(() => S.game.state.moveHistory[event.moveIndex])
+			await S.boardCtx.snapBackToLive()
+			const isVisible = S.game.gameConfig.variant !== 'fog-of-war' || S.boardCtx.visibleSquares().has(move.to)
+			if (!move) return
+			Audio.playSoundEffectForMove(move, false, isVisible)
+			Audio.vibrate()
+		}
+		let sub: Subscription | undefined
+		createEffect(() => {
+			sub?.unsubscribe()
+			sub = S.game.gameContext.sharedStore.event$.subscribe(onEvent)
+		})
+		onCleanup(() => {
+			sub?.unsubscribe()
+		})
+	}
+	//#endregion
+
+	//#region handle board rollbacks
+
+	{
+		let sub: Subscription | undefined
+		createEffect(() => {
+			sub?.unsubscribe()
+			sub = S.game.gameContext.sharedStore.rollback$.subscribe(async (rolledBack) => {
+				const events = rolledBack.map((t) => t.events).flat()
+				if (events.some((e) => e.type === 'make-move')) {
+					S.boardCtx.updateBoardStatic(S.game.state.boardHistory.length - 1)
+				}
+			})
+		})
+		onCleanup(() => {
+			sub?.unsubscribe()
+		})
+	}
+	//#endregion
 
 	//#region mouse events
 	// TODO change move type
@@ -634,6 +651,16 @@ export function Board(props: { ref: HTMLDivElement }) {
 						class={cn(GRID_ALIGNED_CLASSES)}
 						style={gridAlignedStyles(S.boardCtx.squareNotationToDisplayCoords(S.boardCtx.hoveredSquare()!))}
 						stroke="white"
+					/>
+				</Show>
+				<Show when={S.boardCtx.lastMove()}>
+					<div
+						class={cn(GRID_ALIGNED_CLASSES, `bg-green-300`)}
+						style={gridAlignedStyles(S.boardCtx.squareNotationToDisplayCoords(S.boardCtx.lastMove()!.from))}
+					/>
+					<div
+						class={cn(GRID_ALIGNED_CLASSES, `bg-green-300`)}
+						style={gridAlignedStyles(S.boardCtx.squareNotationToDisplayCoords(S.boardCtx.lastMove()!.to))}
 					/>
 				</Show>
 				<For each={S.boardCtx.attackedSquares()}>
