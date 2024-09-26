@@ -1,10 +1,11 @@
 import { FloatingElement } from '@floating-ui/dom'
 import stringifyCompact from 'json-stringify-pretty-compact'
 import { useFloating } from 'solid-floating-ui'
-import { AiFillBug, AiFillMinusCircle } from 'solid-icons/ai'
+import { AiFillBug, AiFillCopy, AiFillMinusCircle } from 'solid-icons/ai'
 import { For, Show, batch, createMemo, createRenderEffect, on, onMount } from 'solid-js'
 import { createSignal } from 'solid-js'
 import { onCleanup } from 'solid-js'
+import toast from 'solid-toast'
 
 import { cn } from '~/lib/utils'
 import * as DS from '~/systems/debugSystem'
@@ -183,7 +184,7 @@ export function DebugWindow(props: DebugWindow) {
 		document.removeEventListener('mouseup', release)
 		document.removeEventListener('mouseleave', release)
 	})
-
+	const state = () => stringifyCompact(trackAndUnwrap(DS.values[props.key] || {}))
 	return (
 		<div
 			class={cn(
@@ -201,20 +202,33 @@ export function DebugWindow(props: DebugWindow) {
 			<div class="flex flex-col min-h-0 min-w-0">
 				<div ref={floatingWindowBarRef} class="bg-gray-950 py-2 cursor-grab flex select-none justify-between items-center p-2">
 					<h3>{props.key}</h3>
-					<Button
-						size="icon"
-						class="minus-button"
-						variant="ghost"
-						onmousedown={(e: MouseEvent) => {
-							setDisplayState(props.key, 'visible', false)
-							e.stopPropagation()
-						}}
-					>
-						<AiFillMinusCircle />
-					</Button>
+					<span>
+						<Button
+							size="icon"
+							variant="ghost"
+							onclick={() => {
+								const s = state()
+								navigator.clipboard.writeText(s)
+								toast('Copied to clipboard')
+							}}
+						>
+							<AiFillCopy />
+						</Button>
+						<Button
+							size="icon"
+							class="minus-button"
+							variant="ghost"
+							onclick={(e: MouseEvent) => {
+								setDisplayState(props.key, 'visible', false)
+								e.stopPropagation()
+							}}
+						>
+							<AiFillMinusCircle />
+						</Button>
+					</span>
 				</div>
 				<pre class="flex-grow w-max h-max min-h-0 min-w-0 overflow-auto">
-					<code>{stringifyCompact(trackAndUnwrap(DS.values[props.key] || {}))}</code>
+					<code>{}</code>
 				</pre>
 			</div>
 		</div>

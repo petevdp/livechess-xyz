@@ -11,7 +11,6 @@ import * as DS from '~/systems/debugSystem'
 import { createId } from '~/utils/ids.ts'
 import { deepClone } from '~/utils/obj.ts'
 import { SignalProperty, createSignalProperty, trackAndUnwrap } from '~/utils/solid.ts'
-import { unit } from '~/utils/unit.ts'
 
 import * as P from '../player.ts'
 import * as GL from './gameLogic.ts'
@@ -291,7 +290,7 @@ export class Game {
 		return GL.getLegalMoves([GL.coordsFromNotation(startingSquare)], this.stateSignal(), this.gameConfig.variant)
 	}
 
-	makeMoveProgrammatic(move: GL.InProgressMove, playerId: string) {
+	makeMoveProgrammatic(move: GL.InProgressMove) {
 		const result = GL.validateAndPlayMove(move, this.stateSignal(), this.gameConfig.variant)
 		if (!result) {
 			throw new Error(`invalid move: ${JSON.stringify(result)}`)
@@ -303,6 +302,7 @@ export class Game {
 			return this.getMoveTransaction(result, this.state)
 		})
 	}
+
 	async validateInProgressMove(): Promise<ValidateMoveResult> {
 		const move = this.inProgressMoveLocal.get()
 		if (!move) throw new Error('no in progress move')

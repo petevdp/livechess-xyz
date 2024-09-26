@@ -1,6 +1,7 @@
 import { until } from '@solid-primitives/promise'
 import deepEquals from 'fast-deep-equal'
-import { Observable, Subject, Subscription, concatMap, endWith, filter, first, firstValueFrom } from 'rxjs'
+import { Logger } from 'pino'
+import { Observable, Subject, Subscription, concatMap, endWith, filter, first, firstValueFrom, map, mapTo } from 'rxjs'
 import { Accessor, batch, createSignal, onCleanup } from 'solid-js'
 import { createStore, produce, unwrap } from 'solid-js/store'
 
@@ -12,17 +13,18 @@ export type StoreMutation = {
 	value: any
 }
 
-type NewSharedStoreOrderedTransaction<Event> = {
+type NewSharedStoreOrderedTransaction<Event extends BaseEvent = BaseEvent> = {
 	index: number
 	mutations: StoreMutation[]
 	events: Event[]
 }
+export type BaseEvent = { type: string }
 
-type NewSharedStoreTransaction<Event> = NewSharedStoreOrderedTransaction<Event>
-export type SharedStoreTransaction<Event> = NewSharedStoreTransaction<Event> & {
+type NewSharedStoreTransaction<Event extends BaseEvent> = NewSharedStoreOrderedTransaction<Event>
+export type SharedStoreTransaction<Event extends BaseEvent> = NewSharedStoreTransaction<Event> & {
 	mutationId: string
 }
-export type SharedStoreOrderedTransaction<Event> = NewSharedStoreOrderedTransaction<Event> & {
+export type SharedStoreOrderedTransaction<Event extends BaseEvent> = NewSharedStoreOrderedTransaction<Event> & {
 	mutationId: string
 }
 
@@ -48,7 +50,11 @@ export type ClientConfig<T, CCS extends ClientControlledState> = {
 	lastMutationIndex: number
 }
 
-export type SharedStoreMessage<Event, State = any, CCS extends ClientControlledState = ClientControlledState> =
+export type SharedStoreMessage<
+	Event extends BaseEvent = BaseEvent,
+	State = any,
+	CCS extends ClientControlledState = ClientControlledState,
+> =
 	| {
 			type: 'mutation'
 			mutation: SharedStoreTransaction<Event>
@@ -74,12 +80,22 @@ type SharedStoreTimeoutMessage = {
 	idleTime: number
 }
 
-export type ClientControlledStateNode<CCS extends ClientControlledState> = ReturnType<typeof initClientControlledStateNode<CCS>>
+export type ClientControlledStateNode<CCS extends ClientControlledState, Event extends BaseEvent, State> = ReturnType<
+	typeof initClientControlledStateNode<CCS, Event, State>
+>
 
-export interface SharedStore<State extends object, CCS extends ClientControlledState = ClientControlledState, Event = any> {
+type SharedStoreContext = {
+	log: Logger
+}
+
+export interface SharedStore<
+	State extends object,
+	CCS extends ClientControlledState = ClientControlledState,
+	Event extends BaseEvent = BaseEvent,
+> {
 	lockstepState: State
 	rollbackState: State
-	clientControlled: ClientControlledStateNode<CCS>
+	clientControlled: ClientControlledStateNode<CCS, Event, State>
 
 	setStore(
 		mutation: StoreMutation,
@@ -137,7 +153,7 @@ function applyMutationsToStore(mutations: StoreMutation[], setStore: (...args: a
 	}
 }
 
-async function setStoreWithRetries<State, Event>(
+async function setStoreWithRetries<State, Event extends BaseEvent>(
 	fn: (s: State) =>
 		| StoreMutation[]
 		| {
@@ -182,8 +198,13 @@ export const DELETE = '__DELETE__'
 
 export const PUSH = '__PUSH__'
 
-export function initLeaderStore<State extends object, CCS extends ClientControlledState = ClientControlledState, Event = any>(
+export function initLeaderStore<
+	State extends object,
+	CCS extends ClientControlledState = ClientControlledState,
+	Event extends BaseEvent = BaseEvent,
+>(
 	transport: Transport<SharedStoreMessage<Event, State, CCS>>,
+	ctx: SharedStoreContext,
 	startingState: State = {} as State
 ): SharedStore<State, CCS, Event> {
 	const [store, _setStore] = createStore<State>(startingState)
@@ -218,6 +239,7 @@ export function initLeaderStore<State extends object, CCS extends ClientControll
 
 	subscription.add(
 		observeIncomingMutations(transport).subscribe(async (_receivedAtom) => {
+			const log = ctx.log.child({ mutationId: _receivedAtom.mutationId })
 			// annoying but we have both receivedAtom and _receivedAtom for type narrowing reasons,
 			const receivedAtom = _receivedAtom as SharedStoreOrderedTransaction<Event>
 			if (receivedAtom.index == null) {
@@ -240,12 +262,14 @@ export function initLeaderStore<State extends object, CCS extends ClientControll
 				}
 			} else {
 				// TODO what to do here
-				console.warn(
-					'received mutation with index that is not the next index',
-					receivedAtom.index,
-					appliedTransactions.length,
-					receivedAtom
-				)
+				log
+					.child({ mutationId: _receivedAtom.mutationId })
+					.warn(
+						receivedAtom,
+						'received mutation with index %d that is not the next index: length: %d ',
+						receivedAtom.index,
+						appliedTransactions.length
+					)
 			}
 		})
 	)
@@ -303,7 +327,6 @@ export function initLeaderStore<State extends object, CCS extends ClientControll
 	}
 
 	function applyTransaction(transaction: NewSharedStoreTransaction<Event>) {
-		console.log('transaction: ', JSON.stringify(transaction))
 		for (const mut of transaction.mutations) {
 			mut.path = interpolatePath(mut.path, store)
 		}
@@ -348,9 +371,9 @@ export function initLeaderStore<State extends object, CCS extends ClientControll
 	}
 }
 
-function initClientControlledStateNode<CCS extends ClientControlledState>(
-	config: () => ClientConfig<unknown, CCS> | null,
-	transport: Transport<SharedStoreMessage<any, any, CCS>>,
+function initClientControlledStateNode<CCS extends ClientControlledState, Event extends BaseEvent, State>(
+	config: () => ClientConfig<State, CCS> | null,
+	transport: Transport<SharedStoreMessage<Event, any, CCS>>,
 	initialLocalState: CCS | null
 ) {
 	const [store, setStore] = createStore<ClientControlledStates<CCS>>({})
@@ -437,8 +460,13 @@ function initClientControlledStateNode<CCS extends ClientControlledState>(
 	}
 }
 
-export function initFollowerStore<State extends object, CCS extends ClientControlledState = ClientControlledState, Event = any>(
+export function initFollowerStore<
+	State extends object,
+	CCS extends ClientControlledState = ClientControlledState,
+	Event extends BaseEvent = BaseEvent,
+>(
 	transport: Transport<SharedStoreMessage<Event, State, CCS>>,
+	ctx: SharedStoreContext,
 	startingClientState = {} as CCS
 ): SharedStore<State, CCS, Event> {
 	let nextAtomId = -1
@@ -517,16 +545,17 @@ export function initFollowerStore<State extends object, CCS extends ClientContro
 				mutations: [mutation],
 			}
 		}
-		return await applyTransaction(transaction)
+		return await applyTransaction(transaction, ctx)
 	}
 
-	async function applyTransaction(newTransaction: NewSharedStoreTransaction<Event>): Promise<boolean> {
+	async function applyTransaction(newTransaction: NewSharedStoreTransaction<Event>, ctx: SharedStoreContext): Promise<boolean> {
 		const previous: any[] = []
 		const _config = await until(config)
 		const transaction: SharedStoreTransaction<Event> = {
 			...newTransaction,
 			mutationId: `${_config.clientId!}:${nextAtomId}`,
 		}
+		ctx.log.debug('applying transaction %s : %s', transaction.mutationId, transaction.events.map((e) => e.type).join(','))
 		nextAtomId++
 		const message: SharedStoreMessage<Event, State, CCS> = {
 			type: 'mutation',
@@ -542,10 +571,11 @@ export function initFollowerStore<State extends object, CCS extends ClientContro
 
 		return await firstValueFrom(
 			observeIncomingMutations(transport).pipe(
-				concatMap((m) => {
-					if (m.index !== newTransaction.index) return []
-					return [m.mutationId === transaction.mutationId]
+				filter((m) => {
+					if (m.index !== newTransaction.index) return false
+					return m.mutationId === transaction.mutationId
 				}),
+				map(() => true),
 				endWith(false)
 			)
 		)
@@ -562,28 +592,27 @@ export function initFollowerStore<State extends object, CCS extends ClientContro
 		numRetries = 5
 	) {
 		await until(initialized)
-		return setStoreWithRetries(fn, applyTransaction, appliedTransactions, rollbackStore, numRetries)
+		return setStoreWithRetries(fn, (s) => applyTransaction(s, ctx), appliedTransactions, rollbackStore, numRetries)
 	}
 
 	//#endregion
 
 	//#region handle incoming transactions
-	function handleReceivedTransaction(receivedAtom: SharedStoreOrderedTransaction<Event>) {
-		const _config = config()!
-		console.debug(`processing atom (${_config.clientId})`, receivedAtom, appliedTransactions.length)
-		for (const mut of receivedAtom.mutations) {
+	function handleReceivedTransaction(transaction: SharedStoreOrderedTransaction<Event>, ctx: SharedStoreContext) {
+		ctx.log.debug(transaction, `processing received transaction (%s)`, transaction.mutationId)
+		for (const mut of transaction.mutations) {
 			mut.path = interpolatePath(mut.path, lockstepStore)
 		}
 
-		applyMutationsToStore(receivedAtom.mutations, setLockstepStore, lockstepStore)
-		if (appliedTransactions.length >= receivedAtom.index + 1) {
-			const mutationToCompare = appliedTransactions[receivedAtom.index]
+		applyMutationsToStore(transaction.mutations, setLockstepStore, lockstepStore)
+		if (appliedTransactions.length >= transaction.index + 1) {
+			const mutationToCompare = appliedTransactions[transaction.index]
 
 			// TODO we're handling this in a strange way. we're not handling cases where this client is multiple transactions ahead
-			if (areTransactionsEqual(mutationToCompare, receivedAtom)) {
+			if (areTransactionsEqual(mutationToCompare, transaction)) {
 				// everything is fine, we don't need to store the previous value anymore
-				previousValues.delete(receivedAtom.index)
-				for (const action of receivedAtom.events) {
+				previousValues.delete(transaction.index)
+				for (const action of transaction.events) {
 					event$.next(action)
 				}
 				return
@@ -592,9 +621,9 @@ export function initFollowerStore<State extends object, CCS extends ClientContro
 			// rollback
 			for (let i = appliedTransactions.length - 1; i >= 0; i--) {
 				const transactionToRollBack = appliedTransactions[i]
-				if (i === receivedAtom.index) {
+				if (i === transaction.index) {
 					// we're done, set the new head of the applied mutations
-					applyMutationsToStore(receivedAtom.mutations, setRollbackStore, rollbackStore)
+					applyMutationsToStore(transaction.mutations, setRollbackStore, rollbackStore)
 					previousValues.delete(transactionToRollBack.index)
 					break
 				} else {
@@ -606,15 +635,15 @@ export function initFollowerStore<State extends object, CCS extends ClientContro
 				}
 			}
 
-			const rolledBackTransactions = appliedTransactions.slice(receivedAtom.index)
-			appliedTransactions.length = receivedAtom.index
-			appliedTransactions.push(receivedAtom)
+			const rolledBackTransactions = appliedTransactions.slice(transaction.index)
+			appliedTransactions.length = transaction.index
+			appliedTransactions.push(transaction)
 			rollback$.next(rolledBackTransactions)
 		} else {
-			appliedTransactions.push(receivedAtom)
-			applyMutationsToStore(receivedAtom.mutations, setRollbackStore, rollbackStore)
+			appliedTransactions.push(transaction)
+			applyMutationsToStore(transaction.mutations, setRollbackStore, rollbackStore)
 		}
-		for (const action of receivedAtom.events) {
+		for (const action of transaction.events) {
 			event$.next(action)
 		}
 	}
@@ -629,7 +658,7 @@ export function initFollowerStore<State extends object, CCS extends ClientContro
 			}
 
 			batch(() => {
-				handleReceivedTransaction(receivedAtom)
+				handleReceivedTransaction(receivedAtom, ctx)
 			})
 		})
 	)
@@ -712,7 +741,7 @@ function areTransactionsEqual(a: NewSharedStoreTransaction<any>, b: NewSharedSto
 	return deepEquals(_a, _b)
 }
 
-export interface Transport<Msg extends SharedStoreMessage<unknown>> {
+export interface Transport<Msg extends SharedStoreMessage> {
 	networkId: string
 	message$: Observable<Msg>
 
@@ -725,7 +754,7 @@ export interface Transport<Msg extends SharedStoreMessage<unknown>> {
 	disposed$: Promise<void>
 }
 
-function observeIncomingMutations<Event>(transport: Transport<SharedStoreMessage<Event>>) {
+function observeIncomingMutations<Event extends BaseEvent = BaseEvent>(transport: Transport<SharedStoreMessage<Event>>) {
 	return new Observable<SharedStoreTransaction<Event>>((subscriber) => {
 		const subscription = transport.message$.subscribe((message) => {
 			if (message.type === 'mutation') {
@@ -752,7 +781,7 @@ export function observeTimedOut(transport: Transport<SharedStoreMessage<any>>) {
 	})
 }
 
-export class SharedStoreTransactionBuilder<Event> {
+export class SharedStoreTransactionBuilder<Event extends BaseEvent = BaseEvent> {
 	mutations: StoreMutation[] = []
 	private commit$ = new Subject<boolean>()
 
@@ -785,7 +814,9 @@ export class SharedStoreTransactionBuilder<Event> {
 	}
 }
 
-export async function buildTransaction<Event>(fn: (t: SharedStoreTransactionBuilder<Event>) => Promise<void>) {
+export async function buildTransaction<Event extends BaseEvent = BaseEvent>(
+	fn: (t: SharedStoreTransactionBuilder<Event>) => Promise<void>
+) {
 	const transaction = new SharedStoreTransactionBuilder<Event>()
 	try {
 		await fn(transaction)

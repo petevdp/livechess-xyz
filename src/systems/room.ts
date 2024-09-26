@@ -13,6 +13,7 @@ import { createSignalProperty } from '~/utils/solid.ts'
 
 import * as G from './game/game.ts'
 import * as GL from './game/gameLogic.ts'
+import { log } from './logger.browser.ts'
 import * as P from './player.ts'
 
 //#region types
@@ -96,7 +97,7 @@ export function connectToRoom(
 
 	let store = null as unknown as RoomStore
 	runWithOwner(parentOwner, () => {
-		store = SS.initFollowerStore<RoomState, ClientOwnedState, RoomEvent>(transport, { playerId })
+		store = SS.initFollowerStore<RoomState, ClientOwnedState, RoomEvent>(transport, { log }, { playerId })
 		onCleanup(() => {
 			console.warn('-----cleaning up store----')
 			setRoom(null)

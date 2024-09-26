@@ -4,7 +4,6 @@ import 'solid-devtools'
 import { render } from 'solid-js/web'
 
 import App from './App'
-import { Board } from './components/htmlBoard'
 import './index.css'
 
 console.debug({

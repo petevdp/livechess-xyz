@@ -10,6 +10,7 @@ import { unit } from '~/utils/unit.ts'
 
 import * as G from './game/game.ts'
 import * as GL from './game/gameLogic'
+import { log } from './logger.browser.ts'
 import * as P from './player.ts'
 
 export const BOT_COMPATIBLE_VARIANTS = ['regular', 'fischer-random']
@@ -81,7 +82,7 @@ export function setupVsBot() {
 		}
 	}
 
-	const store = SS.initLeaderStore<G.RootGameState, object, G.GameEvent>(transport, startingState)
+	const store = SS.initLeaderStore<G.RootGameState, object, G.GameEvent>(transport, { log }, startingState)
 	createEffect(() => {
 		const state = trackAndUnwrap(store.rollbackState)
 		localStorage.setItem(localStorageKey, JSON.stringify({ state, version: storageVersion }))
@@ -91,15 +92,6 @@ export function setupVsBot() {
 	const bot = new StockfishBot(store.lockstepState.gameConfig.bot!.difficulty, GL.parseGameConfig(store.lockstepState.gameConfig))
 
 	const sub = new Subscription()
-	sub.add(
-		store.event$.subscribe((event) => {
-			console.log(`vsBotStore:${event.type}`, event)
-		})
-	)
-
-	createEffect(() => {
-		console.log('outcome: ', store.rollbackState.outcome)
-	})
 
 	const ctx = new VsBotContext(store, bot)
 	createEffect(
@@ -128,7 +120,7 @@ export function setupVsBot() {
 
 	function makeMove(move: GL.InProgressMove) {
 		if (cleanedUp) return
-		ctx.game!.makeMoveProgrammatic(move, BOT_ID)
+		ctx.game!.makeMoveProgrammatic(move)
 	}
 
 	createEffect(
@@ -144,7 +136,7 @@ export function setupVsBot() {
 
 	createEffect(() => {
 		if (store.lockstepState.gameConfig.bot!.difficulty === undefined) {
-			console.error('Bot difficulty is undefined')
+			log.error('Bot difficulty is undefined')
 			return
 		}
 		void bot.setDifficulty(store.lockstepState.gameConfig.bot!.difficulty)

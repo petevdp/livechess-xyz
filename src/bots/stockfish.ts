@@ -21,12 +21,16 @@ type UCIFromEngineMsg =
 
 export class StockfishBot implements Bot {
 	static codeLoaded?: Promise<void>
+	static sf: any
 	name = 'Stockfish'
-	sf: any
 	sub?: Subscription
 	msg$?: Observable<UCIFromEngineMsg>
 	engineReady: Accessor<false>
 	setEngineReady: (ready: boolean) => void
+
+	get sf() {
+		return StockfishBot.sf
+	}
 
 	constructor(
 		private difficulty: number,
@@ -67,10 +71,11 @@ export class StockfishBot implements Bot {
 				// TODO handle gracefully
 				throw new Error('WASM threads not supported')
 			}
-			StockfishBot.codeLoaded = loadScript('/stockfish.js')
+			StockfishBot.codeLoaded = loadScript('/stockfish.js').then(async () => {
+				StockfishBot.sf = await window.Stockfish()
+			})
 		}
 		await StockfishBot.codeLoaded
-		this.sf = await window.Stockfish()
 		this.sub?.unsubscribe()
 		this.sub = new Subscription()
 		this.msg$ = new Observable<UCIFromEngineMsg>((sub) => {

@@ -1,5 +1,4 @@
 import { Match, Switch, createEffect, on, onCleanup } from 'solid-js'
-import * as G from 'systems/game/game.ts'
 import * as P from 'systems/player.ts'
 import * as VB from 'systems/vsBot.ts'
 

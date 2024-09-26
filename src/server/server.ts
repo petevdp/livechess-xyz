@@ -5,7 +5,7 @@ import { Crypto } from '@peculiar/webcrypto'
 import Fastify from 'fastify'
 import * as fs from 'node:fs'
 import path from 'node:path'
-import { LoggerOptions } from 'pino'
+import { Logger, LoggerOptions } from 'pino'
 import QRCode from 'qrcode'
 import { Transform } from 'stream'
 import { fileURLToPath } from 'url'
@@ -97,7 +97,7 @@ server.register(async function () {
 		const networkId: string = request.params!.networkId
 		const log = request.log.child({ networkId })
 
-		SSN.handleNewConnection(connection.socket as unknown as ws.WebSocket, networkId, log)
+		SSN.handleNewConnection(connection.socket as unknown as ws.WebSocket, networkId, log as Logger)
 	})
 })
 //#endregion
