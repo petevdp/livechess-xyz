@@ -357,7 +357,7 @@ function candidateMoveToMove(candidateMove: CandidateMove, capture?: boolean, ch
 				const pieceStr = candidateMove.piece === 'pawn' ? '' : toShortPieceName(candidateMove.piece)
 				const captureStr = capture ? 'x' : ''
 				const toStr = notationFromCoords(candidateMove.to)
-				const promotionStr = candidateMove.promotion ? '=' + candidateMove.promotion.toUpperCase() : ''
+				const promotionStr = candidateMove.promotion ? '=' + toShortPieceName(candidateMove.promotion) : ''
 
 				baseNotation = pieceStr + disambiguation + captureStr + toStr + promotionStr
 			}
