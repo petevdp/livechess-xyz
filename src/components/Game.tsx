@@ -431,7 +431,8 @@ export function Board(props: { ref: HTMLDivElement }) {
 		if (validationRes.code === 'valid') {
 			await S.game.makePlayerMove()
 			const boardIndex = S.game.state.boardHistory.length - 1
-			animate ? S.boardCtx.updateBoardAnimated(boardIndex) : S.boardCtx.updateBoardStatic(boardIndex)
+			animate ? await S.boardCtx.updateBoardAnimated(boardIndex) : S.boardCtx.updateBoardStatic(boardIndex)
+			Audio.playSoundEffectForMove(S.game.state.moveHistory[S.game.state.moveHistory.length - 1], true, true)
 			return
 		}
 

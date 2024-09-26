@@ -225,9 +225,15 @@ export function initLeaderStore<
 
 	//#region events
 	const event$ = new Subject<Event>()
+	subscription.add(event$)
+	subscription.add(
+		event$.subscribe((event) => {
+			ctx.log.info('emitting %s', event.type, event)
+		})
+	)
+
 	// we never actually call .next in a leader store, but we need to satisfy the interface
 	const rollback$ = new Subject<NewSharedStoreOrderedTransaction<Event>[]>()
-	subscription.add(event$)
 	subscription.add(rollback$)
 
 	const appliedTransactions = [] as NewSharedStoreOrderedTransaction<Event>[]
@@ -238,36 +244,37 @@ export function initLeaderStore<
 	//#endregion
 
 	subscription.add(
-		observeIncomingMutations(transport).subscribe(async (_receivedAtom) => {
-			const log = ctx.log.child({ mutationId: _receivedAtom.mutationId })
+		observeIncomingMutations(transport).subscribe(async (_receivedTransaction) => {
+			ctx.log.trace('received transaction %s', _receivedTransaction.mutationId, _receivedTransaction)
+			const log = ctx.log.child({ mutationId: _receivedTransaction.mutationId })
 			// annoying but we have both receivedAtom and _receivedAtom for type narrowing reasons,
-			const receivedAtom = _receivedAtom as SharedStoreOrderedTransaction<Event>
-			if (receivedAtom.index == null) {
+			const receivedTransaction = _receivedTransaction as SharedStoreOrderedTransaction<Event>
+			if (receivedTransaction.index == null) {
 				throw new Error('impossible')
 			}
-			for (const mut of receivedAtom.mutations) {
+			for (const mut of receivedTransaction.mutations) {
 				mut.path = interpolatePath(mut.path, store)
 			}
 
 			// we've received the first valid mutation with this index
-			if (receivedAtom.index === appliedTransactions.length) {
+			if (receivedTransaction.index === appliedTransactions.length) {
 				batch(() => {
-					applyMutationsToStore(receivedAtom.mutations, setStoreWithPath, store)
+					applyMutationsToStore(receivedTransaction.mutations, setStoreWithPath, store)
 				})
-				appliedTransactions.push(receivedAtom)
+				appliedTransactions.push(receivedTransaction)
 				// this is now canonical state, and we can broadcast it
-				broadcastAsCommitted(receivedAtom, receivedAtom.mutationId)
-				for (const action of receivedAtom.events) {
+				broadcastAsCommitted(receivedTransaction, receivedTransaction.mutationId)
+				for (const action of receivedTransaction.events) {
 					event$.next(action)
 				}
 			} else {
 				// TODO what to do here
 				log
-					.child({ mutationId: _receivedAtom.mutationId })
+					.child({ mutationId: _receivedTransaction.mutationId })
 					.warn(
-						receivedAtom,
+						receivedTransaction,
 						'received mutation with index %d that is not the next index: length: %d ',
-						receivedAtom.index,
+						receivedTransaction.index,
 						appliedTransactions.length
 					)
 			}
@@ -343,6 +350,7 @@ export function initLeaderStore<
 				mutationId: `${config.clientId}:${transaction.index}`,
 			}
 		}
+		ctx.log.debug(orderedTransaction, 'applying transaction %s', orderedTransaction.mutationId)
 		broadcastAsCommitted(orderedTransaction)
 		appliedTransactions.push(orderedTransaction)
 		// if (orderedTransaction.mutations.some((m) => m.path.includes('outcoome'))) debugger
@@ -470,6 +478,7 @@ export function initFollowerStore<
 	startingClientState = {} as CCS
 ): SharedStore<State, CCS, Event> {
 	let nextAtomId = -1
+	ctx.log = ctx.log.child({ networkId: transport.networkId })
 
 	//#region statuses
 	const [initialized, setInitialized] = createSignal(false)
@@ -487,6 +496,7 @@ export function initFollowerStore<
 				if (!msg) return
 				nextAtomId = msg.config.lastMutationIndex + 1
 				setConfig(msg.config)
+				ctx.log = ctx.log.child({ clientId: msg.config.clientId })
 			})
 	)
 
@@ -513,8 +523,24 @@ export function initFollowerStore<
 	const event$ = new Subject<Event>()
 	const rollback$ = new Subject<NewSharedStoreOrderedTransaction<Event>[]>()
 	subscription.add(event$)
+	subscription.add(
+		event$.subscribe((e) => {
+			ctx.log.info(e, 'emitting %s', e.type)
+		})
+	)
 	// allow any downstream effects to happen before events are dispatched
 	subscription.add(rollback$)
+	subscription.add(
+		rollback$.subscribe((transactions) => {
+			const indexes = transactions.map((t) => t.index).join(',')
+			const events = transactions
+				.map((t) => t.events)
+				.flat()
+				.map((e) => e.type)
+				.join(',')
+			ctx.log.info('rolling back transactions :  (indexes: %s, events: %s', indexes, events)
+		})
+	)
 	//#endregion
 
 	//#region outgoing transactions
@@ -555,7 +581,8 @@ export function initFollowerStore<
 			...newTransaction,
 			mutationId: `${_config.clientId!}:${nextAtomId}`,
 		}
-		ctx.log.debug('applying transaction %s : %s', transaction.mutationId, transaction.events.map((e) => e.type).join(','))
+		console.log('test')
+		ctx.log.info(transaction, 'applying transaction %s', transaction.mutationId)
 		nextAtomId++
 		const message: SharedStoreMessage<Event, State, CCS> = {
 			type: 'mutation',
@@ -674,7 +701,7 @@ export function initFollowerStore<
 			setLockstepStore(_config.initialState as State)
 		})
 		appliedTransactions.length = _config.lastMutationIndex + 1
-		console.debug('Initialized shared store for network ' + transport.networkId)
+		ctx.log.debug('Initialized shared store for network ' + transport.networkId)
 		await until(ccs.initialized)
 		setInitialized(true)
 	})()

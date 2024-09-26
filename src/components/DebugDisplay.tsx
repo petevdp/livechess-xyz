@@ -184,7 +184,7 @@ export function DebugWindow(props: DebugWindow) {
 		document.removeEventListener('mouseup', release)
 		document.removeEventListener('mouseleave', release)
 	})
-	const state = () => stringifyCompact(trackAndUnwrap(DS.values[props.key] || {}))
+	const stateSerialized = createMemo(() => stringifyCompact(trackAndUnwrap(DS.values[props.key] || {})))
 	return (
 		<div
 			class={cn(
@@ -207,7 +207,7 @@ export function DebugWindow(props: DebugWindow) {
 							size="icon"
 							variant="ghost"
 							onclick={() => {
-								const s = state()
+								const s = stateSerialized()
 								navigator.clipboard.writeText(s)
 								toast('Copied to clipboard')
 							}}
@@ -228,7 +228,7 @@ export function DebugWindow(props: DebugWindow) {
 					</span>
 				</div>
 				<pre class="flex-grow w-max h-max min-h-0 min-w-0 overflow-auto">
-					<code>{}</code>
+					<code>{stateSerialized()}</code>
 				</pre>
 			</div>
 		</div>

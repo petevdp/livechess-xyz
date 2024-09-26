@@ -82,7 +82,7 @@ export class StockfishBot implements Bot {
 			this.sf.addMessageListener(msgListener)
 
 			function msgListener(message: string) {
-				console.debug('recieved ' + message)
+				// console.debug('recieved ' + message)
 				if (message === 'uciok') {
 					sub.next({ type: 'uciok' })
 					return
@@ -115,7 +115,7 @@ export class StockfishBot implements Bot {
 	}
 
 	postMessage(msg: string) {
-		console.debug('sending ' + msg)
+		// console.debug('sending ' + msg)
 		this.sf.postMessage(msg)
 	}
 
