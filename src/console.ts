@@ -3,7 +3,6 @@ import { createEffect, createRoot, getOwner } from 'solid-js'
 
 import * as M from './components/utils/Modal.tsx'
 import * as SS from './sharedStore/sharedStore.ts'
-import { BoardViewContext } from './systems/boardViewContext.ts'
 import * as Errors from './systems/errors.ts'
 import * as G from './systems/game/game.ts'
 import * as GL from './systems/game/gameLogic.ts'
@@ -22,7 +21,7 @@ const appConsole = {
 	SS,
 	game: null as G.Game | null,
 	room: R.room(),
-	boardCtx: null as null | BoardViewContext,
+	boardView: null as null | BV.BoardView,
 }
 
 const utils = {

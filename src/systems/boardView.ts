@@ -1,4 +1,5 @@
 import { until } from '@solid-primitives/promise'
+import deepEquals from 'fast-deep-equal'
 import { Accessor, batch, createMemo, getOwner } from 'solid-js'
 import { produce, reconcile, unwrap } from 'solid-js/store'
 
@@ -7,7 +8,7 @@ import * as DS from '~/systems/debugSystem'
 import * as G from '~/systems/game/game.ts'
 import * as GL from '~/systems/game/gameLogic.ts'
 import { deepClone } from '~/utils/obj.ts'
-import { StoreProperty, createSignalProperty, createStoreProperty, trackAndUnwrap } from '~/utils/solid'
+import { SignalProperty, StoreProperty, createSignalProperty, createStoreProperty, trackAndUnwrap } from '~/utils/solid'
 
 export type BoardViewState = {
 	squareSize: number
@@ -16,7 +17,6 @@ export type BoardViewState = {
 	boardFlipped: boolean
 	boardIndex: number
 	// may not match board in the game's history
-	mousePos: { x: number; y: number } | null
 	grabbingActivePiece: boolean
 	mouseMovedAfterGrab: boolean
 	activeSquare: string | null
@@ -36,20 +36,22 @@ type PieceAnimationArgs = {
 }
 type MovedPiece = { to: string; from: string }
 
-export class BoardViewContext {
-	s: StoreProperty<BoardViewState>
+export class BoardView {
+	state: StoreProperty<BoardViewState>
 	legalMovesForActiveSquare: Accessor<string[]>
-	grabbedPiecePos: Accessor<{ x: number; y: number } | null>
 	/** the board which moves can actually be played on, aka the latest board  */
 	inPlayBoard: Accessor<GL.Board>
 	visibleSquares: Accessor<Set<string>>
-	lastMove: Accessor<GL.Move | null>
+	moveOnBoard: Accessor<GL.Move | null>
 	hoveredSquare: Accessor<string | null>
+
+	// only updated when there's an active square. kept separate from the board state to eliminate store overhead on read
+	mousePos: SignalProperty<DisplayCoords | null>
 
 	constructor(private game: G.Game) {
 		if (!getOwner()) throw new Error('Owner not set')
 
-		this.s = createStoreProperty<BoardViewState>({
+		this.state = createStoreProperty<BoardViewState>({
 			squareSize: 32,
 			boardSize: 100,
 			boardSizeCss: 100,
@@ -58,49 +60,44 @@ export class BoardViewContext {
 			boardIndex: game.state.boardHistory.length - 1,
 			grabbingActivePiece: false,
 			mouseMovedAfterGrab: false,
-			mousePos: null,
 			board: deepClone(unwrap(game.boardWithInProgressMove())),
 			animation: null,
 		})
 
 		this.legalMovesForActiveSquare = createMemo(() => {
-			const activeSquare = this.s.state.activeSquare
-			const boardIndex = this.s.state.boardIndex
+			const activeSquare = this.state.s.activeSquare
+			const boardIndex = this.state.s.boardIndex
 			if (!activeSquare || boardIndex !== game.state.boardHistory.length - 1) return []
 			const moves = GL.getLegalMoves([GL.coordsFromNotation(activeSquare)], game.state, game.gameConfig.variant)
 			return moves.map((m) => GL.notationFromCoords(m.to))
 		})
 
 		this.visibleSquares = () => new Set<string>()
-		this.lastMove = () => game.state.moveHistory[this.s.state.boardIndex - 1] || null
+		this.moveOnBoard = () => game.state.moveHistory[this.state.s.boardIndex - 1] || null
 		const placingDuck = () => game.isPlacingDuck
 		this.inPlayBoard = () => {
 			return game.boardWithInProgressMove()
 		}
+		this.mousePos = createSignalProperty<null | DisplayCoords>(null)
 
 		this.hoveredSquare = createMemo(() => {
-			const s = this.s.state
-			if (!s.mousePos || !s.grabbingActivePiece) return null
-			const square = this.getSquareFromDisplayCoords(s.mousePos)
+			const s = this.state.s
+			const mousePos = this.mousePos.get()
+			if (!s.activeSquare || !mousePos) return null
+			const square = this.getSquareFromDisplayCoords(mousePos)
 			if (!square) return null
 			if (!s.activeSquare || s.activeSquare === square) return null
 			if (!this.legalMovesForActiveSquare().includes(square)) return null
 			return square
 		})
 
-		this.grabbedPiecePos = createMemo(() => {
-			if (!this.s.state.grabbingActivePiece && !placingDuck()) return null
-			return this.s.state.mousePos
-		})
-
 		DS.addHook(
-			'boardCtx',
+			'boardView',
 			() => {
-				const s = trackAndUnwrap(this.s.state)
+				const s = trackAndUnwrap(this.state.s)
 				return {
 					...s,
 					hoveredSquare: this.hoveredSquare(),
-					grabbedPiecePos: this.grabbedPiecePos(),
 				}
 			},
 			getOwner()!
@@ -113,8 +110,8 @@ export class BoardViewContext {
 			console.error('animations not supported in fog-of-war variant')
 			return
 		}
-		const animationAlreadyRunning = !!this.s.state.animation
-		this.s.set({
+		const animationAlreadyRunning = !!this.state.s.animation
+		this.state.set({
 			...(storeUpdates ?? {}),
 			animation: {
 				currentFrame: 0,
@@ -125,16 +122,16 @@ export class BoardViewContext {
 		// just use the existing animation loop if it's already running
 		if (!animationAlreadyRunning) {
 			const runInner = () => {
-				if (this.s.state.animation === null) {
+				if (this.state.s.animation === null) {
 					this.pieceAnimationDone.set(true)
 					return
 				}
-				if (this.s.state.animation.currentFrame >= C.PIECE_ANIMATION_NUM_FRAMES) {
+				if (this.state.s.animation.currentFrame >= C.PIECE_ANIMATION_NUM_FRAMES) {
 					// this.s.set(['animation'], null)
 					this.pieceAnimationDone.set(true)
 					return
 				}
-				this.s.set('animation', 'currentFrame', (f) => f + 1)
+				this.state.set('animation', 'currentFrame', (f) => f + 1)
 				requestAnimationFrame(runInner)
 			}
 			runInner()
@@ -142,8 +139,8 @@ export class BoardViewContext {
 		await until(this.pieceAnimationDone.get)
 		this.pieceAnimationDone.set(false)
 		batch(() => {
-			this.s.set('animation', null)
-			this.s.set(
+			this.state.set('animation', null)
+			this.state.set(
 				'board',
 				produce((board) => {
 					for (const movedPiece of args.movedPieces) {
@@ -164,26 +161,29 @@ export class BoardViewContext {
 		})
 	}
 
-	attackedSquares() {
-		if (!this.s.state.activeSquare || !this.viewingLiveBoard) return
+	squareWarnings() {
+		const board = this.state.s.board
 		const attacked: string[] = []
+		const moveOnBoard = this.moveOnBoard()
+		if (moveOnBoard && moveOnBoard.check) {
+			const kingSquare = Object.keys(board.pieces).find(
+				(square) => board.pieces[square].type === 'king' && board.pieces[square].color === board.toMove
+			)
+			attacked.push(kingSquare!)
+		}
 		for (const square of this.legalMovesForActiveSquare()) {
-			if (this.inPlayBoard().pieces[square]?.color === this.game.topPlayer.color) attacked.push(square)
+			if (board.pieces[square]?.color === this.game.topPlayer.color) attacked.push(square)
 		}
 		return attacked
 	}
+
 	squareNotationToDisplayCoords(square: string) {
-		return squareNotationToDisplayCoords(square, this.s.state.boardFlipped, this.s.state.squareSize)
+		return squareNotationToDisplayCoords(square, this.state.s.boardFlipped, this.state.s.squareSize)
 	}
 
 	getPieceDisplayDetails(pieceSquare: string) {
-		const s = this.s.state
-		if (!this.s.state.board.pieces[pieceSquare]) return
-		if (s.grabbingActivePiece && s.mouseMovedAfterGrab && s.activeSquare === pieceSquare && s.mousePos) {
-			const pos = { x: s.mousePos!.x - s.squareSize / 2, y: s.mousePos!.y - s.squareSize / 2 }
-			return { coords: pos, isGrabbed: true }
-		}
-
+		const s = this.state.s
+		if (!s.board.pieces[pieceSquare] || (s.grabbingActivePiece && pieceSquare === s.activeSquare)) return
 		const dispCoords = squareNotationToDisplayCoords(pieceSquare, s.boardFlipped, s.squareSize)
 		if (s.animation) {
 			const movedPiece = s.animation.movedPieces.find((m) => m.from === pieceSquare)
@@ -210,9 +210,9 @@ export class BoardViewContext {
 	}
 
 	getSquareFromDisplayCoords({ x, y }: { x: number; y: number }) {
-		let col = Math.floor(x / this.s.state.squareSize)
-		let row = Math.floor(y / this.s.state.squareSize)
-		if (this.s.state.boardFlipped) {
+		let col = Math.floor(x / this.state.s.squareSize)
+		let row = Math.floor(y / this.state.s.squareSize)
+		if (this.state.s.boardFlipped) {
 			col = 7 - col
 			row = 7 - row
 		}
@@ -225,15 +225,15 @@ export class BoardViewContext {
 	}
 
 	get viewingLiveBoard() {
-		return this.s.state.boardIndex === this.game.state.boardHistory.length - 1
+		return this.state.s.boardIndex === this.game.state.boardHistory.length - 1
 	}
 
 	async snapBackToLive() {
 		if (this.viewingLiveBoard) return
-		const boardIndex = this.s.state.boardIndex
+		const boardIndex = this.state.s.boardIndex
 		const boardIndexBeforeLive = this.game.state.boardHistory.length - 2
 		if (boardIndex !== boardIndexBeforeLive) {
-			await this.updateBoardStatic(boardIndexBeforeLive)
+			this.updateBoardStatic(boardIndexBeforeLive)
 		}
 		await this.updateBoardAnimated(this.game.state.boardHistory.length - 1)
 	}
@@ -253,13 +253,21 @@ export class BoardViewContext {
 	updateBoardStatic(boardIndex: number) {
 		const board = this.getBoardByIndex(boardIndex)
 		batch(() => {
-			this.s.set({
+			this.state.set({
 				boardIndex,
 				animation: null,
-				activeSquare: null,
-				grabbingActivePiece: false,
+				// activeSquare: null,
+				// grabbingActivePiece: false,
 			})
-			this.s.set('board', reconcile(board))
+			const s = this.state.s
+			const activeSquareChanged = () =>
+				s.activeSquare && board.pieces[s.activeSquare] && !deepEquals(board.pieces[s.activeSquare], unwrap(s.board.pieces[s.activeSquare]))
+			if (boardIndex !== this.game.state.moveHistory.length - 1 || activeSquareChanged()) {
+				this.state.set('activeSquare', null)
+				this.state.set('grabbingActivePiece', false)
+			}
+
+			this.state.set('board', reconcile(board))
 		})
 	}
 
@@ -267,21 +275,21 @@ export class BoardViewContext {
 		if (animate) {
 			await this.runPieceAnimation({ movedPieces: [move] })
 		} else {
-			const newBoard = deepClone(unwrap(this.s.state.board))
+			const newBoard = deepClone(unwrap(this.state.s.board))
 			GL.applyInProgressMoveToBoardInPlace(move, newBoard)
 			batch(() => {
-				this.s.set('animation', null)
-				this.s.set('board', reconcile(newBoard))
+				this.state.set('animation', null)
+				this.state.set('board', reconcile(newBoard))
 			})
 		}
 	}
 
 	async updateBoardAnimated(boardIndex: number) {
-		if (boardIndex === this.s.state.boardIndex) return
+		if (boardIndex === this.state.s.boardIndex) return
 		if (boardIndex < 0 || boardIndex >= this.game.state.boardHistory.length) {
 			throw new Error(`invalid board index: ${boardIndex}`)
 		}
-		const boardBefore = this.getBoardByIndex(this.s.state.boardIndex)
+		const boardBefore = this.getBoardByIndex(this.state.s.boardIndex)
 		const boardAfter = this.getBoardByIndex(boardIndex)
 		const movedPieces: { from: string; to: string }[] = []
 		const removedPieceSquares: string[] = []
@@ -315,6 +323,9 @@ export class BoardViewContext {
 		for (const squares of modifiedPieces.values()) {
 			removedPieceSquares.push(...squares)
 		}
+		const resetActiveSquare =
+			!!this.state.s.activeSquare &&
+			(movedPieces.some((move) => move.from === this.state.s.activeSquare) || removedPieceSquares.includes(this.state.s.activeSquare))
 
 		const animDone = this.runPieceAnimation(
 			{
@@ -322,10 +333,14 @@ export class BoardViewContext {
 				addedPieces,
 				removedPieceSquares,
 			},
-			{ boardIndex, activeSquare: null, grabbingActivePiece: false }
+			{
+				boardIndex,
+				activeSquare: resetActiveSquare ? null : this.state.s.activeSquare,
+				grabbingActivePiece: this.state.s.grabbingActivePiece && !resetActiveSquare,
+			}
 		)
 		await animDone
-		this.s.set('board', reconcile(boardAfter))
+		this.state.set('board', reconcile(boardAfter))
 	}
 }
 
@@ -345,9 +360,3 @@ function squareNotationToDisplayCoords(square: string, boardFlipped: boolean, sq
 	const { x, y } = GL.coordsFromNotation(square)
 	return boardCoordsToDisplayCoords({ x, y }, boardFlipped, squareSize)
 }
-
-//#endregion helpers
-
-//#region check if user is using touch screen
-
-//#endregion

@@ -87,8 +87,8 @@ export function createSignalProperty<T>(value: T) {
 export type SignalProperty<T> = ReturnType<typeof createSignalProperty<T>>
 
 export function createStoreProperty<T extends object>(value: T) {
-	const [state, set] = createStore(value)
-	return { state, set }
+	const [s, set] = createStore(value)
+	return { s, set }
 }
 
 export type StoreProperty<T extends object> = ReturnType<typeof createStoreProperty<T>>

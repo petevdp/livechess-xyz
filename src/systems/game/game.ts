@@ -12,6 +12,7 @@ import { createId } from '~/utils/ids.ts'
 import { deepClone } from '~/utils/obj.ts'
 import { SignalProperty, createSignalProperty, trackAndUnwrap } from '~/utils/solid.ts'
 
+import { log } from '../logger.browser.ts'
 import * as P from '../player.ts'
 import * as GL from './gameLogic.ts'
 
@@ -136,7 +137,7 @@ export class Game {
 		this.gameConfig = deepClone(gameConfig) as GL.GameConfig
 		createRoot((dispose) => {
 			this.dispose = () => {
-				console.warn(`disposing game: ${gameId}`)
+				log.debug(`disposing game: %s`, gameId)
 				dispose()
 			}
 			this.init()
@@ -397,7 +398,6 @@ export class Game {
 		}
 		const outcome = GL.getGameOutcome(newState, this.parsedGameConfig)
 		if (outcome) {
-			console.log('outcome: ', outcome)
 			mutations.push({
 				path: ['outcome'],
 				value: outcome,

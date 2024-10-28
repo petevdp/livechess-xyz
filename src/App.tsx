@@ -17,6 +17,12 @@ import { Home } from './components/Home.tsx'
 const RoomGuard = lazy(() => import('~/components/RoomGuard.tsx'))
 const VsBot = lazy(() => import('~/components/VsBot.tsx'))
 
+if (typeof crypto === 'undefined') {
+	import('@peculiar/webcrypto').then(() => {
+		globalThis.crypto = new Crypto()
+	})
+}
+
 function App() {
 	const [displayedError, setDisplayedError] = createSignal<Errors.FatalError | null>(null)
 	DS.setupDebugSystem()

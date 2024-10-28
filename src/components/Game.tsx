@@ -38,8 +38,7 @@ import {
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '~/components/ui/hover-card.tsx'
 import { cn } from '~/lib/utils.ts'
 import * as Audio from '~/systems/audio.ts'
-import * as BVC from '~/systems/boardViewContext.ts'
-import { BoardViewContext } from '~/systems/boardViewContext.ts'
+import * as BV from '~/systems/boardView.ts'
 import * as G from '~/systems/game/game.ts'
 import * as GL from '~/systems/game/gameLogic.ts'
 import * as Pieces from '~/systems/piece.tsx'
@@ -50,16 +49,16 @@ import styles from './Game.module.css'
 import { Button } from './ui/button.tsx'
 import * as Modal from './utils/Modal.tsx'
 
-const GameContext = createContext(null as unknown as { game: G.Game; boardCtx: BoardViewContext })
+const GameContext = createContext(null as unknown as { game: G.Game; boardView: BV.BoardView })
 
 export default function GameWrapper(props: { game: G.Game }) {
-	const boardCtx = new BoardViewContext(props.game)
+	const boardCtx = new BV.BoardView(props.game)
 	//@ts-expect-error
 	window.game = props.game
 	//@ts-expect-error
 	window.boardCtx = boardCtx
 	return (
-		<GameContext.Provider value={{ boardCtx, game: props.game }}>
+		<GameContext.Provider value={{ boardView: boardCtx, game: props.game }}>
 			<Game />
 		</GameContext.Provider>
 	)
@@ -93,7 +92,7 @@ export function Game() {
 			minHeight -= baseOffset
 			minWidth -= baseOffset
 			const size = Math.min(minWidth, minHeight)
-			S.boardCtx.s.set({ boardSize: size, squareSize: size / 8 })
+			S.boardView.state.set({ boardSize: size, squareSize: size / 8 })
 		}
 	}
 	//#endregion
@@ -208,7 +207,7 @@ export function Game() {
 		moveIndex = moveIndex === 'live' ? S.game.state.moveHistory.length - 1 : moveIndex
 		const boardIndex = moveIndex + 1
 		if (boardIndex < 0 || boardIndex >= S.game.state.boardHistory.length) throw new Error('invalid move index')
-		await S.boardCtx.updateBoardAnimated(boardIndex)
+		await S.boardView.updateBoardAnimated(boardIndex)
 		const move = S.game.state.moveHistory[moveIndex]
 		// TODO time this better
 		move && Audio.playSoundEffectForMove(move, false, true)
@@ -216,8 +215,8 @@ export function Game() {
 
 	const moveNavProps = () => {
 		return {
-			isLive: S.boardCtx.s.state.boardIndex === S.game.state.boardHistory.length - 1,
-			viewedMoveIndex: S.boardCtx.s.state.boardIndex - 1,
+			isLive: S.boardView.state.s.boardIndex === S.game.state.boardHistory.length - 1,
+			viewedMoveIndex: S.boardView.state.s.boardIndex - 1,
 			setViewedMoveIndex: handleMoveNavigation,
 		}
 	}
@@ -238,7 +237,7 @@ export function Game() {
 				<MoveHistory {...moveNavProps()} />
 			</Show>
 			<div class={`${styles.topLeftActions} flex items-start space-x-1`}>
-				<Button variant="ghost" size="icon" onclick={() => S.boardCtx.s.set('boardFlipped', (flipped) => !flipped)} class="mb-1">
+				<Button variant="ghost" size="icon" onclick={() => S.boardView.state.set('boardFlipped', (flipped) => !flipped)} class="mb-1">
 					<Svgs.Flip />
 				</Button>
 				<Show when={S.game.gameConfig.variant !== 'regular'}>
@@ -353,7 +352,7 @@ function Player(props: { player: G.PlayerWithColor; class: string }) {
 
 export function Board(props: { ref: HTMLDivElement }) {
 	const S = useContext(GameContext)
-	const s = () => S.boardCtx.s.state
+	const bs = S.boardView.state.s
 	// eslint-disable-next-line prefer-const
 	let boardRef = null as unknown as HTMLDivElement
 
@@ -361,8 +360,8 @@ export function Board(props: { ref: HTMLDivElement }) {
 	{
 		async function onEvent(event: G.GameEvent) {
 			if (event.type === 'committed-in-progress-move' && event.playerId !== S.game.bottomPlayer.id) {
-				if (!S.boardCtx.viewingLiveBoard) return
-				S.boardCtx.visualizeMove(S.game.inProgressMove!)
+				if (!S.boardView.viewingLiveBoard) return
+				S.boardView.visualizeMove(S.game.inProgressMove!)
 				// TODO we need to play the appropriate sound effect here instead of a generic one
 				Audio.playSound('moveOpponent')
 			}
@@ -370,8 +369,8 @@ export function Board(props: { ref: HTMLDivElement }) {
 			if (event.type !== 'make-move' || event.playerId === P.playerId()) return
 			// to get around moveHistory not being updated by the time the event is dispatched Sadge
 			const move = await until(() => S.game.state.moveHistory[event.moveIndex])
-			await S.boardCtx.snapBackToLive()
-			const isVisible = S.game.gameConfig.variant !== 'fog-of-war' || S.boardCtx.visibleSquares().has(move.to)
+			await S.boardView.snapBackToLive()
+			const isVisible = S.game.gameConfig.variant !== 'fog-of-war' || S.boardView.visibleSquares().has(move.to)
 			if (!move) return
 			Audio.playSoundEffectForMove(move, false, isVisible)
 			Audio.vibrate()
@@ -396,7 +395,7 @@ export function Board(props: { ref: HTMLDivElement }) {
 			sub = S.game.gameContext.sharedStore.rollback$.subscribe(async (rolledBack) => {
 				const events = rolledBack.map((t) => t.events).flat()
 				if (events.some((e) => e.type === 'make-move')) {
-					S.boardCtx.updateBoardStatic(S.game.state.boardHistory.length - 1)
+					S.boardView.updateBoardStatic(S.game.state.boardHistory.length - 1)
 				}
 			})
 		})
@@ -417,13 +416,13 @@ export function Board(props: { ref: HTMLDivElement }) {
 		}
 		if (validationRes.code === 'placing-duck') {
 			S.game.commitInProgressMove()
-			S.boardCtx.visualizeMove(S.game.inProgressMoveLocal.get()!, animate)
+			S.boardView.visualizeMove(S.game.inProgressMoveLocal.get()!, animate)
 		}
 		if (validationRes.code === 'ambiguous') {
 			const ambiguity = S.game.currentMoveAmbiguity!
 			if (ambiguity.type === 'promotion') {
 				S.game.commitInProgressMove()
-				S.boardCtx.visualizeMove(S.game.inProgressMoveLocal.get()!, animate)
+				S.boardView.visualizeMove(S.game.inProgressMoveLocal.get()!, animate)
 			}
 			return
 		}
@@ -431,7 +430,7 @@ export function Board(props: { ref: HTMLDivElement }) {
 		if (validationRes.code === 'valid') {
 			await S.game.makePlayerMove()
 			const boardIndex = S.game.state.boardHistory.length - 1
-			animate ? await S.boardCtx.updateBoardAnimated(boardIndex) : S.boardCtx.updateBoardStatic(boardIndex)
+			animate ? await S.boardView.updateBoardAnimated(boardIndex) : S.boardView.updateBoardStatic(boardIndex)
 			Audio.playSoundEffectForMove(S.game.state.moveHistory[S.game.state.moveHistory.length - 1], true, true)
 			return
 		}
@@ -462,16 +461,16 @@ export function Board(props: { ref: HTMLDivElement }) {
 		})
 
 		function mouseMoveListener(clientX: number, clientY: number) {
-			if (!S.game.isClientPlayerParticipating) return false
+			if (!S.game.isClientPlayerParticipating || !bs.activeSquare) return false
 			const rect = boardRef.getBoundingClientRect()
 			const x = clientX - rect.left
 			const y = clientY - rect.top
 			// TODO check if mouse has left board for a certain period and reset grabbed piece
-			const update = { mousePos: { x, y } } as Partial<BVC.BoardViewState>
-			if (S.boardCtx.s.state.grabbingActivePiece && !S.boardCtx.s.state.mouseMovedAfterGrab) {
-				update.mouseMovedAfterGrab = true
+			S.boardView.mousePos.set({ x, y })
+			const update = {} as Partial<BV.BoardViewState>
+			if (S.boardView.state.s.grabbingActivePiece && !S.boardView.state.s.mouseMovedAfterGrab) {
+				S.boardView.state.set({ mouseMovedAfterGrab: true })
 			}
-			S.boardCtx.s.set(update)
 			return true
 		}
 
@@ -491,46 +490,44 @@ export function Board(props: { ref: HTMLDivElement }) {
 		})
 
 		function handlePrimaryPress(clientX: number, clientY: number) {
-			if (!S.game.isClientPlayerParticipating || !S.boardCtx.viewingLiveBoard) return
+			if (!S.game.isClientPlayerParticipating || !S.boardView.viewingLiveBoard) return
 			const rect = boardRef.getBoundingClientRect()
 			const clickCoords = { x: clientX - rect.left, y: clientY - rect.top }
-			const mouseSquare = S.boardCtx.getSquareFromDisplayCoords(clickCoords)
+			const mouseSquare = S.boardView.getSquareFromDisplayCoords(clickCoords)
 			if (S.game.isPlacingDuck) {
 				S.game.setDuck(mouseSquare)
 				return
 			}
 
-			if (S.boardCtx.s.state.activeSquare) {
-				if (S.boardCtx.isLegalForActive(mouseSquare)) {
-					makeMove({ from: S.boardCtx.s.state.activeSquare, to: mouseSquare }, true)
+			if (S.boardView.state.s.activeSquare) {
+				if (S.boardView.isLegalForActive(mouseSquare)) {
+					makeMove({ from: S.boardView.state.s.activeSquare, to: mouseSquare }, true)
 					return
 				}
 
-				if (S.boardCtx.squareContainsPlayerPiece(mouseSquare)) {
-					S.boardCtx.s.set({ activeSquare: mouseSquare, grabbingActivePiece: true, mouseMovedAfterGrab: false })
+				if (S.boardView.squareContainsPlayerPiece(mouseSquare)) {
+					S.boardView.mousePos.set(clickCoords)
+					S.boardView.state.set({ activeSquare: mouseSquare, grabbingActivePiece: true, mouseMovedAfterGrab: false })
 					return
 				}
 
-				S.boardCtx.s.set({ activeSquare: null, mouseMovedAfterGrab: false })
+				S.boardView.state.set({ activeSquare: null, mouseMovedAfterGrab: false })
 				return
 			}
 
-			if (S.boardCtx.squareContainsPlayerPiece(mouseSquare)) {
-				S.boardCtx.s.set({ activeSquare: mouseSquare, grabbingActivePiece: true, mouseMovedAfterGrab: false })
+			if (S.boardView.squareContainsPlayerPiece(mouseSquare)) {
+				S.boardView.mousePos.set(clickCoords)
+				S.boardView.state.set({ activeSquare: mouseSquare, grabbingActivePiece: true, mouseMovedAfterGrab: false })
 				return
 			} else {
-				S.boardCtx.s.set({ activeSquare: null, mouseMovedAfterGrab: false })
+				S.boardView.state.set({ activeSquare: null, mouseMovedAfterGrab: false })
 			}
 		}
 
 		function handleSecondaryPress() {
-			if (!S.game.isClientPlayerParticipating || !S.boardCtx.viewingLiveBoard) return
+			if (!S.game.isClientPlayerParticipating || !S.boardView.viewingLiveBoard) return
 			// TODO draw arrows
-			if (S.boardCtx.s.state.grabbingActivePiece) {
-				S.boardCtx.s.set({ grabbingActivePiece: false, mouseMovedAfterGrab: false })
-			} else {
-				S.boardCtx.s.set({ activeSquare: null })
-			}
+			S.boardView.state.set({ activeSquare: null, grabbingActivePiece: false, mouseMovedAfterGrab: false })
 		}
 
 		boardRef.addEventListener('mouseup', (e) => {
@@ -543,23 +540,23 @@ export function Board(props: { ref: HTMLDivElement }) {
 		})
 
 		function handlePrimaryRelease(clientX: number, clientY: number) {
-			if (!S.game.isClientPlayerParticipating || !S.boardCtx.viewingLiveBoard) return
+			if (!S.game.isClientPlayerParticipating || !S.boardView.viewingLiveBoard) return
 			const rect = boardRef.getBoundingClientRect()
-			const square = S.boardCtx.getSquareFromDisplayCoords({ x: clientX - rect.left, y: clientY - rect.top })
+			const square = S.boardView.getSquareFromDisplayCoords({ x: clientX - rect.left, y: clientY - rect.top })
 
-			if (S.boardCtx.s.state.grabbingActivePiece && S.boardCtx.isLegalForActive(square)) {
-				makeMove({ from: S.boardCtx.s.state.activeSquare!, to: square })
-			} else if (S.boardCtx.s.state.grabbingActivePiece) {
-				S.boardCtx.s.set({ grabbingActivePiece: false, mouseMovedAfterGrab: false })
+			if (S.boardView.state.s.grabbingActivePiece && S.boardView.isLegalForActive(square)) {
+				makeMove({ from: S.boardView.state.s.activeSquare!, to: square })
+			} else if (S.boardView.state.s.grabbingActivePiece) {
+				S.boardView.state.set({ grabbingActivePiece: false, mouseMovedAfterGrab: false })
 			}
 		}
 	})
 	const promoteModalPosition = () => {
 		if (!S.game.currentMoveAmbiguity) return undefined
-		let { x, y } = S.boardCtx.squareNotationToDisplayCoords(S.game.inProgressMove!.to)
+		let { x, y } = S.boardView.squareNotationToDisplayCoords(S.game.inProgressMove!.to)
 		y += boardRef.getBoundingClientRect().top + window.scrollY
 		x += boardRef.getBoundingClientRect().left + window.scrollX
-		if (S.boardCtx.s.state.boardSize / 2 < x) {
+		if (S.boardView.state.s.boardSize / 2 < x) {
 			x -= 180
 		}
 
@@ -628,55 +625,51 @@ export function Board(props: { ref: HTMLDivElement }) {
 	//#endregion
 	const occupiedSquares = new ReactiveSet()
 	createRenderEffect(() => {
-		Object.keys(trackAndUnwrap(s().board.pieces)).forEach((square) => {
+		Object.keys(trackAndUnwrap(bs.board.pieces)).forEach((square) => {
 			occupiedSquares.add(square)
 		})
 	})
 
 	return (
 		<div class={`w-full h-full ${styles.board}`} ref={props.ref}>
-			<div
-				ref={boardRef}
-				class="bg-board-brown bg-blue-400 relative mx-auto"
-				style={{ width: `${s().boardSize}px`, height: `${s().boardSize}px` }}
-			>
-				<Show when={s().activeSquare}>
+			<div ref={boardRef} class="bg-board-brown relative mx-auto" style={{ width: `${bs.boardSize}px`, height: `${bs.boardSize}px` }}>
+				<Show when={S.boardView.moveOnBoard()}>
+					<div
+						class={cn(GRID_ALIGNED_CLASSES, `bg-green-300`)}
+						style={boardPositionStyles(S.boardView.squareNotationToDisplayCoords(S.boardView.moveOnBoard()!.from))}
+					/>
+					<div
+						class={cn(GRID_ALIGNED_CLASSES, `bg-green-300`)}
+						style={boardPositionStyles(S.boardView.squareNotationToDisplayCoords(S.boardView.moveOnBoard()!.to))}
+					/>
+				</Show>
+				<Show when={bs.activeSquare}>
 					<HighlightOutlineSvg
 						class={cn(GRID_ALIGNED_CLASSES)}
 						stroke="rgb(96 165 250)"
-						style={gridAlignedStyles(S.boardCtx.squareNotationToDisplayCoords(s().activeSquare!))}
+						style={boardPositionStyles(S.boardView.squareNotationToDisplayCoords(bs.activeSquare!))}
 					/>
 				</Show>
-				<Show when={S.boardCtx.hoveredSquare()}>
-					<HighlightOutlineSvg
-						class={cn(GRID_ALIGNED_CLASSES)}
-						style={gridAlignedStyles(S.boardCtx.squareNotationToDisplayCoords(S.boardCtx.hoveredSquare()!))}
-						stroke="white"
-					/>
-				</Show>
-				<Show when={S.boardCtx.lastMove()}>
-					<div
-						class={cn(GRID_ALIGNED_CLASSES, `bg-green-300`)}
-						style={gridAlignedStyles(S.boardCtx.squareNotationToDisplayCoords(S.boardCtx.lastMove()!.from))}
-					/>
-					<div
-						class={cn(GRID_ALIGNED_CLASSES, `bg-green-300`)}
-						style={gridAlignedStyles(S.boardCtx.squareNotationToDisplayCoords(S.boardCtx.lastMove()!.to))}
-					/>
-				</Show>
-				<For each={S.boardCtx.attackedSquares()}>
+				<For each={S.boardView.squareWarnings()}>
 					{(square) => (
 						<div
 							class={cn(GRID_ALIGNED_CLASSES, `bg-red-400`)}
-							style={gridAlignedStyles(S.boardCtx.squareNotationToDisplayCoords(square))}
+							style={boardPositionStyles(S.boardView.squareNotationToDisplayCoords(square))}
 						/>
 					)}
 				</For>
-				<For each={S.boardCtx.legalMovesForActiveSquare()}>
+				<Show when={S.boardView.hoveredSquare()}>
+					<HighlightOutlineSvg
+						class={cn(GRID_ALIGNED_CLASSES)}
+						style={boardPositionStyles(S.boardView.squareNotationToDisplayCoords(S.boardView.hoveredSquare()!))}
+						stroke="white"
+					/>
+				</Show>
+				<For each={S.boardView.legalMovesForActiveSquare()}>
 					{(square) => (
 						<div
 							class={cn(GRID_ALIGNED_CLASSES, 'grid place-items-center')}
-							style={gridAlignedStyles(S.boardCtx.squareNotationToDisplayCoords(square))}
+							style={boardPositionStyles(S.boardView.squareNotationToDisplayCoords(square))}
 						>
 							<span class="w-[12%] h-[12%] bg-zinc-50 rounded-full" />
 						</div>
@@ -684,16 +677,33 @@ export function Board(props: { ref: HTMLDivElement }) {
 				</For>
 				<For each={GL.ALL_SQUARES}>
 					{(square) => {
-						const res = createMemo(() => S.boardCtx.getPieceDisplayDetails(square)!)
+						const res = createMemo(() => S.boardView.getPieceDisplayDetails(square)!)
 						return (
 							<Show when={occupiedSquares.has(square) && res()}>
-								<Piece pieceGrabbed={res().isGrabbed} position={res().coords} piece={s().board.pieces[square]} />
+								<Piece pieceGrabbed={false} position={res().coords} piece={bs.board.pieces[square]} />
 							</Show>
 						)
 					}}
 				</For>
+				<Show when={bs.activeSquare && S.boardView.state.s.grabbingActivePiece}>
+					<GrabbedPiece />
+				</Show>
 			</div>
 		</div>
+	)
+}
+
+function GrabbedPiece() {
+	const S = useContext(GameContext)
+	const s = S.boardView.state.s
+	if (!s.activeSquare || !S.boardView.mousePos.get()) throw new Error('Mouse position should be set')
+
+	return (
+		<Piece
+			pieceGrabbed={true}
+			piece={s.board.pieces[s.activeSquare!]}
+			position={{ x: S.boardView.mousePos.get()!.x - s.squareSize / 2, y: S.boardView.mousePos.get()!.y - s.squareSize / 2 }}
+		/>
 	)
 }
 
@@ -706,29 +716,28 @@ function HighlightOutlineSvg(props: JSX.SvgSVGAttributes<SVGSVGElement>) {
 }
 
 type PieceProps = {
-	position: BVC.DisplayCoords
+	position: BV.DisplayCoords
 	piece: GL.ColoredPiece
 	pieceGrabbed: boolean
 }
 
 const GRID_ALIGNED_CLASSES = 'absolute top-0 left-0 w-[12.5%] h-[12.5%] will-change-transform'
 function Piece(props: PieceProps) {
-	const size = () => (props.pieceGrabbed ? 'h-[15%] w-[15%] z-10' : 'h-[12.5%] w-[12.5%] z-5')
 	return (
 		<div
 			class={cn(
 				GRID_ALIGNED_CLASSES,
-				size(),
+				'h-[12.5%] w-[12.5%] z-5 will-change-transform',
 				`${styles.piece} ${styles[Pieces.getPieceKey(props.piece)]}`,
 				props.pieceGrabbed ? 'cursor-grabbing' : 'cursor-grab'
 			)}
-			style={gridAlignedStyles(props.position)}
+			style={boardPositionStyles(props.position)}
 		/>
 	)
 }
 
-function gridAlignedStyles(postiion: BVC.DisplayCoords) {
-	return { transform: `translate(${postiion.x}px, ${postiion.y}px)` }
+function boardPositionStyles(position: BV.DisplayCoords) {
+	return { transform: `translate(${position.x}px, ${position.y}px)` }
 }
 
 //#endregion

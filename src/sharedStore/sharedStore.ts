@@ -207,6 +207,7 @@ export function initLeaderStore<
 	ctx: SharedStoreContext,
 	startingState: State = {} as State
 ): SharedStore<State, CCS, Event> {
+	ctx.log = ctx.log.child({ client: 'LEADER' })
 	const [store, _setStore] = createStore<State>(startingState)
 	const config: ClientConfig<State, CCS> = {
 		clientControlledStates: {},
@@ -228,7 +229,7 @@ export function initLeaderStore<
 	subscription.add(event$)
 	subscription.add(
 		event$.subscribe((event) => {
-			ctx.log.info('emitting %s', event.type, event)
+			ctx.log.debug(event, 'emitting %s', event.type)
 		})
 	)
 
@@ -350,7 +351,7 @@ export function initLeaderStore<
 				mutationId: `${config.clientId}:${transaction.index}`,
 			}
 		}
-		ctx.log.debug(orderedTransaction, 'applying transaction %s', orderedTransaction.mutationId)
+		ctx.log.info(orderedTransaction, 'applying transaction %s', orderedTransaction.mutationId)
 		broadcastAsCommitted(orderedTransaction)
 		appliedTransactions.push(orderedTransaction)
 		// if (orderedTransaction.mutations.some((m) => m.path.includes('outcoome'))) debugger
@@ -581,8 +582,7 @@ export function initFollowerStore<
 			...newTransaction,
 			mutationId: `${_config.clientId!}:${nextAtomId}`,
 		}
-		console.log('test')
-		ctx.log.info(transaction, 'applying transaction %s', transaction.mutationId)
+		ctx.log.debug(transaction, 'applying transaction %s', transaction.mutationId)
 		nextAtomId++
 		const message: SharedStoreMessage<Event, State, CCS> = {
 			type: 'mutation',
@@ -626,7 +626,7 @@ export function initFollowerStore<
 
 	//#region handle incoming transactions
 	function handleReceivedTransaction(transaction: SharedStoreOrderedTransaction<Event>, ctx: SharedStoreContext) {
-		ctx.log.debug(transaction, `processing received transaction (%s)`, transaction.mutationId)
+		ctx.log.info(transaction, `processing received transaction (%s)`, transaction.mutationId)
 		for (const mut of transaction.mutations) {
 			mut.path = interpolatePath(mut.path, lockstepStore)
 		}

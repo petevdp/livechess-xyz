@@ -37,7 +37,7 @@ export function AppContainer(props: ParentProps) {
 					<div class="flex items-center justify-end space-x-1 font-light">
 						<Show when={R.room() && !R.room()!.isPlayerParticipating}>Spectating</Show>
 					</div>
-					<Show when={DS.debugVisible()}>
+					<Show when={!import.meta.env.PROD && DS.debugVisible()}>
 						<DebugDisplayLazy />
 					</Show>
 				</div>

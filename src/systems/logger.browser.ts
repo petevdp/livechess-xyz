@@ -1,23 +1,36 @@
 import pinoPkg from 'pino'
 
 export const log = pinoPkg({
+	level: 'trace',
 	browser: {
-		// asObject: false,
 		write: {
-			info(o) {
-				console.log(o)
+			info(o: any) {
+				delete o.time
+				delete o.level
+				const msg = o.msg
+				delete o.msg
+				console.log(msg, o)
 			},
-			debug(o) {
-				console.debug(o)
+			debug: (o: any) => {
+				delete o.time
+				delete o.level
+				const msg = o.msg
+				delete o.msg
+				console.debug(msg, o)
 			},
-			trace(o) {
-				console.debug(o)
+			trace: (o: any) => {
+				delete o.time
+				delete o.level
+				const msg = o.msg
+				delete o.msg
+				console.debug(msg, o)
 			},
-			error(o) {
-				console.error(o)
-			},
-			warn(o) {
-				console.warn(o)
+			warn: (o: any) => {
+				delete o.time
+				delete o.level
+				const msg = o.msg
+				delete o.msg
+				console.warn(msg, o)
 			},
 		},
 	},
