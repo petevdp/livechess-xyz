@@ -83,8 +83,8 @@ const PROJECT_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..
 server.register(fastifyStatic, {
 	root: PROJECT_ROOT,
 	setHeaders: (res) => {
-		res.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
-		res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp')
+		// res.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
+		// res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp')
 	},
 })
 
@@ -120,10 +120,9 @@ server.head('/api/networks/:networkId', (req, res) => {
 })
 
 function getHtmlResponse(_: unknown, res: any) {
-	return res
-		.sendFile('index.html')
-		.header('Cross-Origin-Opener-Policy', 'same-origin')
-		.header('Cross-Origin-Embedder-Policy', 'require-corp')
+	return res.sendFile('index.html')
+	// .header('Cross-Origin-Opener-Policy', 'same-origin')
+	// .header('Cross-Origin-Embedder-Policy', 'require-corp')
 }
 
 server.get('/rooms/:networkId', getHtmlResponse)
