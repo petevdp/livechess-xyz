@@ -185,8 +185,8 @@ export function DebugWindow(props: DebugWindow) {
 		document.removeEventListener('mouseup', release)
 		document.removeEventListener('mouseleave', release)
 	})
-	const state = () => stringifyCompact(trackAndUnwrap(DS.values[props.key] || {}))
-	const renderedState = () => JSON.stringify(state(), null, 2).slice(1, -1).replace(/\\[n]/g, '\n').replace(/\\["]/g, '"')
+	const state = () => trackAndUnwrap(DS.values[props.key] || null)
+	const renderedState = () => stringifyCompact(state())
 	return (
 		<div
 			class={cn(
@@ -209,12 +209,22 @@ export function DebugWindow(props: DebugWindow) {
 							size="icon"
 							variant="ghost"
 							onclick={() => {
-								const s = state()
+								const s = renderedState()
 								navigator.clipboard.writeText(s)
 								toast('Copied to clipboard')
 							}}
 						>
 							<AiFillCopy />
+						</Button>
+						<Button
+							size="icon"
+							variant="ghost"
+							onclick={() => {
+								console.log(state())
+								toast('Logged to console')
+							}}
+						>
+							<AiFillBug />
 						</Button>
 						<Button
 							size="icon"
