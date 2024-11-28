@@ -1,8 +1,9 @@
 import { FloatingElement } from '@floating-ui/dom'
 import stringifyCompact from 'json-stringify-pretty-compact'
 import { useFloating } from 'solid-floating-ui'
+import { Highlight, Language } from 'solid-highlight'
 import { AiFillBug, AiFillCopy, AiFillMinusCircle } from 'solid-icons/ai'
-import { For, Show, batch, createMemo, createRenderEffect, on, onMount } from 'solid-js'
+import { For, Show, batch, createEffect, createMemo, createRenderEffect, on, onMount } from 'solid-js'
 import { createSignal } from 'solid-js'
 import { onCleanup } from 'solid-js'
 import toast from 'solid-toast'
@@ -185,6 +186,7 @@ export function DebugWindow(props: DebugWindow) {
 		document.removeEventListener('mouseleave', release)
 	})
 	const state = () => stringifyCompact(trackAndUnwrap(DS.values[props.key] || {}))
+	const renderedState = () => JSON.stringify(state(), null, 2).slice(1, -1).replace(/\\[n]/g, '\n').replace(/\\["]/g, '"')
 	return (
 		<div
 			class={cn(
@@ -227,9 +229,9 @@ export function DebugWindow(props: DebugWindow) {
 						</Button>
 					</span>
 				</div>
-				<pre class="flex-grow w-max h-max min-h-0 min-w-0 overflow-auto">
-					<code>{}</code>
-				</pre>
+				<pre class="min-h-0 overflow-y-auto">
+					<code class="text-sm font-mono whitespace-pre-wrap h-full">{renderedState()}</code>
+				</pre>{' '}
 			</div>
 		</div>
 	)
