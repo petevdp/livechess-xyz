@@ -1,7 +1,6 @@
 import { FloatingElement } from '@floating-ui/dom'
 import stringifyCompact from 'json-stringify-pretty-compact'
 import { useFloating } from 'solid-floating-ui'
-import { Highlight, Language } from 'solid-highlight'
 import { AiFillBug, AiFillCopy, AiFillMinusCircle } from 'solid-icons/ai'
 import { For, Show, batch, createEffect, createMemo, createRenderEffect, on, onMount } from 'solid-js'
 import { createSignal } from 'solid-js'
