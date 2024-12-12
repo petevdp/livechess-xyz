@@ -123,6 +123,12 @@ export class BoardViewContext {
 		})
 
 		// just use the existing animation loop if it's already running
+		this.pieceAnimationDone.set(false)
+
+		if (animationAlreadyRunning) {
+			this.completeAnimation()
+		}
+
 		if (!animationAlreadyRunning) {
 			const runInner = () => {
 				if (this.s.state.animation === null) {
@@ -130,7 +136,6 @@ export class BoardViewContext {
 					return
 				}
 				if (this.s.state.animation.currentFrame >= C.PIECE_ANIMATION_NUM_FRAMES) {
-					// this.s.set(['animation'], null)
 					this.pieceAnimationDone.set(true)
 					return
 				}
@@ -138,27 +143,34 @@ export class BoardViewContext {
 				requestAnimationFrame(runInner)
 			}
 			runInner()
+			this.pieceAnimationDone.set(false)
+			await until(this.pieceAnimationDone.get)
+			this.completeAnimation()
+		} else {
+			await until(this.pieceAnimationDone.get)
 		}
-		await until(this.pieceAnimationDone.get)
-		this.pieceAnimationDone.set(false)
+	}
+
+	completeAnimation() {
 		batch(() => {
-			this.s.set('animation', null)
 			this.s.set(
-				'board',
-				produce((board) => {
-					for (const movedPiece of args.movedPieces) {
+				produce((s) => {
+					if (s.animation === null) return
+					const board = s.board
+					for (const movedPiece of s.animation.movedPieces) {
 						board.pieces[movedPiece.to] = board.pieces[movedPiece.from]
 						delete board.pieces[movedPiece.from]
 					}
 
-					if (args.addedPieces) {
-						Object.assign(board.pieces, args.addedPieces)
+					if (s.animation.addedPieces) {
+						Object.assign(board.pieces, s.animation.addedPieces)
 					}
 
-					if (args.removedPieceSquares)
-						for (const square of args.removedPieceSquares) {
+					if (s.animation.removedPieceSquares)
+						for (const square of s.animation.removedPieceSquares) {
 							delete board.pieces[square]
 						}
+					s.animation = null
 				})
 			)
 		})
@@ -233,7 +245,7 @@ export class BoardViewContext {
 		const boardIndex = this.s.state.boardIndex
 		const boardIndexBeforeLive = this.game.state.boardHistory.length - 2
 		if (boardIndex !== boardIndexBeforeLive) {
-			await this.updateBoardStatic(boardIndexBeforeLive)
+			this.updateBoardStatic(boardIndexBeforeLive)
 		}
 		await this.updateBoardAnimated(this.game.state.boardHistory.length - 1)
 	}

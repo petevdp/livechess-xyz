@@ -1,13 +1,14 @@
 import { until } from '@solid-primitives/promise'
 import { Observable, concatMap, mergeAll, race, from as rxFrom, startWith } from 'rxjs'
 import { filter, map } from 'rxjs/operators'
-import { Owner, createEffect, createSignal, on, onCleanup, runWithOwner } from 'solid-js'
+import { Owner, createEffect, createSignal, getOwner, on, onCleanup, runWithOwner } from 'solid-js'
 import { unwrap } from 'solid-js/store'
 
 import * as Api from '~/api.ts'
 import { PLAYER_TIMEOUT } from '~/config.ts'
 import * as SS from '~/sharedStore/sharedStore.ts'
 import { WsTransport } from '~/sharedStore/wsTransport.ts'
+import * as DebugSystem from '~/systems/debugSystem.ts'
 import { deepClone } from '~/utils/obj.ts'
 import { createSignalProperty } from '~/utils/solid.ts'
 
@@ -98,6 +99,7 @@ export function connectToRoom(
 	let store = null as unknown as RoomStore
 	runWithOwner(parentOwner, () => {
 		store = SS.initFollowerStore<RoomState, ClientOwnedState, RoomEvent>(transport, { log }, { playerId })
+		DebugSystem.addHook('room', () => store.rollbackState, getOwner()!)
 		onCleanup(() => {
 			console.warn('-----cleaning up store----')
 			setRoom(null)

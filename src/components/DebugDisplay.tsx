@@ -83,7 +83,7 @@ export default function DebugDisplays() {
 			</DropdownMenu>
 			<For each={DS.debugKeys()}>
 				{(key) => (
-					<Show when={displayState[key]!.visible}>
+					<Show when={displayState[key]?.visible}>
 						<DebugWindow key={key} />
 					</Show>
 				)}

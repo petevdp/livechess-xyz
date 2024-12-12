@@ -184,6 +184,10 @@ async function setStoreWithRetries<State, Event extends BaseEvent>(
 				index: appliedTransactions.length,
 			}
 		}
+		for (const mutation of transaction.mutations) {
+			mutation.path = interpolatePath(mutation.path, rollbackStore)
+		}
+
 		if (transaction.mutations.length === 0) return true
 		const success = await applyTransaction(transaction)
 		if (success) {
@@ -238,36 +242,35 @@ export function initLeaderStore<
 	//#endregion
 
 	subscription.add(
-		observeIncomingMutations(transport).subscribe(async (_receivedAtom) => {
-			const log = ctx.log.child({ mutationId: _receivedAtom.mutationId })
-			// annoying but we have both receivedAtom and _receivedAtom for type narrowing reasons,
-			const receivedAtom = _receivedAtom as SharedStoreOrderedTransaction<Event>
-			if (receivedAtom.index == null) {
+		observeIncomingMutations(transport).subscribe(async (_receivedTransaction) => {
+			const log = ctx.log.child({ mutationId: _receivedTransaction.mutationId })
+			const receivedTransaction = _receivedTransaction as SharedStoreOrderedTransaction<Event>
+			if (receivedTransaction.index == null) {
 				throw new Error('impossible')
 			}
-			for (const mut of receivedAtom.mutations) {
+			for (const mut of receivedTransaction.mutations) {
 				mut.path = interpolatePath(mut.path, store)
 			}
 
 			// we've received the first valid mutation with this index
-			if (receivedAtom.index === appliedTransactions.length) {
+			if (receivedTransaction.index === appliedTransactions.length) {
 				batch(() => {
-					applyMutationsToStore(receivedAtom.mutations, setStoreWithPath, store)
+					applyMutationsToStore(receivedTransaction.mutations, setStoreWithPath, store)
 				})
-				appliedTransactions.push(receivedAtom)
+				appliedTransactions.push(receivedTransaction)
 				// this is now canonical state, and we can broadcast it
-				broadcastAsCommitted(receivedAtom, receivedAtom.mutationId)
-				for (const action of receivedAtom.events) {
+				broadcastAsCommitted(receivedTransaction, receivedTransaction.mutationId)
+				for (const action of receivedTransaction.events) {
 					event$.next(action)
 				}
 			} else {
 				// TODO what to do here
 				log
-					.child({ mutationId: _receivedAtom.mutationId })
+					.child({ mutationId: _receivedTransaction.mutationId })
 					.warn(
-						receivedAtom,
+						receivedTransaction,
 						'received mutation with index %d that is not the next index: length: %d ',
-						receivedAtom.index,
+						receivedTransaction.index,
 						appliedTransactions.length
 					)
 			}
@@ -276,6 +279,7 @@ export function initLeaderStore<
 
 	async function setStore(mutation: StoreMutation, transactionBuilder?: SharedStoreTransactionBuilder<Event>, events: Event[] = []) {
 		let transaction: NewSharedStoreOrderedTransaction<Event>
+		mutation.path = interpolatePath(mutation.path, store)
 		if (transactionBuilder) {
 			transactionBuilder.push(mutation)
 			if (transactionsBeingBuilt.has(transactionBuilder)) {
@@ -599,6 +603,7 @@ export function initFollowerStore<
 
 	//#region handle incoming transactions
 	function handleReceivedTransaction(transaction: SharedStoreOrderedTransaction<Event>, ctx: SharedStoreContext) {
+		transaction = JSON.parse(JSON.stringify(transaction))
 		ctx.log.debug(transaction, `processing received transaction (%s)`, transaction.mutationId)
 		for (const mut of transaction.mutations) {
 			mut.path = interpolatePath(mut.path, lockstepStore)
@@ -606,7 +611,7 @@ export function initFollowerStore<
 
 		applyMutationsToStore(transaction.mutations, setLockstepStore, lockstepStore)
 		if (appliedTransactions.length >= transaction.index + 1) {
-			const mutationToCompare = appliedTransactions[transaction.index]
+			const mutationToCompare = JSON.parse(JSON.stringify(appliedTransactions[transaction.index]))
 
 			// TODO we're handling this in a strange way. we're not handling cases where this client is multiple transactions ahead
 			if (areTransactionsEqual(mutationToCompare, transaction)) {
@@ -617,6 +622,7 @@ export function initFollowerStore<
 				}
 				return
 			}
+			console.log('transactions are not equal: ', mutationToCompare, transaction)
 
 			// rollback
 			for (let i = appliedTransactions.length - 1; i >= 0; i--) {

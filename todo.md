@@ -1,0 +1,1 @@
+- no animation on on two click piece move
