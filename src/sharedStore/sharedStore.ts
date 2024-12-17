@@ -19,6 +19,7 @@ type NewSharedStoreOrderedTransaction<Event extends BaseEvent = BaseEvent> = {
 	events: Event[]
 }
 export type BaseEvent = { type: string }
+export type ClientTaggedEvent<Event extends BaseEvent> = Event & { clientId: string | 'LEADER' }
 
 type NewSharedStoreTransaction<Event extends BaseEvent> = NewSharedStoreOrderedTransaction<Event>
 export type SharedStoreTransaction<Event extends BaseEvent> = NewSharedStoreTransaction<Event> & {
@@ -111,7 +112,7 @@ export interface SharedStore<
 	/**
 	 * listen to events fired after a transaction is fully committed
 	 */
-	event$: Observable<Event>
+	event$: Observable<ClientTaggedEvent<Event>>
 
 	/**
 	 * Fired on rollbacks
@@ -207,7 +208,7 @@ export function initLeaderStore<
 	CCS extends ClientControlledState = ClientControlledState,
 	Event extends BaseEvent = BaseEvent,
 >(
-	transport: Transport<SharedStoreMessage<Event, State, CCS>>,
+	transport: Transport<SharedStoreMessage<ClientTaggedEvent<Event>, State, CCS>>,
 	ctx: SharedStoreContext,
 	startingState: State = {} as State
 ): SharedStore<State, CCS, Event> {
@@ -228,9 +229,9 @@ export function initLeaderStore<
 	const subscription = new Subscription()
 
 	//#region events
-	const event$ = new Subject<Event>()
+	const event$ = new Subject<ClientTaggedEvent<Event>>()
 	// we never actually call .next in a leader store, but we need to satisfy the interface
-	const rollback$ = new Subject<NewSharedStoreOrderedTransaction<Event>[]>()
+	const rollback$ = new Subject<NewSharedStoreOrderedTransaction<ClientTaggedEvent<Event>>[]>()
 	subscription.add(event$)
 	subscription.add(rollback$)
 
@@ -244,7 +245,7 @@ export function initLeaderStore<
 	subscription.add(
 		observeIncomingMutations(transport).subscribe(async (_receivedTransaction) => {
 			const log = ctx.log.child({ mutationId: _receivedTransaction.mutationId })
-			const receivedTransaction = _receivedTransaction as SharedStoreOrderedTransaction<Event>
+			const receivedTransaction = _receivedTransaction as SharedStoreOrderedTransaction<ClientTaggedEvent<Event>>
 			if (receivedTransaction.index == null) {
 				throw new Error('impossible')
 			}
@@ -304,15 +305,15 @@ export function initLeaderStore<
 		return await applyTransaction(transaction)
 	}
 
-	function broadcastAsCommitted(newAtom: NewSharedStoreOrderedTransaction<Event>, mutationId?: string) {
-		const atom: SharedStoreTransaction<Event> = {
+	function broadcastAsCommitted(newAtom: NewSharedStoreOrderedTransaction<ClientTaggedEvent<Event>>, mutationId?: string) {
+		const transaction: SharedStoreTransaction<ClientTaggedEvent<Event>> = {
 			...newAtom,
 			mutationId: mutationId || `${config.clientId}:${nextAtomId}`,
 		}
 		nextAtomId++
-		const message: SharedStoreMessage<Event, State, CCS> = {
+		const message: SharedStoreMessage<ClientTaggedEvent<Event>, State, CCS> = {
 			type: 'mutation',
-			mutation: atom,
+			mutation: transaction,
 		}
 		transport.send(message)
 	}
@@ -334,16 +335,18 @@ export function initLeaderStore<
 		for (const mut of transaction.mutations) {
 			mut.path = interpolatePath(mut.path, store)
 		}
-		let orderedTransaction: SharedStoreOrderedTransaction<Event>
+		let orderedTransaction: SharedStoreOrderedTransaction<ClientTaggedEvent<Event>>
 		if (transaction.index == null) {
 			orderedTransaction = {
 				...transaction,
+				events: transaction.events.map((e) => ({ ...e, clientId: config.clientId })),
 				index: appliedTransactions.length,
 				mutationId: `${config.clientId}:${appliedTransactions.length}`,
 			}
 		} else {
 			orderedTransaction = {
 				...transaction,
+				events: transaction.events.map((e) => ({ ...e, clientId: config.clientId })),
 				mutationId: `${config.clientId}:${transaction.index}`,
 			}
 		}
@@ -469,7 +472,7 @@ export function initFollowerStore<
 	CCS extends ClientControlledState = ClientControlledState,
 	Event extends BaseEvent = BaseEvent,
 >(
-	transport: Transport<SharedStoreMessage<Event, State, CCS>>,
+	transport: Transport<SharedStoreMessage<ClientTaggedEvent<Event>, State, CCS>>,
 	ctx: SharedStoreContext,
 	startingClientState = {} as CCS
 ): SharedStore<State, CCS, Event> {
@@ -514,7 +517,7 @@ export function initFollowerStore<
 	//#endregion
 
 	//#region actions
-	const event$ = new Subject<Event>()
+	const event$ = new Subject<ClientTaggedEvent<Event>>()
 	const rollback$ = new Subject<NewSharedStoreOrderedTransaction<Event>[]>()
 	subscription.add(event$)
 	// allow any downstream effects to happen before events are dispatched
@@ -555,13 +558,14 @@ export function initFollowerStore<
 	async function applyTransaction(newTransaction: NewSharedStoreTransaction<Event>, ctx: SharedStoreContext): Promise<boolean> {
 		const previous: any[] = []
 		const _config = await until(config)
-		const transaction: SharedStoreTransaction<Event> = {
+		const transaction: SharedStoreTransaction<ClientTaggedEvent<Event>> = {
 			...newTransaction,
+			events: newTransaction.events.map((e) => ({ ...e, clientId: _config.clientId })),
 			mutationId: `${_config.clientId!}:${nextAtomId}`,
 		}
 		ctx.log.debug('applying transaction %s : %s', transaction.mutationId, transaction.events.map((e) => e.type).join(','))
 		nextAtomId++
-		const message: SharedStoreMessage<Event, State, CCS> = {
+		const message: SharedStoreMessage<ClientTaggedEvent<Event>, State, CCS> = {
 			type: 'mutation',
 			mutation: transaction,
 		}
@@ -573,16 +577,9 @@ export function initFollowerStore<
 		appliedTransactions.push(newTransaction)
 		previousValues.set(newTransaction.index!, previous)
 
-		return await firstValueFrom(
-			observeIncomingMutations(transport).pipe(
-				filter((m) => {
-					if (m.index !== newTransaction.index) return false
-					return m.mutationId === transaction.mutationId
-				}),
-				map(() => true),
-				endWith(false)
-			)
-		)
+		const nextMutation = await firstValueFrom(observeIncomingMutations(transport))
+		if (nextMutation.index !== newTransaction.index) return false
+		return nextMutation.mutationId === transaction.mutationId
 	}
 
 	async function _setStoreWithRetries(
@@ -602,7 +599,7 @@ export function initFollowerStore<
 	//#endregion
 
 	//#region handle incoming transactions
-	function handleReceivedTransaction(transaction: SharedStoreOrderedTransaction<Event>, ctx: SharedStoreContext) {
+	function handleReceivedTransaction(transaction: SharedStoreOrderedTransaction<ClientTaggedEvent<Event>>, ctx: SharedStoreContext) {
 		transaction = JSON.parse(JSON.stringify(transaction))
 		ctx.log.debug(transaction, `processing received transaction (%s)`, transaction.mutationId)
 		for (const mut of transaction.mutations) {
@@ -622,7 +619,7 @@ export function initFollowerStore<
 				}
 				return
 			}
-			console.log('transactions are not equal: ', mutationToCompare, transaction)
+			console.debug('transactions are not equal, rolling back ', mutationToCompare, transaction)
 
 			// rollback
 			for (let i = appliedTransactions.length - 1; i >= 0; i--) {
@@ -655,16 +652,15 @@ export function initFollowerStore<
 	}
 
 	subscription.add(
-		observeIncomingMutations(transport).subscribe(async (_receivedAtom) => {
+		observeIncomingMutations(transport).subscribe(async (_receivedTransaction) => {
 			await until(config)
-			// annoying but we have both receivedAtom and _receivedAtom for type narrowing reasons,
-			const receivedAtom = _receivedAtom as SharedStoreOrderedTransaction<Event>
-			if (receivedAtom.index == null) {
+			const receivedTransaction = _receivedTransaction as SharedStoreOrderedTransaction<ClientTaggedEvent<Event>>
+			if (receivedTransaction.index == null) {
 				throw new Error('order invariant transactions are deprecated')
 			}
 
 			batch(() => {
-				handleReceivedTransaction(receivedAtom, ctx)
+				handleReceivedTransaction(receivedTransaction, ctx)
 			})
 		})
 	)
@@ -680,7 +676,7 @@ export function initFollowerStore<
 			setLockstepStore(_config.initialState as State)
 		})
 		appliedTransactions.length = _config.lastMutationIndex + 1
-		console.debug('Initialized shared store for network ' + transport.networkId)
+		ctx.log.debug('Initialized shared store for network ' + transport.networkId)
 		await until(ccs.initialized)
 		setInitialized(true)
 	})()

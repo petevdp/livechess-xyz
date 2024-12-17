@@ -1,9 +1,9 @@
 import { Observable, concatMap, endWith, firstValueFrom, share } from 'rxjs'
 
 import { WS_API_URL } from '../config.ts'
-import { type SharedStoreMessage, type Transport } from './sharedStore.ts'
+import { BaseEvent, ClientTaggedEvent, type SharedStoreMessage, type Transport } from './sharedStore.ts'
 
-export class WsTransport<Msg extends SharedStoreMessage> implements Transport<Msg> {
+export class WsTransport<Event extends BaseEvent, Msg extends SharedStoreMessage<ClientTaggedEvent<Event>>> implements Transport<Msg> {
 	ws: WebSocket
 	message$: Observable<Msg>
 	disposed$: Promise<void>
@@ -35,8 +35,8 @@ export class WsTransport<Msg extends SharedStoreMessage> implements Transport<Ms
 			)
 		) as Promise<void>
 
-		if (typeof document !== 'undefined') {
-			document.addEventListener('beforeunload', () => {
+		if (typeof window !== 'undefined') {
+			window.addEventListener('beforeunload', () => {
 				this.ws.close()
 			})
 		}

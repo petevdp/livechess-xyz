@@ -1,24 +1,26 @@
 /// <reference types="vitest" />
 import { defineConfig } from 'vite'
+import tsconfigPaths from 'vite-tsconfig-paths'
 
-let httpTarget = 'http://' + process.env.HOSTNAME + ':' + process.env.PORT;
-const wsTarget = 'ws://' + process.env.HOSTNAME + ':' + process.env.PORT;
-
+const httpTarget = 'http://' + process.env.HOSTNAME + ':' + process.env.PORT
+const wsTarget = 'ws://' + process.env.HOSTNAME + ':' + process.env.PORT
 process.env.VITE_RUNNING_VITEST = 'true'
 export default defineConfig({
+	plugins: [tsconfigPaths()],
 	test: {
+		maxConcurrency: 5,
 		server: {
 			proxy: {
-				"/api": {
+				'/api': {
 					target: httpTarget,
-					changeOrigin: true
+					changeOrigin: true,
 				},
-				"^/api/networks/.*": {
+				'^/api/networks/.*': {
 					target: wsTarget,
 					changeOrigin: true,
-					ws: true
+					ws: true,
 				},
-			}
+			},
 		},
 		browser: {
 			enabled: true,

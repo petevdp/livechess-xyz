@@ -65,7 +65,7 @@ export default function GameWrapper(props: { game: G.Game }) {
 	)
 }
 
-export function Game() {
+function Game() {
 	const S = useContext(GameContext)
 	//#region calc board sizes
 	// eslint-disable-next-line prefer-const
