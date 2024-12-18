@@ -37,6 +37,7 @@ import {
 } from '~/components/ui/dialog.tsx'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '~/components/ui/hover-card.tsx'
 import { cn } from '~/lib/utils.ts'
+import * as SS from '~/sharedStore/sharedStore.ts'
 import * as Audio from '~/systems/audio.ts'
 import * as BVC from '~/systems/boardViewContext.ts'
 import { BoardViewContext } from '~/systems/boardViewContext.ts'
@@ -359,15 +360,15 @@ export function Board(props: { ref: HTMLDivElement }) {
 
 	//#region board updates sound effects for incoming moves
 	{
-		async function onEvent(event: G.GameEvent) {
-			if (event.type === 'committed-in-progress-move' && event.playerId !== S.game.bottomPlayer.id) {
+		async function onEvent(event: SS.ClientTaggedEvent<G.GameEvent>) {
+			const localEvent = event.clientId === S.game.gameContext.sharedStore.config()?.clientId
+			if (event.type === 'committed-in-progress-move' && !localEvent) {
 				if (!S.boardCtx.viewingLiveBoard) return
 				S.boardCtx.visualizeMove(S.game.inProgressMove!)
 				// TODO we need to play the appropriate sound effect here instead of a generic one
 				Audio.playSound('moveOpponent')
 			}
-			// TODO this is a bug because this move may have happened in a different client
-			if (event.type !== 'make-move' || event.playerId === P.playerId()) return
+			if (event.type !== 'make-move' || localEvent) return
 			// to get around moveHistory not being updated by the time the event is dispatched Sadge
 			const move = await until(() => S.game.state.moveHistory[event.moveIndex])
 			await S.boardCtx.snapBackToLive()
