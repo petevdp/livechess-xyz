@@ -172,7 +172,6 @@ async function setStoreWithRetries<State, Event extends BaseEvent>(
 		if (!res) return true
 		let transaction: NewSharedStoreOrderedTransaction<Event>
 		if ('mutations' in res) {
-			// if (res.mutations.some((m) => m.path.includes('outcome'))) debugger
 			transaction = {
 				index: appliedTransactions.length,
 				events: res.events,

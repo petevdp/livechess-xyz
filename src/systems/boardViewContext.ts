@@ -35,6 +35,12 @@ type PieceAnimationArgs = {
 	removedPieceSquares?: string[]
 }
 type MovedPiece = { to: string; from: string }
+type SquareDisplayDetails = {
+	coords: GL.Coords
+	piece?: GL.ColoredPiece
+	isGrabbed: boolean
+	visible: boolean
+}
 
 export class BoardViewContext {
 	s: StoreProperty<BoardViewState>
@@ -71,7 +77,14 @@ export class BoardViewContext {
 			return moves.map((m) => GL.notationFromCoords(m.to))
 		})
 
-		this.visibleSquares = () => new Set<string>()
+		if (game.gameConfig.variant === 'fog-of-war') {
+			this.visibleSquares = createMemo(() => {
+				const visibleSquares = GL.getVisibleSquares(game.stateSignal(), this.game.bottomPlayer.color)
+				return visibleSquares
+			})
+		} else {
+			this.visibleSquares = () => new Set()
+		}
 		this.lastMove = () => game.state.moveHistory[this.s.state.boardIndex - 1] || null
 		const placingDuck = () => game.isPlacingDuck
 		this.inPlayBoard = () => {
@@ -109,10 +122,6 @@ export class BoardViewContext {
 
 	pieceAnimationDone = createSignalProperty(false)
 	async runPieceAnimation(args: PieceAnimationArgs, storeUpdates?: Partial<BoardViewState>) {
-		if (this.game.gameConfig.variant === 'fog-of-war') {
-			console.error('animations not supported in fog-of-war variant')
-			return
-		}
 		const animationAlreadyRunning = !!this.s.state.animation
 		this.s.set({
 			...(storeUpdates ?? {}),
@@ -188,17 +197,25 @@ export class BoardViewContext {
 		return squareNotationToDisplayCoords(square, this.s.state.boardFlipped, this.s.state.squareSize)
 	}
 
-	getPieceDisplayDetails(pieceSquare: string) {
+	getSquareDisplayDetails(square: string): SquareDisplayDetails {
 		const s = this.s.state
-		if (!this.s.state.board.pieces[pieceSquare]) return
-		if (s.grabbingActivePiece && s.mouseMovedAfterGrab && s.activeSquare === pieceSquare && s.mousePos) {
+		const visible = this.game.gameConfig.variant !== 'fog-of-war' || this.visibleSquares().has(square)
+		const dispCoords = squareNotationToDisplayCoords(square, s.boardFlipped, s.squareSize)
+		if (!this.s.state.board.pieces[square])
+			return {
+				visible,
+				coords: dispCoords,
+				isGrabbed: false,
+			}
+
+		const piece = this.s.state.board.pieces[square]
+		if (s.grabbingActivePiece && s.mouseMovedAfterGrab && s.activeSquare === square && s.mousePos) {
 			const pos = { x: s.mousePos!.x - s.squareSize / 2, y: s.mousePos!.y - s.squareSize / 2 }
-			return { coords: pos, isGrabbed: true }
+			return { coords: pos, isGrabbed: true, visible, piece }
 		}
 
-		const dispCoords = squareNotationToDisplayCoords(pieceSquare, s.boardFlipped, s.squareSize)
 		if (s.animation) {
-			const movedPiece = s.animation.movedPieces.find((m) => m.from === pieceSquare)
+			const movedPiece = s.animation.movedPieces.find((m) => m.from === square)
 			if (movedPiece) {
 				const to = GL.coordsFromNotation(movedPiece.to)
 				const fromDisp = dispCoords
@@ -212,13 +229,13 @@ export class BoardViewContext {
 
 				dispCoords.x += stepX * s.animation.currentFrame
 				dispCoords.y += stepY * s.animation.currentFrame
-				return { coords: dispCoords, isGrabbed: false }
+				return { piece, coords: dispCoords, visible, isGrabbed: false }
 			}
-			if (s.animation.removedPieceSquares?.includes(pieceSquare)) {
-				return null
+			if (s.animation.removedPieceSquares?.includes(square)) {
+				return { coords: dispCoords, visible, isGrabbed: false }
 			}
 		}
-		return { coords: dispCoords, isGrabbed: false }
+		return { piece, coords: dispCoords, visible, isGrabbed: false }
 	}
 
 	getSquareFromDisplayCoords({ x, y }: { x: number; y: number }) {
@@ -240,14 +257,18 @@ export class BoardViewContext {
 		return this.s.state.boardIndex === this.game.state.boardHistory.length - 1
 	}
 
-	async snapBackToLive() {
+	async snapBackToLive(animated = true) {
 		if (this.viewingLiveBoard) return
 		const boardIndex = this.s.state.boardIndex
-		const boardIndexBeforeLive = this.game.state.boardHistory.length - 2
-		if (boardIndex !== boardIndexBeforeLive) {
-			this.updateBoardStatic(boardIndexBeforeLive)
+		if (animated) {
+			const boardIndexBeforeLive = this.game.state.boardHistory.length - 2
+			if (boardIndex !== boardIndexBeforeLive) {
+				this.updateBoardStatic(boardIndexBeforeLive)
+			}
+			await this.updateBoardAnimated(this.game.state.boardHistory.length - 1)
+		} else {
+			this.updateBoardStatic(this.game.state.boardHistory.length - 1)
 		}
-		await this.updateBoardAnimated(this.game.state.boardHistory.length - 1)
 	}
 
 	squareContainsPlayerPiece(square: string) {

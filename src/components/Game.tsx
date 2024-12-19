@@ -371,7 +371,7 @@ export function Board(props: { ref: HTMLDivElement }) {
 			if (event.type !== 'make-move' || localEvent) return
 			// to get around moveHistory not being updated by the time the event is dispatched Sadge
 			const move = await until(() => S.game.state.moveHistory[event.moveIndex])
-			await S.boardCtx.snapBackToLive()
+			await S.boardCtx.snapBackToLive(S.game.gameConfig.variant !== 'fog-of-war')
 			const isVisible = S.game.gameConfig.variant !== 'fog-of-war' || S.boardCtx.visibleSquares().has(move.to)
 			if (!move) return
 			Audio.playSoundEffectForMove(move, false, isVisible)
@@ -626,12 +626,12 @@ export function Board(props: { ref: HTMLDivElement }) {
 		setVisible: () => {},
 	})
 	//#endregion
-	const occupiedSquares = new ReactiveSet()
-	createRenderEffect(() => {
-		Object.keys(trackAndUnwrap(s().board.pieces)).forEach((square) => {
-			occupiedSquares.add(square)
-		})
-	})
+	// const occupiedSquares = new ReactiveSet()
+	// createRenderEffect(() => {
+	// 	Object.keys(trackAndUnwrap(s().board.pieces)).forEach((square) => {
+	// 		occupiedSquares.add(square)
+	// 	})
+	// })
 
 	return (
 		<div class={`w-full h-full ${styles.board}`} ref={props.ref}>
@@ -644,31 +644,31 @@ export function Board(props: { ref: HTMLDivElement }) {
 					<HighlightOutlineSvg
 						class={cn(GRID_ALIGNED_CLASSES)}
 						stroke="rgb(96 165 250)"
-						style={gridAlignedStyles(S.boardCtx.squareNotationToDisplayCoords(s().activeSquare!))}
+						style={boardPositionStyles(S.boardCtx.squareNotationToDisplayCoords(s().activeSquare!))}
 					/>
 				</Show>
 				<Show when={S.boardCtx.hoveredSquare()}>
 					<HighlightOutlineSvg
 						class={cn(GRID_ALIGNED_CLASSES)}
-						style={gridAlignedStyles(S.boardCtx.squareNotationToDisplayCoords(S.boardCtx.hoveredSquare()!))}
+						style={boardPositionStyles(S.boardCtx.squareNotationToDisplayCoords(S.boardCtx.hoveredSquare()!))}
 						stroke="white"
 					/>
 				</Show>
-				<Show when={S.boardCtx.lastMove()}>
+				<Show when={S.boardCtx.lastMove() && !S.game.isThisPlayersTurn()}>
 					<div
 						class={cn(GRID_ALIGNED_CLASSES, `bg-green-300`)}
-						style={gridAlignedStyles(S.boardCtx.squareNotationToDisplayCoords(S.boardCtx.lastMove()!.from))}
+						style={boardPositionStyles(S.boardCtx.squareNotationToDisplayCoords(S.boardCtx.lastMove()!.from))}
 					/>
 					<div
 						class={cn(GRID_ALIGNED_CLASSES, `bg-green-300`)}
-						style={gridAlignedStyles(S.boardCtx.squareNotationToDisplayCoords(S.boardCtx.lastMove()!.to))}
+						style={boardPositionStyles(S.boardCtx.squareNotationToDisplayCoords(S.boardCtx.lastMove()!.to))}
 					/>
 				</Show>
 				<For each={S.boardCtx.attackedSquares()}>
 					{(square) => (
 						<div
 							class={cn(GRID_ALIGNED_CLASSES, `bg-red-400`)}
-							style={gridAlignedStyles(S.boardCtx.squareNotationToDisplayCoords(square))}
+							style={boardPositionStyles(S.boardCtx.squareNotationToDisplayCoords(square))}
 						/>
 					)}
 				</For>
@@ -676,7 +676,7 @@ export function Board(props: { ref: HTMLDivElement }) {
 					{(square) => (
 						<div
 							class={cn(GRID_ALIGNED_CLASSES, 'grid place-items-center')}
-							style={gridAlignedStyles(S.boardCtx.squareNotationToDisplayCoords(square))}
+							style={boardPositionStyles(S.boardCtx.squareNotationToDisplayCoords(square))}
 						>
 							<span class="w-[12%] h-[12%] bg-zinc-50 rounded-full" />
 						</div>
@@ -684,11 +684,23 @@ export function Board(props: { ref: HTMLDivElement }) {
 				</For>
 				<For each={GL.ALL_SQUARES}>
 					{(square) => {
-						const res = createMemo(() => S.boardCtx.getPieceDisplayDetails(square)!)
+						const res = createMemo(() => {
+							const details = S.boardCtx.getSquareDisplayDetails(square)!
+							console.log(details)
+							return details
+						})
 						return (
-							<Show when={occupiedSquares.has(square) && res()}>
-								<Piece pieceGrabbed={res().isGrabbed} position={res().coords} piece={s().board.pieces[square]} />
-							</Show>
+							<>
+								<Show when={!res().visible}>
+									<span
+										style={boardPositionStyles(res().coords)}
+										class={cn(GRID_ALIGNED_CLASSES, 'h-[12.5%] w-[12.5%] bg-background/40 inset-0')}
+									/>
+								</Show>
+								<Show when={res().visible && res().piece}>
+									<Piece pieceGrabbed={res().isGrabbed} position={res().coords} piece={s().board.pieces[square]} />
+								</Show>
+							</>
 						)
 					}}
 				</For>
@@ -722,12 +734,12 @@ function Piece(props: PieceProps) {
 				`${styles.piece} ${styles[Pieces.getPieceKey(props.piece)]}`,
 				props.pieceGrabbed ? 'cursor-grabbing' : 'cursor-grab'
 			)}
-			style={gridAlignedStyles(props.position)}
+			style={boardPositionStyles(props.position)}
 		/>
 	)
 }
 
-function gridAlignedStyles(postiion: BVC.DisplayCoords) {
+function boardPositionStyles(postiion: BVC.DisplayCoords) {
 	return { transform: `translate(${postiion.x}px, ${postiion.y}px)` }
 }
 
