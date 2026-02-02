@@ -731,7 +731,7 @@ function Piece(props: PieceProps) {
 				`${styles.piece} ${styles[Pieces.getPieceKey(props.piece)]}`,
 				props.pieceGrabbed ? 'cursor-grabbing' : 'cursor-grab'
 			)}
-			style={boardPositionStyles(props.position)}
+			style={{ ...boardPositionStyles(props.position), 'background-image': `url(${Pieces.getPieceSrc(props.piece)})` }}
 		/>
 	)
 }

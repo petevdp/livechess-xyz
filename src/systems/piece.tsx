@@ -62,32 +62,6 @@ const pieceSvgSrcs = {
 	duck: duckSrc,
 } as const
 
-export const pieceCache = new Map<string, HTMLImageElement>()
-
-// so we can subscribe to when the pieces are updated
-export const [initialized, setInitialized] = createSignal(false)
-
-// TODO insanely inefficient to need to rerun this when squareSize changes, fix
-function loadPiece(key: keyof typeof pieceSvgs) {
-	const Svg = pieceSvgs[key] as unknown as Component<ComponentProps<'svg'>>
-	const svg = (<Svg class="chess-piece" />) as HTMLElement
-	const xml = new XMLSerializer().serializeToString(svg)
-	const image64 = 'data:image/svg+xml;base64,' + btoa(xml)
-	return loadImage(image64, 180)
-}
-
-let setupTriggered = false
-export function ensureSetupPieceSystem() {
-	if (setupTriggered) return
-	setupTriggered = true
-	for (const key in pieceSvgs) {
-		loadPiece(key as keyof typeof pieceSvgs).then((img) => {
-			pieceCache.set(key, img)
-		})
-	}
-	setInitialized(true)
-}
-
 export function getPieceKey(piece: GL.ColoredPiece) {
 	if (piece.type === 'duck') return 'duck'
 	const colorPrefix = piece.color === 'white' ? 'w' : 'b'
@@ -96,20 +70,6 @@ export function getPieceKey(piece: GL.ColoredPiece) {
 
 export function getPieceSrc(piece: GL.ColoredPiece) {
 	return pieceSvgSrcs[getPieceKey(piece)]
-}
-
-export async function getPiece(piece: GL.ColoredPiece, size?: number) {
-	const key = getPieceKey(piece)
-	if (!size) {
-		await until(() => initialized())
-		return pieceCache.get(key)!
-	}
-
-	return await loadPiece(key as keyof typeof pieceSvgs)
-}
-
-export function getCachedPiece(piece: GL.ColoredPiece) {
-	return pieceCache.get(getPieceKey(piece))!
 }
 
 export function loadImage(src: string, size: number) {

@@ -86,42 +86,42 @@
 	grid-area: captured-pieces;
 }
 
-.piece.wqueen {
-	background-image: url('src/assets/pieces/wQueen.svg');
+/*.piece.wqueen {
+	background-image: url('/pieces/wQueen.svg');
 }
 .piece.wbishop {
-	background-image: url('src/assets/pieces/wBishop.svg');
+	background-image: url('/pieces/wBishop.svg');
 }
 .piece.wking {
-	background-image: url('src/assets/pieces/wKing.svg');
+	background-image: url('/pieces/wKing.svg');
 }
 .piece.wknight {
-	background-image: url('src/assets/pieces/wKnight.svg');
+	background-image: url('/pieces/wKnight.svg');
 }
 .piece.wpawn {
-	background-image: url('src/assets/pieces/wPawn.svg');
+	background-image: url('/pieces/wPawn.svg');
 }
 .piece.wrook {
-	background-image: url('src/assets/pieces/wRook.svg');
+	background-image: url('/pieces/wRook.svg');
 }
 .piece.bqueen {
-	background-image: url('src/assets/pieces/bQueen.svg');
+	background-image: url('/pieces/bQueen.svg');
 }
 .piece.bbishop {
-	background-image: url('src/assets/pieces/bBishop.svg');
+	background-image: url('/pieces/bBishop.svg');
 }
 .piece.bking {
-	background-image: url('src/assets/pieces/bKing.svg');
+	background-image: url('/pieces/bKing.svg');
 }
 .piece.bknight {
-	background-image: url('src/assets/pieces/bKnight.svg');
+	background-image: url('/pieces/bKnight.svg');
 }
 .piece.bpawn {
-	background-image: url('src/assets/pieces/bPawn.svg');
+	background-image: url('/pieces/bPawn.svg');
 }
 .piece.brook {
-	background-image: url('src/assets/pieces/bRook.svg');
+	background-image: url('/pieces/bRook.svg');
 }
 .piece.duck {
-	background-image: url('src/assets/pieces/duck.svg');
-}
+	background-image: url('/pieces/duck.svg');
+}*/

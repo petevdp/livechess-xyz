@@ -1,4 +1,4 @@
-import { Match, Switch, createEffect, on, onCleanup } from 'solid-js'
+import { Match, Switch } from 'solid-js'
 import * as P from 'systems/player.ts'
 import * as VB from 'systems/vsBot.ts'
 
@@ -9,11 +9,10 @@ import { Button } from '~/components/ui/button.tsx'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card.tsx'
 import * as Audio from '~/systems/audio.ts'
 import * as GlobalLoading from '~/systems/globalLoading.ts'
-import * as Pieces from '~/systems/piece.tsx'
 
 export default function VsBot() {
 	P.ensurePlayerSystemSetup()
-	Pieces.ensureSetupPieceSystem()
+	// Pieces.ensureSetupPieceSystem()
 	VB.setupVsBot()
 	VB.vsBotContext()!.event$.subscribe((e) => {
 		switch (e.type) {

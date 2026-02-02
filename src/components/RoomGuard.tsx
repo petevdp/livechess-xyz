@@ -31,7 +31,7 @@ type PlayerFormState =
 
 export default function RoomGuard() {
 	P.ensurePlayerSystemSetup()
-	Pieces.ensureSetupPieceSystem()
+	// Pieces.ensureSetupPieceSystem()
 	const params = useParams()
 	const [connectionStatus, setConnectionStatus] = createSignal<ConnectionStatus>(R.room() ? 'connected' : 'disconnected')
 	const navigate = useNavigate()
