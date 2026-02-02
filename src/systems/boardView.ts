@@ -72,7 +72,11 @@ export class BoardView {
 			return moves.map((m) => GL.notationFromCoords(m.to))
 		})
 
-		this.visibleSquares = () => new Set<string>()
+		this.visibleSquares = () => {
+			if (game.gameConfig.variant === 'fog-of-war' && this.game.isClientPlayerParticipating && !this.game.outcome)
+				return GL.getVisibleSquares(game.state, game.bottomPlayer.color)
+			return new Set<string>()
+		}
 		this.moveOnBoard = () => game.state.moveHistory[this.state.s.boardIndex - 1] || null
 		const placingDuck = () => game.isPlacingDuck
 		this.inPlayBoard = () => {
@@ -161,6 +165,11 @@ export class BoardView {
 		})
 	}
 
+	isVisibleSquare(square: string) {
+		const squares = this.visibleSquares()
+		return squares.size === 0 || squares.has(square)
+	}
+
 	squareWarnings() {
 		const board = this.state.s.board
 		const attacked: string[] = []
@@ -235,7 +244,7 @@ export class BoardView {
 		if (boardIndex !== boardIndexBeforeLive) {
 			this.updateBoardStatic(boardIndexBeforeLive)
 		}
-		await this.updateBoardAnimated(this.game.state.boardHistory.length - 1)
+		await this.updateBoard(this.game.state.boardHistory.length - 1)
 	}
 
 	squareContainsPlayerPiece(square: string) {
@@ -250,7 +259,7 @@ export class BoardView {
 		}
 	}
 
-	updateBoardStatic(boardIndex: number) {
+	private updateBoardStatic(boardIndex: number) {
 		const board = this.getBoardByIndex(boardIndex)
 		batch(() => {
 			this.state.set({
@@ -272,7 +281,7 @@ export class BoardView {
 	}
 
 	async visualizeMove(move: { from: string; to: string }, animate: boolean = false) {
-		if (animate) {
+		if (animate && this.game.gameConfig.variant !== 'fog-of-war') {
 			await this.runPieceAnimation({ movedPieces: [move] })
 		} else {
 			const newBoard = deepClone(unwrap(this.state.s.board))
@@ -284,8 +293,9 @@ export class BoardView {
 		}
 	}
 
-	async updateBoardAnimated(boardIndex: number) {
+	async updateBoard(boardIndex: number, animate: boolean = false) {
 		if (boardIndex === this.state.s.boardIndex) return
+		if (!animate || this.game.gameConfig.variant === 'fog-of-war') return this.updateBoardStatic(boardIndex)
 		if (boardIndex < 0 || boardIndex >= this.game.state.boardHistory.length) {
 			throw new Error(`invalid board index: ${boardIndex}`)
 		}

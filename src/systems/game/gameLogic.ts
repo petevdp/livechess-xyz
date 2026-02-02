@@ -1166,7 +1166,7 @@ export function getVisibleSquares(game: GameState, color: Color) {
 		simulated = JSON.parse(JSON.stringify(game)) as GameState
 		const noopSquareAndPiece = opponentPieces.find(([_, piece]) => piece.type === 'king')!
 		// in this case the game is over, and we'll be revealing all squares anyway
-		if (!noopSquareAndPiece) return new Set()
+		if (!noopSquareAndPiece) return new Set<string>()
 		const [noopSquare, noopPiece] = noopSquareAndPiece
 		const noopCoords = coordsFromNotation(noopSquare)
 		const candidateMove = {
@@ -1202,6 +1202,7 @@ export function getVisibleSquares(game: GameState, color: Color) {
 			}
 		}
 	}
+	console.log({ visibleSquares, candidateMoves })
 	return visibleSquares
 }
 

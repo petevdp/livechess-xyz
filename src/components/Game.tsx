@@ -207,7 +207,7 @@ export function Game() {
 		moveIndex = moveIndex === 'live' ? S.game.state.moveHistory.length - 1 : moveIndex
 		const boardIndex = moveIndex + 1
 		if (boardIndex < 0 || boardIndex >= S.game.state.boardHistory.length) throw new Error('invalid move index')
-		await S.boardView.updateBoardAnimated(boardIndex)
+		await S.boardView.updateBoard(boardIndex)
 		const move = S.game.state.moveHistory[moveIndex]
 		// TODO time this better
 		move && Audio.playSoundEffectForMove(move, false, true)
@@ -395,7 +395,7 @@ export function Board(props: { ref: HTMLDivElement }) {
 			sub = S.game.gameContext.sharedStore.rollback$.subscribe(async (rolledBack) => {
 				const events = rolledBack.map((t) => t.events).flat()
 				if (events.some((e) => e.type === 'make-move')) {
-					S.boardView.updateBoardStatic(S.game.state.boardHistory.length - 1)
+					S.boardView.updateBoard(S.game.state.boardHistory.length - 1, false)
 				}
 			})
 		})
@@ -430,7 +430,7 @@ export function Board(props: { ref: HTMLDivElement }) {
 		if (validationRes.code === 'valid') {
 			await S.game.makePlayerMove()
 			const boardIndex = S.game.state.boardHistory.length - 1
-			animate ? await S.boardView.updateBoardAnimated(boardIndex) : S.boardView.updateBoardStatic(boardIndex)
+			await S.boardView.updateBoard(boardIndex, animate)
 			Audio.playSoundEffectForMove(S.game.state.moveHistory[S.game.state.moveHistory.length - 1], true, true)
 			return
 		}
@@ -633,7 +633,7 @@ export function Board(props: { ref: HTMLDivElement }) {
 	return (
 		<div class={`w-full h-full ${styles.board}`} ref={props.ref}>
 			<div ref={boardRef} class="bg-board-brown relative mx-auto" style={{ width: `${bs.boardSize}px`, height: `${bs.boardSize}px` }}>
-				<Show when={S.boardView.moveOnBoard()}>
+				<Show when={S.boardView.moveOnBoard() && (S.game.gameConfig.variant !== 'fog-of-war' || !S.game.isPlayerTurn)}>
 					<div
 						class={cn(GRID_ALIGNED_CLASSES, `bg-green-300`)}
 						style={boardPositionStyles(S.boardView.squareNotationToDisplayCoords(S.boardView.moveOnBoard()!.from))}
@@ -681,9 +681,17 @@ export function Board(props: { ref: HTMLDivElement }) {
 					{(square) => {
 						const res = createMemo(() => S.boardView.getPieceDisplayDetails(square)!)
 						return (
-							<Show when={occupiedSquares.has(square) && res()}>
-								<Piece pieceGrabbed={false} position={res().coords} piece={bs.board.pieces[square]} />
-							</Show>
+							<>
+								<Show when={occupiedSquares.has(square) && S.boardView.isVisibleSquare(square) && res()}>
+									<Piece pieceGrabbed={false} position={res().coords} piece={bs.board.pieces[square]} />
+								</Show>
+								<Show when={!S.boardView.isVisibleSquare(square)}>
+									<span
+										class={cn(GRID_ALIGNED_CLASSES, 'h-[12.5%] w-[12.5%] z-5 bg-black border-0 opacity-40')}
+										style={boardPositionStyles(S.boardView.squareNotationToDisplayCoords(square))}
+									/>
+								</Show>
+							</>
 						)
 					}}
 				</For>
