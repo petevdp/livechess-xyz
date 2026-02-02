@@ -83,8 +83,8 @@ const PROJECT_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..
 server.register(fastifyStatic, {
 	root: PROJECT_ROOT,
 	setHeaders: (res) => {
-		// res.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
-		// res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp')
+		res.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
+		res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp')
 	},
 })
 
