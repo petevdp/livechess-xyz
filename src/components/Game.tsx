@@ -665,16 +665,18 @@ export function Board(props: { ref: HTMLDivElement }) {
 						stroke="white"
 					/>
 				</Show>
-				<For each={S.boardView.legalMovesForActiveSquare()}>
-					{(square) => (
-						<div
-							class={cn(GRID_ALIGNED_CLASSES, 'grid place-items-center')}
-							style={boardPositionStyles(S.boardView.squareNotationToDisplayCoords(square))}
-						>
-							<span class="w-[12%] h-[12%] bg-zinc-50 rounded-full" />
-						</div>
-					)}
-				</For>
+				<Show when={P.settings.showAvailablemoves}>
+					<For each={S.boardView.legalMovesForActiveSquare()}>
+						{(square) => (
+							<div
+								class={cn(GRID_ALIGNED_CLASSES, 'grid place-items-center')}
+								style={boardPositionStyles(S.boardView.squareNotationToDisplayCoords(square))}
+							>
+								<span class="w-[12%] h-[12%] bg-zinc-50 rounded-full" />
+							</div>
+						)}
+					</For>
+				</Show>
 				<For each={GL.ALL_SQUARES}>
 					{(square) => {
 						const res = createMemo(() => S.boardView.getPieceDisplayDetails(square)!)
