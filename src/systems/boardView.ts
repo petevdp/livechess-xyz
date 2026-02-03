@@ -44,6 +44,8 @@ export class BoardView {
 	visibleSquares: Accessor<Set<string>>
 	moveOnBoard: Accessor<GL.Move | null>
 	hoveredSquare: Accessor<string | null>
+	isPlacingDuck: Accessor<boolean>
+	duckOnBoard: Accessor<boolean>
 
 	// only updated when there's an active square. kept separate from the board state to eliminate store overhead on read
 	mousePos: SignalProperty<DisplayCoords | null>
@@ -67,6 +69,7 @@ export class BoardView {
 		this.legalMovesForActiveSquare = createMemo(() => {
 			const activeSquare = this.state.s.activeSquare
 			const boardIndex = this.state.s.boardIndex
+			console.log({ activeSquare, boardIndex })
 			if (!activeSquare || boardIndex !== game.state.boardHistory.length - 1) return []
 			const moves = GL.getLegalMoves([GL.coordsFromNotation(activeSquare)], game.state, game.gameConfig.variant)
 			return moves.map((m) => GL.notationFromCoords(m.to))
@@ -78,7 +81,8 @@ export class BoardView {
 			return new Set<string>()
 		}
 		this.moveOnBoard = () => game.state.moveHistory[this.state.s.boardIndex - 1] || null
-		const placingDuck = () => game.isPlacingDuck
+		this.isPlacingDuck = () => game.isPlacingDuck
+		this.duckOnBoard = () => game.state.moveHistory[this.state.s.boardIndex - 1]?.duck !== undefined
 		this.inPlayBoard = () => {
 			return game.boardWithInProgressMove()
 		}
@@ -87,11 +91,15 @@ export class BoardView {
 		this.hoveredSquare = createMemo(() => {
 			const s = this.state.s
 			const mousePos = this.mousePos.get()
-			if (!s.activeSquare || !mousePos) return null
+			if (!mousePos) return null
 			const square = this.getSquareFromDisplayCoords(mousePos)
 			if (!square) return null
-			if (!s.activeSquare || s.activeSquare === square) return null
-			if (!this.legalMovesForActiveSquare().includes(square)) return null
+			if (this.isPlacingDuck()) {
+				if (!GL.validateDuckPlacement(square, s.board)) return null
+			} else {
+				if (!s.activeSquare || !mousePos || s.activeSquare === square) return null
+				if (!this.legalMovesForActiveSquare().includes(square)) return null
+			}
 			return square
 		})
 
@@ -293,7 +301,7 @@ export class BoardView {
 		}
 	}
 
-	async updateBoard(boardIndex: number, animate: boolean = false) {
+	async updateBoard(boardIndex: number, animate: boolean = true) {
 		if (boardIndex === this.state.s.boardIndex) return
 		if (!animate || this.game.gameConfig.variant === 'fog-of-war') return this.updateBoardStatic(boardIndex)
 		if (boardIndex < 0 || boardIndex >= this.game.state.boardHistory.length) {

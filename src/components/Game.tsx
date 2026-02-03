@@ -259,7 +259,7 @@ export function Game() {
 			<CapturedPieces class={styles.capturedPiecesContainer} />
 			<Board ref={boardRef} />
 			<Show when={S.game.isClientPlayerParticipating} fallback={<div class={styles.bottomLeftActions} />}>
-				<ActionsPanel class={styles.bottomLeftActions} placingDuck={S.game.isPlacingDuck} />
+				<ActionsPanel class={styles.bottomLeftActions} placingDuck={S.boardView.isPlacingDuck()} />
 			</Show>
 			<Player class={styles.bottomPlayer} player={S.game.bottomPlayer} />
 			<Clock
@@ -337,10 +337,10 @@ function Player(props: { player: G.PlayerWithColor; class: string }) {
 	return (
 		<div class={props.class + ' m-auto whitespace-nowrap'}>
 			<Show when={S.game.bottomPlayer.color === props.player.color} fallback={title}>
-				<HoverCard placement="bottom" open={S.game.isPlacingDuck}>
+				<HoverCard placement="bottom" open={S.boardView.isPlacingDuck()}>
 					<HoverCardTrigger>{title}</HoverCardTrigger>
 					<HoverCardContent class="bg-destructive border-destructive p-1 w-max text-sm">
-						<span class="text-balance text-destructive-foreground">{`${P.settings.usingTouch ? 'Tap' : 'Click'} square to place duck`}</span>
+						<span class="text-balance text-destructive-foreground">{`${P.settings.usingTouch ? 'Tap' : 'Click'} square to ${S.boardView.duckOnBoard() ? 'move' : 'place'} duck`}</span>
 					</HoverCardContent>
 				</HoverCard>
 			</Show>
@@ -410,13 +410,16 @@ export function Board(props: { ref: HTMLDivElement }) {
 	async function makeMove(move?: GL.InProgressMove, animate: boolean = false) {
 		S.game.inProgressMoveLocal.set(move)
 		const validationRes = await S.game.validateInProgressMove()
+		console.log({ validationRes })
 		if (validationRes.code === 'invalid') {
 			console.warn('Invalid move')
 			return
 		}
 		if (validationRes.code === 'placing-duck') {
-			S.game.commitInProgressMove()
+			S.boardView.state.set({ activeSquare: null })
+			await S.game.commitInProgressMove()
 			S.boardView.visualizeMove(S.game.inProgressMoveLocal.get()!, animate)
+			return
 		}
 		if (validationRes.code === 'ambiguous') {
 			const ambiguity = S.game.currentMoveAmbiguity!
@@ -434,8 +437,6 @@ export function Board(props: { ref: HTMLDivElement }) {
 			Audio.playSoundEffectForMove(S.game.state.moveHistory[S.game.state.moveHistory.length - 1], true, true)
 			return
 		}
-
-		throw new Error('unknown code ' + validationRes.code)
 	}
 
 	onMount(() => {
@@ -489,13 +490,18 @@ export function Board(props: { ref: HTMLDivElement }) {
 			handlePrimaryPress(touch.clientX, touch.clientY)
 		})
 
-		function handlePrimaryPress(clientX: number, clientY: number) {
+		async function handlePrimaryPress(clientX: number, clientY: number) {
 			if (!S.game.isClientPlayerParticipating || !S.boardView.viewingLiveBoard) return
 			const rect = boardRef.getBoundingClientRect()
 			const clickCoords = { x: clientX - rect.left, y: clientY - rect.top }
 			const mouseSquare = S.boardView.getSquareFromDisplayCoords(clickCoords)
-			if (S.game.isPlacingDuck) {
-				S.game.setDuck(mouseSquare)
+			if (S.boardView.isPlacingDuck()) {
+				const duckSquare = GL.findPiece({ type: 'duck', color: 'duck' }, S.boardView.state.s.board)
+				if (!duckSquare) return
+				const valid = S.game.setDuck(mouseSquare)
+				if (!valid) return
+				const boardIndex = S.game.state.boardHistory.length - 1
+				S.boardView.updateBoard(boardIndex)
 				return
 			}
 

@@ -242,14 +242,15 @@ export class Game {
 		const m = this.inProgressMoveLocal.get()!
 		if (!m) throw new Error('tried to set duck without setting base move')
 		const isValid = GL.validateDuckPlacement(duckSquare, this.boardWithInProgressMove())
-		if (!isValid) return
+		if (!isValid) return false
 		const newMove: GL.InProgressMove = { ...m, duck: duckSquare }
 		this.inProgressMoveLocal.set(newMove)
 		this.makePlayerMove()
+		return true
 	}
 
 	get isPlacingDuck() {
-		return !!this.inProgressMoveLocal.get()?.duck
+		return this.gameConfig.variant === 'duck' && !!this.inProgressMoveLocal.get() && !this.inProgressMoveLocal.get()?.duck
 	}
 
 	async selectPromotion(piece: GL.PromotionPiece) {

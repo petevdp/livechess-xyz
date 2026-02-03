@@ -1026,7 +1026,7 @@ function inBounds(coords: Coords) {
 	return coords.x >= 0 && coords.x < 8 && coords.y >= 0 && coords.y < 8
 }
 
-function findPiece(piece: ColoredPiece, board: Board) {
+export function findPiece(piece: ColoredPiece, board: Board) {
 	return Object.keys(board.pieces).find((square) => {
 		const _piece = board.pieces[square]!
 		return _piece.type === piece.type && _piece.color === piece.color
