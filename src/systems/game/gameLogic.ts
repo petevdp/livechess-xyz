@@ -1202,7 +1202,6 @@ export function getVisibleSquares(game: GameState, color: Color) {
 			}
 		}
 	}
-	console.log({ visibleSquares, candidateMoves })
 	return visibleSquares
 }
 

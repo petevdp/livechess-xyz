@@ -69,7 +69,6 @@ export class BoardView {
 		this.legalMovesForActiveSquare = createMemo(() => {
 			const activeSquare = this.state.s.activeSquare
 			const boardIndex = this.state.s.boardIndex
-			console.log({ activeSquare, boardIndex })
 			if (!activeSquare || boardIndex !== game.state.boardHistory.length - 1) return []
 			const moves = GL.getLegalMoves([GL.coordsFromNotation(activeSquare)], game.state, game.gameConfig.variant)
 			return moves.map((m) => GL.notationFromCoords(m.to))

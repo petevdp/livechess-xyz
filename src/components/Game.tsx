@@ -395,7 +395,7 @@ export function Board(props: { ref: HTMLDivElement }) {
 			sub = S.game.gameContext.sharedStore.rollback$.subscribe(async (rolledBack) => {
 				const events = rolledBack.map((t) => t.events).flat()
 				if (events.some((e) => e.type === 'make-move')) {
-					S.boardView.updateBoard(S.game.state.boardHistory.length - 1, false)
+					S.boardView.updateBoard(S.game.state.boardHistory.length - 1, true)
 				}
 			})
 		})
@@ -410,7 +410,6 @@ export function Board(props: { ref: HTMLDivElement }) {
 	async function makeMove(move?: GL.InProgressMove, animate: boolean = false) {
 		S.game.inProgressMoveLocal.set(move)
 		const validationRes = await S.game.validateInProgressMove()
-		console.log({ validationRes })
 		if (validationRes.code === 'invalid') {
 			console.warn('Invalid move')
 			return
@@ -496,8 +495,6 @@ export function Board(props: { ref: HTMLDivElement }) {
 			const clickCoords = { x: clientX - rect.left, y: clientY - rect.top }
 			const mouseSquare = S.boardView.getSquareFromDisplayCoords(clickCoords)
 			if (S.boardView.isPlacingDuck()) {
-				const duckSquare = GL.findPiece({ type: 'duck', color: 'duck' }, S.boardView.state.s.board)
-				if (!duckSquare) return
 				const valid = S.game.setDuck(mouseSquare)
 				if (!valid) return
 				const boardIndex = S.game.state.boardHistory.length - 1
