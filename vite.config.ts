@@ -14,10 +14,14 @@ export default defineConfig(() => {
 
 	const httpTarget = `http://${ENV.HOSTNAME}:${ENV.PORT}`
 	const wsTarget = `ws://${ENV.HOSTNAME}:${ENV.PORT}`
-	const config = {
+	const config: Parameters<typeof defineConfig>[0] = {
 		plugins: [devtools({ autoname: true }), solid(), solidSvg({ defaultAsComponent: false }), tsconfigPaths()],
 		build: {
 			sourcemap: true,
+			// don/t inline piece svgs so background-image(url()) works
+			assetsInlineLimit: function (path, buffer) {
+				return path.endsWith('.svg') && path.includes('assets/pieces') ? false : null
+			},
 		},
 		server: {
 			headers: {
