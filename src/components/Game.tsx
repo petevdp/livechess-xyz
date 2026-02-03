@@ -741,7 +741,6 @@ function Piece(props: PieceProps) {
 			class={cn(
 				GRID_ALIGNED_CLASSES,
 				'h-[12.5%] w-[12.5%] z-5 will-change-transform',
-				`${styles.piece} ${styles[Pieces.getPieceKey(props.piece)]}`,
 				props.pieceGrabbed ? 'cursor-grabbing' : 'cursor-grab'
 			)}
 			style={{ ...boardPositionStyles(props.position), 'background-image': `url(${Pieces.getPieceSrc(props.piece)})` }}
