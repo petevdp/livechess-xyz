@@ -5,10 +5,14 @@ import { createEffect, createRoot } from 'solid-js'
 import { unwrap } from 'solid-js/store'
 import { describe, expect, it, test } from 'vitest'
 
+import { log } from '~/systems/logger.browser.ts'
+
 import * as Api from '../api.ts'
 import { sleep } from '../utils/time.ts'
 import { DELETE, SharedStore, buildTransaction, initFollowerStore } from './sharedStore.ts'
 import { WsTransport } from './wsTransport.ts'
+
+const storeCtx = { log }
 
 const transport = WsTransport
 
@@ -39,8 +43,8 @@ describe('network provider/shared store', () => {
 		let store2 = null as unknown as SharedStore<T>
 		createRoot((d) => {
 			toDispose.push(d)
-			store1 = initFollowerStore(trans1)
-			store2 = initFollowerStore(trans2)
+			store1 = initFollowerStore(trans1, storeCtx)
+			store2 = initFollowerStore(trans2, storeCtx)
 		})
 		await until(() => store1.initialized())
 		await until(() => store2.initialized())
@@ -66,8 +70,8 @@ describe('network provider/shared store', () => {
 		let dispose = () => {}
 		createRoot((d) => {
 			dispose = d
-			follower1 = initFollowerStore(trans1)
-			follower2 = initFollowerStore(trans2)
+			follower1 = initFollowerStore(trans1, storeCtx)
+			follower2 = initFollowerStore(trans2, storeCtx)
 		})
 
 		await until(() => follower1.initialized() && follower2.initialized())
@@ -104,7 +108,7 @@ describe('network provider/shared store', () => {
 		createRoot((d) => {
 			const trans1 = new transport(network.networkId)
 			toDispose.push(d)
-			store1 = initFollowerStore(trans1, {})
+			store1 = initFollowerStore(trans1, storeCtx)
 		})
 
 		await until(() => store1.initialized())
@@ -114,7 +118,7 @@ describe('network provider/shared store', () => {
 		createRoot(() => {
 			const trans2 = new transport(network.networkId)
 			toDispose.push(() => {})
-			lateStore = initFollowerStore(trans2)
+			lateStore = initFollowerStore(trans2, storeCtx)
 		})
 
 		await until(() => lateStore.initialized())
@@ -133,8 +137,8 @@ describe('network provider/shared store', () => {
 
 		createRoot((d) => {
 			dispose = d
-			store1 = initFollowerStore(trans1)
-			store2 = initFollowerStore(trans2)
+			store1 = initFollowerStore(trans1, storeCtx)
+			store2 = initFollowerStore(trans2, storeCtx)
 		})
 		await until(() => store2.initialized() && store1.initialized())
 
@@ -165,8 +169,8 @@ describe('network provider/shared store', () => {
 			dispose = () => {
 				d()
 			}
-			store1 = initFollowerStore(t1)
-			store2 = initFollowerStore(t2)
+			store1 = initFollowerStore(t1, storeCtx)
+			store2 = initFollowerStore(t2, storeCtx)
 		})
 
 		await until(() => store2.initialized() && store1.initialized())
@@ -193,8 +197,8 @@ describe('network provider/shared store', () => {
 
 		createRoot((d) => {
 			dispose = d
-			f1 = initFollowerStore(t2)
-			f2 = initFollowerStore(t3)
+			f1 = initFollowerStore(t2, storeCtx)
+			f2 = initFollowerStore(t3, storeCtx)
 		})
 		await until(() => f1.initialized() && f2.initialized())
 		await f2.setStore({ path: ['arr'], value: [] })
@@ -238,8 +242,8 @@ describe('network provider/shared store', () => {
 
 		createRoot((d) => {
 			dispose = d
-			s1 = initFollowerStore(t1, { a: 1 })
-			s2 = initFollowerStore(t2, { b: 2 })
+			s1 = initFollowerStore(t1, storeCtx, { a: 1 })
+			s2 = initFollowerStore(t2, storeCtx, { b: 2 })
 			createEffect(() => {
 				trackStore(s1.clientControlled.states)
 			})
@@ -273,8 +277,8 @@ describe('network provider/shared store', () => {
 		let dispose = () => {}
 		createRoot((d) => {
 			dispose = d
-			s1 = initFollowerStore(t1)
-			s2 = initFollowerStore(t2)
+			s1 = initFollowerStore(t1, storeCtx)
+			s2 = initFollowerStore(t2, storeCtx)
 		})
 
 		await until(() => s2.initialized() && s1.initialized())
@@ -282,7 +286,7 @@ describe('network provider/shared store', () => {
 		void s1.setStoreWithRetries(() => {
 			return {
 				mutations: [{ path: ['ayy'], value: 'lmao' }],
-				events: ['action1'],
+				events: [{ type: 'action1' }],
 			}
 		})
 
@@ -291,7 +295,7 @@ describe('network provider/shared store', () => {
 		void s2.setStoreWithRetries(() => {
 			return {
 				mutations: [{ path: ['lmao'], value: 'ayy' }],
-				events: ['action2'],
+				events: [{ type: 'action2' }],
 			}
 		})
 		expect(await firstValueFrom(s1.event$)).toEqual('action2')
@@ -309,8 +313,8 @@ describe('network provider/shared store', () => {
 		let dispose = () => {}
 		createRoot((d) => {
 			dispose = d
-			s1 = initFollowerStore(t1, undefined)
-			s2 = initFollowerStore(t2)
+			s1 = initFollowerStore(t1, storeCtx)
+			s2 = initFollowerStore(t2, storeCtx)
 		})
 
 		await until(() => s2.initialized() && s1.initialized())
@@ -333,14 +337,14 @@ describe('network provider/shared store', () => {
 		const t1 = new transport(network.networkId)
 		const t2 = new transport(network.networkId)
 
-		let s1 = null as unknown as SharedStore<any>
-		let s2 = null as unknown as SharedStore<any>
+		let s1!: SharedStore<any>
+		let s2!: SharedStore<any>
 
 		let dispose = () => {}
 		createRoot((d) => {
 			dispose = d
-			s1 = initFollowerStore(t1, { a: 1 })
-			s2 = initFollowerStore(t2)
+			s1 = initFollowerStore(t1, storeCtx, { a: 1 })
+			s2 = initFollowerStore(t2, storeCtx)
 		})
 
 		await until(() => s1.initialized() && s2.initialized())

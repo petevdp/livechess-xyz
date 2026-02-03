@@ -3,11 +3,7 @@
 		"target": "ES2020",
 		"useDefineForClassFields": true,
 		"module": "ESNext",
-		"lib": [
-			"ES2020",
-			"DOM",
-			"DOM.Iterable"
-		],
+		"lib": ["ES2020", "DOM", "DOM.Iterable"],
 		"skipLibCheck": true,
 		/* Bundler mode */
 		"moduleResolution": "bundler",
@@ -19,26 +15,18 @@
 		"jsxImportSource": "solid-js",
 		/* Linting */
 		"strict": true,
-		"noUnusedLocals": true,
 		"noUnusedParameters": true,
 		"baseUrl": "src/",
 		"paths": {
-			"~/*": [
-				"./*"
-			]
+			"~/*": ["./*"],
 		},
 		"noFallthroughCasesInSwitch": true,
-		"types": [
-			"vite-plugin-solid-svg/types-component-solid",
-			"vite/client"
-		]
+		"types": ["vite-plugin-solid-svg/types-component-solid", "vite-plugin-solid-svg/types", "vite/client"],
 	},
-	"include": [
-		"src",
-	],
+	"include": ["src"],
 	"references": [
 		{
-			"path": "./tsconfig.node.json"
-		}
-	]
+			"path": "./tsconfig.node.json",
+		},
+	],
 }

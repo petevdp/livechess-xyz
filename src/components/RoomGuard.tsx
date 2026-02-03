@@ -11,7 +11,6 @@ import { Button } from '~/components/ui/button.tsx'
 import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card.tsx'
 import { Checkbox, CheckboxControl, CheckboxLabel } from '~/components/ui/checkbox.tsx'
 import { Input } from '~/components/ui/input.tsx'
-import { Label } from '~/components/ui/label.tsx'
 import * as Errors from '~/systems/errors.ts'
 import * as GlobalLoading from '~/systems/globalLoading.ts'
 import * as Pieces from '~/systems/piece.tsx'
@@ -32,7 +31,7 @@ type PlayerFormState =
 
 export default function RoomGuard() {
 	P.ensurePlayerSystemSetup()
-	Pieces.ensureSetupPieceSystem()
+	// Pieces.ensureSetupPieceSystem()
 	const params = useParams()
 	const [connectionStatus, setConnectionStatus] = createSignal<ConnectionStatus>(R.room() ? 'connected' : 'disconnected')
 	const navigate = useNavigate()

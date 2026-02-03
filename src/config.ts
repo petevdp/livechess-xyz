@@ -18,3 +18,5 @@ export const BOARD_COLORS = {
 	lightFog: '#b0814f',
 	darkFog: '#623211',
 }
+
+export const PIECE_ANIMATION_NUM_FRAMES = 15

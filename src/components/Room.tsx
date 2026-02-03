@@ -1,4 +1,4 @@
-import { Match, ParentProps, Show, Suspense, Switch, createSignal, getOwner, lazy, onCleanup, onMount, runWithOwner } from 'solid-js'
+import { Match, ParentProps, Show, Suspense, Switch, createSignal, lazy, onCleanup, onMount } from 'solid-js'
 import toast from 'solid-toast'
 
 import { ScreenFittingContent } from '~/components/AppContainer.tsx'
@@ -26,7 +26,6 @@ export function Room() {
 	if (!room) throw new Error('room is not initialized')
 
 	//#region toast basic room events
-	const owner = getOwner()!
 	const sub = room.event$.subscribe((action) => {
 		switch (action.type) {
 			case 'player-connected':
@@ -51,19 +50,15 @@ export function Room() {
 				}
 				break
 			case 'new-game':
-				runWithOwner(owner, () => {
-					G.setGame(new G.Game(action.gameId, room.gameContext, room.rollbackState.gameConfig))
-				})
 				Audio.playSound('gameStart')
 				Audio.vibrate()
 				break
 		}
 	})
-	//#endregion
-
 	onCleanup(() => {
 		sub.unsubscribe()
 	})
+	//#endregion
 	const [dismissedMultipleClientsWarning, setDismissedMultipleClientsWarning] = createSignal(true)
 	onMount(() => {
 		if (room.playerHasMultipleClients && !P.settings.dismissMultipleClientsWarning) {
@@ -77,7 +72,7 @@ export function Room() {
 				<Match when={room.state.status === 'pregame'}>
 					<Lobby />
 				</Match>
-				<Match when={room.rollbackState.activeGameId}>
+				<Match when={room.game}>
 					<Suspense
 						fallback={
 							<ScreenFittingContent class="grid place-items-center">
@@ -85,7 +80,7 @@ export function Room() {
 							</ScreenFittingContent>
 						}
 					>
-						<GameLazy />
+						<GameLazy game={room.game as G.Game} />
 					</Suspense>
 				</Match>
 			</Switch>

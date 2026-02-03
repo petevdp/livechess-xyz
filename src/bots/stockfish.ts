@@ -4,7 +4,7 @@ import { Accessor, createSignal } from 'solid-js'
 
 import * as G from '~/systems/game/game.ts'
 import * as GL from '~/systems/game/gameLogic.ts'
-import { SelectedMove } from '~/systems/game/gameLogic.ts'
+import { InProgressMove } from '~/systems/game/gameLogic.ts'
 import { type Bot } from '~/systems/vsBot.ts'
 import { loadScript } from '~/utils/loadScript.ts'
 import { sleep } from '~/utils/time'
@@ -16,17 +16,21 @@ type UCIFromEngineMsg =
 	  }
 	| {
 			type: 'bestmove'
-			move: SelectedMove
+			move: InProgressMove
 	  }
 
 export class StockfishBot implements Bot {
 	static codeLoaded?: Promise<void>
+	static sf: any
 	name = 'Stockfish'
-	sf: any
 	sub?: Subscription
 	msg$?: Observable<UCIFromEngineMsg>
 	engineReady: Accessor<false>
 	setEngineReady: (ready: boolean) => void
+
+	get sf() {
+		return StockfishBot.sf
+	}
 
 	constructor(
 		private difficulty: number,
@@ -53,12 +57,12 @@ export class StockfishBot implements Bot {
 		if (this.difficulty < 5) return 1
 		if (this.difficulty < 10) return 2
 		if (this.difficulty < 15) return 3
-		return null
+		return 10
 	}
 
 	// make it seem like bot is actually thinking about the responses
 	get artificialMinResponseTime() {
-		return 750
+		return 1000
 	}
 
 	async initialize() {
@@ -67,17 +71,18 @@ export class StockfishBot implements Bot {
 				// TODO handle gracefully
 				throw new Error('WASM threads not supported')
 			}
-			StockfishBot.codeLoaded = loadScript('/stockfish.js')
+			StockfishBot.codeLoaded = loadScript('/stockfish.js').then(async () => {
+				StockfishBot.sf = await window.Stockfish()
+			})
 		}
 		await StockfishBot.codeLoaded
-		this.sf = await window.Stockfish()
 		this.sub?.unsubscribe()
 		this.sub = new Subscription()
 		this.msg$ = new Observable<UCIFromEngineMsg>((sub) => {
 			this.sf.addMessageListener(msgListener)
 
 			function msgListener(message: string) {
-				console.debug('recieved ' + message)
+				// console.debug('recieved ' + message)
 				if (message === 'uciok') {
 					sub.next({ type: 'uciok' })
 					return
@@ -110,11 +115,11 @@ export class StockfishBot implements Bot {
 	}
 
 	postMessage(msg: string) {
-		console.debug('sending ' + msg)
+		// console.debug('sending ' + msg)
 		this.sf.postMessage(msg)
 	}
 
-	async makeMove(state: GL.GameState, clock?: G.Game['clock']): Promise<GL.SelectedMove> {
+	async makeMove(state: GL.GameState, clock?: G.Game['clock']): Promise<GL.InProgressMove> {
 		await until(this.engineReady)
 		const minResponsePromise = sleep(this.artificialMinResponseTime)
 		let serializedMoves = ''
@@ -146,7 +151,7 @@ export class StockfishBot implements Bot {
 	}
 }
 
-function toLongForm(move: GL.SelectedMove) {
+function toLongForm(move: GL.InProgressMove) {
 	let mv = ` ${move.from}${move.to} `
 	if (move.disambiguation && move.disambiguation?.type === 'promotion') {
 		mv += GL.toShortPieceName(move.disambiguation.piece).toLowerCase()
@@ -154,7 +159,7 @@ function toLongForm(move: GL.SelectedMove) {
 	return mv
 }
 
-function fromLongForm(move: string): GL.SelectedMove {
+function fromLongForm(move: string): GL.InProgressMove {
 	const from = move.slice(0, 2)
 	const to = move.slice(2, 4)
 	const promotion = move.slice(4) ?? null

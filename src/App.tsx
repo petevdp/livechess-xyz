@@ -8,6 +8,7 @@ import { Spinner } from '~/components/Spinner.tsx'
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogTitle } from '~/components/ui/alert-dialog.tsx'
 import { Button } from '~/components/ui/button.tsx'
 import { Callout, CalloutContent, CalloutTitle } from '~/components/ui/callout.tsx'
+import * as DS from '~/systems/debugSystem.ts'
 import * as Errors from '~/systems/errors.ts'
 import * as GlobalLoading from '~/systems/globalLoading.ts'
 
@@ -16,8 +17,15 @@ import { Home } from './components/Home.tsx'
 const RoomGuard = lazy(() => import('~/components/RoomGuard.tsx'))
 const VsBot = lazy(() => import('~/components/VsBot.tsx'))
 
+if (typeof crypto === 'undefined') {
+	import('@peculiar/webcrypto').then(() => {
+		globalThis.crypto = new Crypto()
+	})
+}
+
 function App() {
 	const [displayedError, setDisplayedError] = createSignal<Errors.FatalError | null>(null)
+	DS.setupDebugSystem()
 	onMount(() => {
 		document.getElementById('loader')?.remove()
 		document.getElementById('root')?.classList.remove('hidden')

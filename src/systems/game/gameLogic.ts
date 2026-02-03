@@ -1,5 +1,5 @@
 import deepEquals from 'fast-deep-equal'
-import { Accessor } from 'solid-js'
+import { Accessor, createMemo } from 'solid-js'
 
 //#region primitives
 
@@ -19,7 +19,7 @@ export type ColoredPiece = {
 
 type Timestamp = number
 
-export type SelectedMove = {
+export type InProgressMove = {
 	from: string
 	to: string
 	disambiguation?: MoveDisambiguation
@@ -71,6 +71,13 @@ export type MoveDisambiguation =
 			type: 'castle'
 			castling: boolean
 	  }
+
+export const ALL_SQUARES: string[] = []
+for (let x = 0; x < 8; x++) {
+	for (let y = 0; y < 8; y++) {
+		ALL_SQUARES.push(notationFromCoords({ x, y }))
+	}
+}
 
 export function getStartPos(config: GameConfig) {
 	if (config.variant === 'fischer-random') {
@@ -251,10 +258,11 @@ function hashMove(move: Move): string {
 export function useBoardHistory(moves: Accessor<Move[]>, startingBoard: Board) {
 	let moveHashes: string[] = []
 	let boardHistory: BoardHistoryEntry[] = [{ board: startingBoard }]
-	return () => getBoardHistory(moves())
 
-	function getBoardHistory(moves: Move[]) {
-		const movesList = moves
+	return createMemo(() => getBoardHistory(moves()), undefined, { equals: false })
+
+	function getBoardHistory(_moves: Move[]) {
+		const movesList = _moves
 		let i = 0
 		let firstNewMoveHash: string | null = null
 		for (; i < movesList.length; i++) {
@@ -301,7 +309,7 @@ export function notationFromCoords(coords: Coords) {
 	return String.fromCharCode('a'.charCodeAt(0) + coords.x) + (coords.y + 1)
 }
 
-export function candidateMoveToSelectedMove(move: CandidateMove): SelectedMove {
+export function candidateMoveToSelectedMove(move: CandidateMove): InProgressMove {
 	let disambiguation: MoveDisambiguation | undefined
 	if (move.promotion) {
 		disambiguation = { type: 'promotion', piece: move.promotion }
@@ -312,7 +320,7 @@ export function candidateMoveToSelectedMove(move: CandidateMove): SelectedMove {
 		from: notationFromCoords(move.from),
 		to: notationFromCoords(move.to),
 		disambiguation,
-	} satisfies SelectedMove
+	} satisfies InProgressMove
 }
 
 export function getMoveHistoryAsNotation(history: MoveHistory) {
@@ -333,27 +341,30 @@ function candidateMoveToMove(candidateMove: CandidateMove, capture?: boolean, ch
 	const algebraic = (() =>
 		// get algebraic notation for move
 		{
-			const pieceStr = candidateMove.piece === 'pawn' ? '' : toShortPieceName(candidateMove.piece)
-			const captureStr = capture ? 'x' : ''
-			const toStr = notationFromCoords(candidateMove.to)
-			const promotionStr = candidateMove.promotion ? '=' + candidateMove.promotion.toUpperCase() : ''
+			let baseNotation: string
+			if (candidateMove.castle) {
+				baseNotation = candidateMove.castle === 'queen' ? 'O-O-O' : 'O-O'
+			} else {
+				let disambiguation = ''
+				for (const type of candidateMove.algebraicNotationAmbiguity) {
+					if (type === 'rank') {
+						disambiguation += notationFromCoords(candidateMove.from).charAt(1)
+					} else if (type === 'file') {
+						disambiguation += notationFromCoords(candidateMove.from).charAt(0)
+					}
+				}
+
+				const pieceStr = candidateMove.piece === 'pawn' ? '' : toShortPieceName(candidateMove.piece)
+				const captureStr = capture ? 'x' : ''
+				const toStr = notationFromCoords(candidateMove.to)
+				const promotionStr = candidateMove.promotion ? '=' + toShortPieceName(candidateMove.promotion) : ''
+
+				baseNotation = pieceStr + disambiguation + captureStr + toStr + promotionStr
+			}
+
 			const checkStr = check ? '+' : ''
 			const checkmateStr = checkmate ? '#' : ''
-
-			if (candidateMove.castle) {
-				return candidateMove.castle === 'queen' ? 'O-O-O' : 'O-O'
-			}
-
-			let disambiguation = ''
-			for (const type of candidateMove.algebraicNotationAmbiguity) {
-				if (type === 'rank') {
-					disambiguation += notationFromCoords(candidateMove.from).charAt(1)
-				} else if (type === 'file') {
-					disambiguation += notationFromCoords(candidateMove.from).charAt(0)
-				}
-			}
-
-			return pieceStr + disambiguation + captureStr + toStr + promotionStr + checkStr + checkmateStr
+			return baseNotation + checkStr + checkmateStr
 		})()
 
 	return {
@@ -476,7 +487,7 @@ export function getGameOutcome(state: GameState, config: ParsedGameConfig) {
 //#region move application
 
 // returns new board and  returns null if move is invalid
-export function validateAndPlayMove(move: SelectedMove, game: GameState, variant: Variant) {
+export function validateAndPlayMove(move: InProgressMove, game: GameState, variant: Variant) {
 	if (!getBoard(game).pieces[move.from] || getBoard(game).pieces[move.from].color !== getBoard(game).toMove) {
 		return
 	}
@@ -510,6 +521,11 @@ export function validateAndPlayMove(move: SelectedMove, game: GameState, variant
 // board should already have been modified by whatever move we're making this turn
 export function validateDuckPlacement(duck: string, board: Board) {
 	return !board.pieces[duck]
+}
+
+export function applyInProgressMoveToBoardInPlace(move: { from: string; to: string }, board: Board) {
+	board.pieces[move.to] = board.pieces[move.from]
+	delete board.pieces[move.from]
 }
 
 // Uncritically apply a move to the board. Does not mutate input.
@@ -632,8 +648,11 @@ function getMovesFromCoords(
 			return bishopMoves(coords, board)
 		case 'rook':
 			return rookMoves(coords, board)
-		case 'queen':
-			return [...rookMoves(coords, board), ...bishopMoves(coords, board)]
+		case 'queen': {
+			const moves = [...rookMoves(coords, board), ...bishopMoves(coords, board)]
+			for (const move of moves) move.piece = 'queen'
+			return moves
+		}
 		case 'king':
 			return kingMoves(coords, board, history, checkCastling, allowSelfChecks)
 		case 'duck':
@@ -1007,7 +1026,7 @@ function inBounds(coords: Coords) {
 	return coords.x >= 0 && coords.x < 8 && coords.y >= 0 && coords.y < 8
 }
 
-function findPiece(piece: ColoredPiece, board: Board) {
+export function findPiece(piece: ColoredPiece, board: Board) {
 	return Object.keys(board.pieces).find((square) => {
 		const _piece = board.pieces[square]!
 		return _piece.type === piece.type && _piece.color === piece.color
@@ -1147,7 +1166,7 @@ export function getVisibleSquares(game: GameState, color: Color) {
 		simulated = JSON.parse(JSON.stringify(game)) as GameState
 		const noopSquareAndPiece = opponentPieces.find(([_, piece]) => piece.type === 'king')!
 		// in this case the game is over, and we'll be revealing all squares anyway
-		if (!noopSquareAndPiece) return new Set()
+		if (!noopSquareAndPiece) return new Set<string>()
 		const [noopSquare, noopPiece] = noopSquareAndPiece
 		const noopCoords = coordsFromNotation(noopSquare)
 		const candidateMove = {

@@ -2,26 +2,26 @@ import { until } from '@solid-primitives/promise'
 import deepEquals from 'fast-deep-equal'
 import { Observable, ReplaySubject, distinctUntilChanged, filter, first, from as rxFrom } from 'rxjs'
 import { map } from 'rxjs/operators'
-import { Accessor, createEffect, createMemo, createSignal, getOwner, observable, on, onCleanup } from 'solid-js'
+import { Accessor, createEffect, createMemo, createRoot, createSignal, getOwner, observable, on, onCleanup } from 'solid-js'
 import { unwrap } from 'solid-js/store'
 
 import * as SS from '~/sharedStore/sharedStore.ts'
 import { PUSH, StoreMutation } from '~/sharedStore/sharedStore.ts'
+import * as DS from '~/systems/debugSystem'
 import { createId } from '~/utils/ids.ts'
-import { storeToSignal } from '~/utils/solid.ts'
-import { unit } from '~/utils/unit.ts'
+import { deepClone } from '~/utils/obj.ts'
+import { SignalProperty, createSignalProperty, trackAndUnwrap } from '~/utils/solid.ts'
 
+import { log } from '../logger.browser.ts'
 import * as P from '../player.ts'
 import * as GL from './gameLogic.ts'
-import { Color } from './gameLogic.ts'
 
 //#region types
 export type PlayerWithColor = P.Player & { color: GL.Color }
 export type BoardView = {
 	board: GL.Board
-	inCheck: boolean
 	lastMove: GL.Move | null
-	visibleSquares: Set<string>
+	moveIndex: number
 }
 export const DRAW_EVENTS = ['draw-offered', 'draw-accepted', 'draw-declined', 'draw-canceled'] as const
 export type DrawEventType = (typeof DRAW_EVENTS)[number]
@@ -44,13 +44,18 @@ export type GameEvent =
 			playerId: string
 			gameId: string
 	  }
-
-export type MakeMoveResult =
-	| { type: 'invalid' }
-	| { type: 'accepted'; move: GL.Move }
-	| { type: 'ambiguous' }
 	| {
-			type: 'placing-duck'
+			type: 'committed-in-progress-move'
+			playerId: string
+			gameId: string
+	  }
+
+export type ValidateMoveResult =
+	| { code: 'invalid' }
+	| { code: 'valid' }
+	| { code: 'ambiguous' }
+	| {
+			code: 'placing-duck'
 	  }
 
 export type MoveAmbiguity =
@@ -67,6 +72,18 @@ export type GameParticipant = {
 	color: GL.Color
 }
 
+export type BoardViewEvent =
+	| {
+			type: 'return-to-live'
+	  }
+	| {
+			type: 'load-move'
+			move: GL.Move
+	  }
+	| {
+			type: 'flip-board'
+	  }
+
 export type GameParticipantWithDetails = GameParticipant & { name: string }
 
 export type RootGameState = {
@@ -75,6 +92,7 @@ export type RootGameState = {
 	gameConfig: GL.GameConfig
 	moves: GL.Move[]
 	outcome?: GL.GameOutcome
+	inProgressMove?: GL.InProgressMove
 	activeGameId?: string
 	drawOffers: { [key in GL.Color]: number }
 }
@@ -85,7 +103,7 @@ export interface RootGameContext {
 	rollbackState: RootGameState
 	members: P.Player[]
 
-	configureNewGame(): void
+	backToPregame(): void
 	event$: Observable<GameEvent>
 
 	player: P.Player
@@ -109,19 +127,26 @@ export interface GameConfigContext {
  */
 export class Game {
 	gameConfig: GL.GameConfig
+	dispose!: () => void
 
 	constructor(
 		public gameId: string,
 		public gameContext: RootGameContext,
 		gameConfig: GL.GameConfig
 	) {
-		if (!getOwner()) throw new Error('Game constructor must be called in reactive context')
-		this.gameConfig = JSON.parse(JSON.stringify(gameConfig)) as GL.GameConfig
+		this.gameConfig = deepClone(gameConfig) as GL.GameConfig
+		createRoot((dispose) => {
+			this.dispose = () => {
+				log.debug(`disposing game: %s`, gameId)
+				dispose()
+			}
+			this.init()
+		})
+	}
 
+	init() {
 		this.setupGameState()
-		this.setupBoardView()
 		this.setupClocks()
-		this.setupMoveSelectionAndValidation()
 	}
 
 	//#region game state / board
@@ -129,15 +154,25 @@ export class Game {
 		return this.gameContext.rollbackState.activeGameId === this.gameId
 	}
 
-	stateSignal = unit as unknown as Accessor<GL.GameState>
+	stateSignal!: Accessor<GL.GameState>
 
 	get state(): GL.GameState {
 		return this.stateSignal()
 	}
 
+	inProgressMoveLocal!: SignalProperty<GL.InProgressMove | undefined>
+	boardWithInProgressMove!: Accessor<GL.Board>
+
 	setupGameState() {
-		const moveHistory = storeToSignal(this.gameContext.rollbackState.moves)
-		const boardHistory = GL.useBoardHistory(() => moveHistory(), GL.getStartPos(this.gameConfig))
+		const moveHistory = () => trackAndUnwrap(this.gameContext.rollbackState.moves)
+		const boardHistory = GL.useBoardHistory(moveHistory, GL.getStartPos(this.gameConfig))
+		// createEffect(() => {
+		// 	console.log('moves raw', trackAndUnwrap(this.gameContext.rollbackState.moves))
+		// })
+		// createEffect(() => {
+		// 	console.log('move history', moveHistory())
+		// 	console.log('board history', boardHistory())
+		// })
 
 		// only update state on board history change because syncing chained signals can be annoying
 		this.stateSignal = createMemo(
@@ -153,50 +188,88 @@ export class Game {
 				return state
 			})
 		)
+
+		DS.addHook('board', () => this.board, getOwner()!)
+
+		this.inProgressMoveLocal = createSignalProperty<GL.InProgressMove | undefined>(
+			this.isThisPlayersTurn() ? this.gameContext.rollbackState.inProgressMove : undefined
+		)
+
+		this.boardWithInProgressMove = createMemo(() => {
+			let board = this.board
+			const inProgressMove = this.inProgressMove
+			if (inProgressMove) {
+				board = deepClone(board)
+				GL.applyInProgressMoveToBoardInPlace(inProgressMove, board)
+			}
+			return board
+		})
 	}
 
 	//#endregion
 
 	//#region move selection, validation and updates
 
-	currentMove = unit as unknown as Accessor<GL.SelectedMove | null>
-	setCurrentMove = unit as (move: GL.SelectedMove | null) => void
-	placingDuck = unit as unknown as Accessor<false>
-	setPlacingDuck = unit as (placing: boolean) => void
-
-	currentDuckPlacement() {
-		return this.currentMove()?.duck
+	get inProgressMove() {
+		return this.gameContext.rollbackState.inProgressMove
+	}
+	get comittedInProgressMove() {
+		return this.gameContext.rollbackState.inProgressMove
+	}
+	setBaseInProgressMove(move: { from: string; to: string }) {
+		this.inProgressMoveLocal.set(move)
 	}
 
-	setCurrentDisambiguation(disambiguation?: undefined | GL.MoveDisambiguation) {
-		const currentMove = this.currentMove()
-		if (!currentMove) return
-		this.setCurrentMove({ ...currentMove, disambiguation })
+	// boardcasts in progress move to other clients
+	async commitInProgressMove() {
+		await this.gameContext.sharedStore.setStoreWithRetries(() => {
+			if (!this.isActiveGame || !this.isThisPlayersTurn() || !this.inProgressMoveLocal.get()) return
+
+			return {
+				events: [
+					{
+						type: 'committed-in-progress-move',
+						gameId: this.gameId,
+						playerId: this.bottomPlayer.id,
+						move: this.inProgressMoveLocal.get(),
+					},
+				],
+				mutations: [{ path: ['inProgressMove'], value: this.inProgressMoveLocal.get() }],
+			}
+		})
+	}
+	async setDuck(duckSquare: string) {
+		const m = this.inProgressMoveLocal.get()!
+		if (!m) throw new Error('tried to set duck without setting base move')
+		const isValid = GL.validateDuckPlacement(duckSquare, this.boardWithInProgressMove())
+		if (!isValid) return false
+		const newMove: GL.InProgressMove = { ...m, duck: duckSquare }
+		this.inProgressMoveLocal.set(newMove)
+		this.makePlayerMove()
+		return true
 	}
 
-	private boardWithCurrentMove = unit as unknown as Accessor<null | GL.Board>
-	setBoardWithCurrentMove = unit as (board: null | GL.Board) => void
-	private _candidateMovesForSelected = unit as unknown as Accessor<any[] | GL.CandidateMove[]>
-	lastSubmittedMoveValid = unit as unknown as Accessor<boolean>
-	setLastSubmittedMoveValid = unit as unknown as (moveIndex: boolean) => void
+	get isPlacingDuck() {
+		return this.gameConfig.variant === 'duck' && !!this.inProgressMoveLocal.get() && !this.inProgressMoveLocal.get()?.duck
+	}
 
-	setupMoveSelectionAndValidation() {
-		;[this.currentMove, this.setCurrentMove] = createSignal(null as null | GL.SelectedMove)
-		;[this.boardWithCurrentMove, this.setBoardWithCurrentMove] = createSignal(null as null | GL.Board)
-		;[this.placingDuck, this.setPlacingDuck] = createSignal(false)
-		;[this.lastSubmittedMoveValid, this.setLastSubmittedMoveValid] = createSignal(false)
+	async selectPromotion(piece: GL.PromotionPiece) {
+		this.inProgressMoveLocal.set((m) => ({ ...m!, disambiguation: { type: 'promotion', piece } }))
+		this.makePlayerMove()
+	}
 
-		this._candidateMovesForSelected = () => {
-			const currentMove = this.currentMove()
-			if (!currentMove) return []
-			return this.getLegalMovesForSquare(currentMove.from).filter((move) => GL.notationFromCoords(move.to) === currentMove!.to)
-		}
+	async selectIsCastling(isCastling: boolean) {
+		this.inProgressMoveLocal.set((m) => ({ ...m!, disambiguation: { type: 'castle', castling: isCastling } }))
+		this.makePlayerMove()
 	}
 
 	get currentMoveAmbiguity(): MoveAmbiguity | null {
-		const currentMove = this.currentMove()
-		if (!currentMove || this.currentMove()?.disambiguation) return null
-		const candidateMoves = this.candidateMovesFromSelected
+		const currentMove = this.inProgressMoveLocal.get()
+		if (!currentMove || currentMove?.disambiguation) return null
+		const candidateMoves = this.getLegalMovesForSquare(currentMove.from).filter(
+			(move) => GL.notationFromCoords(move.to) === currentMove!.to
+		)
+
 		if (candidateMoves.length <= 1) return null
 		if (candidateMoves.some((move) => move.promotion)) {
 			return {
@@ -214,16 +287,12 @@ export class Game {
 		}
 	}
 
-	get candidateMovesFromSelected() {
-		return this._candidateMovesForSelected()
-	}
-
 	getLegalMovesForSquare(startingSquare: string) {
 		if (!this.board.pieces[startingSquare]) return []
 		return GL.getLegalMoves([GL.coordsFromNotation(startingSquare)], this.stateSignal(), this.gameConfig.variant)
 	}
 
-	makeMoveProgrammatic(move: GL.SelectedMove, playerId: string) {
+	makeMoveProgrammatic(move: GL.InProgressMove) {
 		const result = GL.validateAndPlayMove(move, this.stateSignal(), this.gameConfig.variant)
 		if (!result) {
 			throw new Error(`invalid move: ${JSON.stringify(result)}`)
@@ -232,104 +301,90 @@ export class Game {
 		void this.gameContext.sharedStore.setStoreWithRetries(() => {
 			if (!this.isActiveGame) return
 			if (this.state.moveHistory.length !== expectedMoveIndex) return
-			return this.getMoveTransaction(result, this.state, playerId)
+			return this.getMoveTransaction(result, this.state)
 		})
 	}
 
-	async tryMakeMove(move?: GL.SelectedMove): Promise<MakeMoveResult> {
-		if (!this.isClientPlayerParticipating) return { type: 'invalid' }
-		if (move) this.setCurrentMove(move)
-		if (this.outcome || !this.currentMove) return { type: 'invalid' }
-		const currentMove = this.currentMove()!
+	async validateInProgressMove(): Promise<ValidateMoveResult> {
+		const move = this.inProgressMoveLocal.get()
+		if (!move) throw new Error('no in progress move')
+		if (!this.isClientPlayerParticipating) return { code: 'invalid' }
+		if (this.outcome) return { code: 'invalid' }
+
 		const getResult = () => {
-			const result = GL.validateAndPlayMove(currentMove, this.stateSignal(), this.gameConfig.variant)
-			this.setLastSubmittedMoveValid(!!result)
+			const result = GL.validateAndPlayMove(move, this.stateSignal(), this.gameConfig.variant)
 			return result
 		}
 
 		if (this.currentMoveAmbiguity) {
-			const result = getResult()
-			if (!result) return { type: 'invalid' }
-			if (this.currentMoveAmbiguity.type === 'promotion') {
-				// while we're promoting, display the promotion square as containing the pawn
-				result.board.pieces[currentMove.to] = {
-					type: 'pawn',
-					color: this.board.toMove,
-				}
-			}
-			if (this.currentMoveAmbiguity.type === 'castle') {
-				// while we're castling/moving the king, display the king in the destination square
-				result.board.pieces[currentMove.to] = {
-					type: 'king',
-					color: this.board.toMove,
-				}
-			}
-			this.setBoardWithCurrentMove(result.board)
-			return { type: 'ambiguous' }
+			return { code: 'ambiguous' }
 		}
 
-		if (this.gameConfig.variant === 'duck' && !this.currentDuckPlacement) {
-			const result = getResult()
-			if (!result) return { type: 'invalid' }
-			if (!GL.kingCaptured(result.board)) {
-				this.setPlacingDuck(true)
-				this.setBoardWithCurrentMove(result.board)
-				const prevDuckPlacement = Object.keys(this.board.pieces).find((square) => this.board.pieces[square]!.type === 'duck')
-				if (prevDuckPlacement) {
-					// render previous duck while we're placing the new one, so it's clear that the duck can't be placed in the same spot twice
-					result.board.pieces[prevDuckPlacement] = GL.DUCK
-				}
-				return { type: 'accepted', move: result.move }
-			}
+		const result = getResult()
+		if (!result) return { code: 'invalid' }
+
+		if (this.gameConfig.variant === 'duck' && !this.inProgressMoveLocal.get()?.duck) {
+			return { code: 'placing-duck' }
 		}
 
+		return { code: 'valid' }
+	}
+
+	async makePlayerMove() {
+		const move = this.inProgressMoveLocal.get()
+		if (!move) throw new Error('no in progress move')
+		if (!this.isClientPlayerParticipating) return { code: 'invalid' }
+		if (this.outcome) return { code: 'invalid' }
 		const expectedMoveIndex = this.state.moveHistory.length
-		this.setCurrentMove(null)
-		this.setPlacingDuck(false)
-		this.setBoardWithCurrentMove(null)
-		const [acceptedMove, setAcceptedMove] = createSignal(null as null | GL.Move | false)
+
+		const [cancelled, setCancelled] = createSignal(false)
 		void this.gameContext.sharedStore.setStoreWithRetries(() => {
 			if (!this.isActiveGame) {
-				setAcceptedMove(false)
+				setCancelled(true)
 				return
 			}
 			const state = unwrap(this.state)
-			if (this.viewedMoveIndex() !== state.moveHistory.length - 1 || this.outcome) {
-				setAcceptedMove(false)
+			if (this.outcome) {
+				setCancelled(true)
 				return
 			}
 			// check that we're still on the same currentMove
 			if (this.state.moveHistory.length !== expectedMoveIndex) {
-				setAcceptedMove(false)
+				setCancelled(true)
 				return
 			}
 			const board = GL.getBoard(state)
-			if (!GL.isPlayerTurn(board, this.bottomPlayer.color) || !board.pieces[currentMove.from]) {
-				setAcceptedMove(false)
+			if (!GL.isPlayerTurn(board, this.bottomPlayer.color) || !board.pieces[move.from]) {
+				setCancelled(true)
 				return
 			}
-			const result = GL.validateAndPlayMove(currentMove, state, this.gameConfig.variant)
+			const result = GL.validateAndPlayMove(move, state, this.gameConfig.variant)
 			if (!result) {
-				setAcceptedMove(false)
+				setCancelled(true)
 				return
 			}
-			setAcceptedMove(result.move)
-			return this.getMoveTransaction(result, state, this.bottomPlayer.id)
+			return this.getMoveTransaction(result, state)
 		})
-
-		await until(() => acceptedMove() !== null)
-		if (acceptedMove()) return { type: 'accepted', move: acceptedMove() as GL.Move }
-		return { type: 'invalid' }
+		this.inProgressMoveLocal.set(undefined)
+		await until(() => {
+			return expectedMoveIndex === this.state.moveHistory.length - 1 || cancelled()
+		})
 	}
 
-	private getMoveTransaction(_result: ReturnType<typeof GL.validateAndPlayMove>, state: GL.GameState, playerId: string) {
+	private getMoveTransaction(_result: ReturnType<typeof GL.validateAndPlayMove>, state: GL.GameState) {
 		const result = _result!
 		const mutations: StoreMutation[] = [
 			{
 				path: ['moves', PUSH],
 				value: result.move,
 			},
+			{
+				path: ['inProgressMove'],
+				value: SS.DELETE,
+			},
 		]
+		const toMove = state.boardHistory[state.boardHistory.length - 1].board.toMove
+		const playerId = Object.keys(state.players).find((id) => state.players[id] === toMove)!
 		const events: GameEvent[] = [
 			{
 				type: 'make-move',
@@ -369,73 +424,6 @@ export class Game {
 	}
 
 	//#endregion
-
-	//#region board view and history
-	currentBoardView = {} as BoardView
-	private _setViewedMove = unit as unknown as (move: number | 'live') => void
-	viewedMoveIndex = unit as unknown as Accessor<number>
-
-	setupBoardView() {
-		const [currentMove, setViewedMove] = createSignal<'live' | number>('live')
-		this.viewedMoveIndex = () => (currentMove() === 'live' ? this.state.moveHistory.length - 1 : (currentMove() as number))
-		this._setViewedMove = setViewedMove
-		const lastMove = () => this.state.moveHistory[this.viewedMoveIndex()] || null
-
-		// boards are only so we don't need to deeply track this
-		const viewedBoard = () => {
-			if (this.boardWithCurrentMove() && this.viewingLiveBoard) {
-				return this.boardWithCurrentMove()!
-			} else {
-				return this.state.boardHistory[this.viewedMoveIndex() + 1].board
-			}
-		}
-
-		const inCheck = createMemo(() => GL.inCheck(viewedBoard()))
-		const visibleSquares = createMemo(() => {
-			if (this.gameConfig.variant === 'fog-of-war') {
-				return GL.getVisibleSquares(this.stateSignal(), this.bottomPlayer.color)
-			}
-			// just avoid computing this when not needed
-			return new Set()
-		})
-
-		this.currentBoardView = {
-			get board() {
-				return viewedBoard()
-			},
-			get visibleSquares() {
-				return visibleSquares()
-			},
-			get inCheck() {
-				return inCheck()
-			},
-			get lastMove() {
-				return lastMove()
-			},
-		} as BoardView
-
-		let prevMoveCount = this.state.moveHistory.length
-		createEffect(() => {
-			if (this.state.moveHistory.length !== prevMoveCount) {
-				this.setViewedMove('live')
-			}
-			prevMoveCount = this.state.moveHistory.length
-		})
-	}
-
-	get viewingLiveBoard() {
-		return this.viewedMoveIndex() === this.state.moveHistory.length - 1
-	}
-
-	setViewedMove(move: number | 'live') {
-		if (move === 'live') {
-			this._setViewedMove(this.state.moveHistory.length - 1)
-		} else if (move >= -1 && move < this.state.moveHistory.length) {
-			this._setViewedMove(move)
-		} else {
-			throw new Error(`invalid move index ${move}`)
-		}
-	}
 
 	capturedPieces(color: GL.Color) {
 		function getPieceCounts(pieces: GL.Piece[]) {
@@ -682,6 +670,10 @@ export class Game {
 		return GL.isPlayerTurn(this.board, color)
 	}
 
+	isThisPlayersTurn() {
+		return this.isClientPlayerParticipating && this.isPlayerTurn(this.bottomPlayer.color)
+	}
+
 	//#endregion
 }
 
@@ -767,7 +759,7 @@ function useClock(move$: Observable<GL.Move>, gameConfig: GL.ParsedGameConfig, g
 
 export function getDrawIsOfferedBy(offers: RootGameState['drawOffers']) {
 	for (const [color, draw] of Object.entries(offers)) {
-		if (draw !== null) return color as Color
+		if (draw !== null) return color as GL.Color
 	}
 	return null
 }
@@ -786,5 +778,3 @@ export function getNewGameTransaction(playerId: string): { mutations: SS.StoreMu
 }
 
 //#endregion
-
-export const [game, setGame] = createSignal<Game | null>(null)

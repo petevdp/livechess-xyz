@@ -1,18 +1,18 @@
 import { FastifyBaseLogger } from 'fastify'
+import { Logger } from 'pino'
 import { Observable, Subject, Subscription, delay, endWith, filter, first, firstValueFrom, interval, of, share, switchMap } from 'rxjs'
 import { createRoot } from 'solid-js'
 import * as ws from 'ws'
 
 import { initServerSideRoomLogic } from '~/server/serverSideRoomLogic.ts'
-import { ClientConfig, type NewNetworkResponse, SharedStore, Transport, initLeaderStore } from '~/sharedStore/sharedStore.ts'
-import * as R from '~/systems/room.ts'
+import { BaseEvent, ClientConfig, type NewNetworkResponse, SharedStore, Transport, initLeaderStore } from '~/sharedStore/sharedStore.ts'
+import type * as R from '~/systems/room.ts'
 import { createId } from '~/utils/ids.ts'
 
 const NO_ACTIVITY_TIMEOUT = 1000 * 60 * 20
 
 const networks = new Map<string, Network<Msg>>()
 
-type Event = unknown
 type State = R.RoomState
 type CCS = R.ClientOwnedState
 type Msg = R.RoomMessage
@@ -22,7 +22,7 @@ type Network<Msg extends R.RoomMessage> = {
 	timeoutAt: number | null
 	message$: Subject<Msg>
 	dispose: () => void
-	store: SharedStore<State, CCS, Event>
+	store: SharedStore<State, CCS, BaseEvent>
 	clients: Map<string, Client<Msg>>
 }
 
@@ -41,13 +41,13 @@ function thirtySecondsFromNow() {
 class Client<_Msg extends Msg> {
 	message$: Observable<_Msg>
 
-	log: FastifyBaseLogger
+	log: Logger
 	sub: Subscription = new Subscription()
 
 	constructor(
 		public socket: ws.WebSocket,
 		public clientId: string,
-		log: FastifyBaseLogger
+		log: Logger
 	) {
 		this.log = log.child({ clientId })
 		this.message$ = new Observable<_Msg>((s) => {
@@ -84,9 +84,18 @@ export function createNetwork(log: FastifyBaseLogger) {
 	const networkId = createId(6)
 	const message$ = new Subject<Msg>()
 	const clients = new Map<string, Client<Msg>>()
+	log = log.child({ networkId })
 	const disposed$ = new Subject<void>()
 	message$.subscribe((msg) => {
-		log.info("network's message$ received %s", msg.type)
+		if (msg.type === 'mutation') {
+			log.info('%s received %s: %s', networkId, msg.mutation.mutationId, msg.mutation.events.map((e) => e.type).join(', '))
+			log.trace('updated paths: %s', msg.mutation.mutations.map((m) => m.path).join(','), msg.mutation.mutations)
+		}
+	})
+	message$.subscribe({
+		complete: () => {
+			log.info('message complete')
+		},
 	})
 	createRoot((disposeRoot) => {
 		const leaderTransport: Transport<Msg> = {
@@ -101,7 +110,7 @@ export function createNetwork(log: FastifyBaseLogger) {
 				for (const client of clients.values()) {
 					client.destroy()
 				}
-				message$.unsubscribe()
+				message$.complete()
 				disposeRoot()
 				disposed$.next()
 				disposed$.complete()
@@ -111,7 +120,7 @@ export function createNetwork(log: FastifyBaseLogger) {
 			},
 			disposed$: firstValueFrom(disposed$),
 		}
-		const store = initLeaderStore(leaderTransport) as R.RoomStore
+		const store = initLeaderStore(leaderTransport, { log: log as Logger }) as R.RoomStore
 		initServerSideRoomLogic(store, leaderTransport)
 		networks.set(networkId, {
 			id: networkId,
@@ -131,7 +140,7 @@ export function getNetwork(networkId: string) {
 	return networks.get(networkId) || null
 }
 
-export function handleNewConnection(socket: ws.WebSocket, networkId: string, log: FastifyBaseLogger) {
+export function handleNewConnection(socket: ws.WebSocket, networkId: string, log: Logger) {
 	//#region retrieve network and create client
 	const network = networks.get(networkId)!
 	if (!network) {
@@ -141,7 +150,7 @@ export function handleNewConnection(socket: ws.WebSocket, networkId: string, log
 	}
 
 	network.timeoutAt = null
-	const client = new Client(socket, createId(6), log)
+	const client = new Client(socket, createId(6), log as Logger)
 	network.clients.set(client.clientId, client)
 	client.message$
 		.pipe(
@@ -164,7 +173,7 @@ export function handleNewConnection(socket: ws.WebSocket, networkId: string, log
 	//#region client message handling
 
 	// have leader process client messages
-	client.sub.add(client.message$.subscribe(network.message$))
+	client.sub.add(client.message$.subscribe((msg) => network.message$.next(msg)))
 
 	// forward client-controlled-states to all clients
 	client.sub.add(

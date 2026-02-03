@@ -1,6 +1,10 @@
 import { captureStoreUpdates, trackStore } from '@solid-primitives/deep'
-import { Accessor, createEffect, createRoot, createSignal, untrack } from 'solid-js'
-import { unwrap } from 'solid-js/store'
+import deepEquals from 'fast-deep-equal'
+import { Accessor, createEffect, createRoot, createSignal, getOwner, untrack } from 'solid-js'
+import { runWithOwner } from 'solid-js'
+import { createStore, unwrap } from 'solid-js/store'
+
+import { deepClone } from './obj'
 
 // reg until seems to be broken
 export function myUntil(fn: () => any) {
@@ -23,15 +27,29 @@ export function trackAndUnwrap<T extends object>(store: T) {
 	return unwrap(store)
 }
 
+type Path = (string | number)[]
+
+function pathAffectsTarget(path: Path, target: Path) {
+	if (path.length < target.length) return false
+	return deepEquals(target, path.slice(0, target.length))
+}
+
 /**
  * Creates a signal that updates when the store updates.
  * This is much more lightweight for read heavy operations as it returns the same plain object. However, tracking will subscribe to ALL store changes
  * @param store
  */
-export function storeToSignal<T extends {}>(store: T): Accessor<T> {
+export function storeToSignal<T>(store: any, targetPath: Path): Accessor<T> {
 	const delta = captureStoreUpdates(store)
-	let state = JSON.parse(JSON.stringify(delta()[0].value))
-	const [signal, setSignal] = createSignal(state, { equals: false })
+	function getPath(obj: any) {
+		let current = obj
+		for (const elt of targetPath) {
+			current = current[elt]
+		}
+		return current
+	}
+	let state = deepClone(unwrap(getPath(delta()[0].value)))
+	const [signal, setSignal] = createSignal(state as T, { equals: false })
 	let init = false
 	createEffect(() => {
 		const _delta = delta()
@@ -41,21 +59,44 @@ export function storeToSignal<T extends {}>(store: T): Accessor<T> {
 		}
 		untrack(() => {
 			for (const { path, value } of _delta) {
+				if (!pathAffectsTarget(path, targetPath)) return
 				let current = state
 				const last = path[path.length - 1]
 				if (path.length === 0) {
-					state = JSON.parse(JSON.stringify(value))
-					setSignal(state)
+					state = deepClone(value)
+					setSignal(getPath(state))
 					return
 				}
 
 				for (const key of path.slice(0, -1)) {
 					current = current[key]
 				}
-				current[last] = JSON.parse(JSON.stringify(value))
-				setSignal(state)
+				current[last] = typeof value === 'object' ? deepClone(value) : value
+				setSignal(getPath(state))
 			}
 		})
 	})
 	return signal
+}
+
+export function createSignalProperty<T>(value: T) {
+	const [get, set] = createSignal(value)
+
+	return { get, set }
+}
+export type SignalProperty<T> = ReturnType<typeof createSignalProperty<T>>
+
+export function createStoreProperty<T extends object>(value: T) {
+	const [s, set] = createStore(value)
+	return { s, set }
+}
+
+export type StoreProperty<T extends object> = ReturnType<typeof createStoreProperty<T>>
+
+export function runWithOwnerOrCreateRoot(fn: () => any) {
+	const owner = getOwner()
+	if (!owner) {
+		return createRoot(fn)
+	}
+	return runWithOwner(owner, fn)
 }

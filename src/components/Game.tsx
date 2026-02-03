@@ -1,22 +1,26 @@
 import { useColorMode } from '@kobalte/core'
 import { createMediaQuery } from '@solid-primitives/media'
+import { until } from '@solid-primitives/promise'
 import { makeResizeObserver } from '@solid-primitives/resize-observer'
-import deepEquals from 'fast-deep-equal'
-import { filter, first, from as rxFrom, skip } from 'rxjs'
+import { ReactiveSet } from '@solid-primitives/set'
+import { Subscription, filter, first, from as rxFrom, skip } from 'rxjs'
 import {
 	For,
+	JSX,
 	Match,
 	ParentProps,
 	Show,
 	Switch,
-	batch,
+	createContext,
 	createEffect,
 	createMemo,
+	createRenderEffect,
 	createSignal,
 	observable,
+	on,
 	onCleanup,
 	onMount,
-	untrack,
+	useContext,
 } from 'solid-js'
 import toast from 'solid-toast'
 
@@ -32,36 +36,43 @@ import {
 	DialogTrigger,
 } from '~/components/ui/dialog.tsx'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '~/components/ui/hover-card.tsx'
-import { BOARD_COLORS } from '~/config.ts'
 import { cn } from '~/lib/utils.ts'
 import * as Audio from '~/systems/audio.ts'
+import * as BV from '~/systems/boardView.ts'
 import * as G from '~/systems/game/game.ts'
 import * as GL from '~/systems/game/gameLogic.ts'
 import * as Pieces from '~/systems/piece.tsx'
 import * as P from '~/systems/player.ts'
+import { trackAndUnwrap } from '~/utils/solid.ts'
 
 import styles from './Game.module.css'
 import { Button } from './ui/button.tsx'
 import * as Modal from './utils/Modal.tsx'
 
-//TODO component duplicates on reload sometimes for some reason
+const GameContext = createContext(null as unknown as { game: G.Game; boardView: BV.BoardView })
 
-export default function Game() {
-	console.log('game initial render')
-	const game = G.game()!
+export default function GameWrapper(props: { game: G.Game }) {
+	const boardCtx = new BV.BoardView(props.game)
+	//@ts-expect-error
+	window.game = props.game
+	//@ts-expect-error
+	window.boardCtx = boardCtx
+	return (
+		<GameContext.Provider value={{ boardView: boardCtx, game: props.game }}>
+			<Game />
+		</GameContext.Provider>
+	)
+}
 
+export function Game() {
+	const S = useContext(GameContext)
 	//#region calc board sizes
-	// let BOARD_SIZE = 600
-	// let SQUARE_SIZE = BOARD_SIZE / 8
-
 	// eslint-disable-next-line prefer-const
 	let boardContainerRef = null as unknown as HTMLDivElement
 
 	// eslint-disable-next-line prefer-const
 	let boardRef = null as unknown as HTMLDivElement
-	const [boardSize, setBoardSize] = createSignal(100)
-	const [boardSizeCss, setBoardSizeCss] = createSignal(100)
-	const [canvasProps, setCanvasProps] = createSignal({})
+
 	{
 		const isPortrait = createMediaQuery('(max-aspect-ratio: 7/6')
 		const { observe, unobserve } = makeResizeObserver(handleObserverCallback)
@@ -81,476 +92,58 @@ export default function Game() {
 			minHeight -= baseOffset
 			minWidth -= baseOffset
 			const size = Math.min(minWidth, minHeight)
-			const adjustedSize = size * window.devicePixelRatio
-			batch(() => {
-				setBoardSize(adjustedSize)
-				setBoardSizeCss(size)
-				setSquareSize(size / 8)
-				setCanvasProps({
-					class: 'object-contain',
-					style: { width: `${size}px`, height: `${size}px` },
-					width: adjustedSize,
-					height: adjustedSize,
-				})
-			})
+			S.boardView.state.set({ boardSize: size, squareSize: size / 8 })
 		}
 	}
-
-	const [squareSize, setSquareSize] = createSignal(32)
-
-	//#endregion
-
-	//#region board rendering and mouse events
-
-	function scaleAndReset(context: CanvasRenderingContext2D) {
-		context.clearRect(0, 0, boardSizeCss(), boardSizeCss())
-		context.setTransform(1, 0, 0, 1, 0, 0)
-		context.scale(devicePixelRatio, devicePixelRatio)
-	}
-
-	const boardCanvas = (<canvas {...canvasProps()} />) as HTMLCanvasElement
-	const highlightsCanvas = (<canvas {...canvasProps()} />) as HTMLCanvasElement
-	const piecesCanvas = (<canvas {...canvasProps()} />) as HTMLCanvasElement
-	const grabbedPieceCanvas = (<canvas {...canvasProps()} />) as HTMLCanvasElement
-
-	//#region board and interaction state
-	const [boardFlipped, setBoardFlipped] = createSignal(false)
-	const [hoveredSquare, setHoveredSquare] = createSignal(null as null | string)
-	const [activePieceSquare, setActivePieceSquare] = createSignal(null as null | string)
-	const [grabbingPieceSquare, setGrabbingPieceSquare] = createSignal(false)
-	const [currentMousePos, setCurrentMousePos] = createSignal({ x: 0, y: 0 } as { x: number; y: number } | null)
-	const [grabbedMousePos, setGrabbedMousePos] = createSignal(null as null | { x: number; y: number })
-	//#endregion
-
-	const legalMovesForActivePiece = createMemo(() => {
-		const _square = activePieceSquare()
-		if (!_square) return []
-		return game.getLegalMovesForSquare(_square)
-	})
-
-	//#region canvas rendering
-
-	//#region board rendering updates
-	createEffect(async () => {
-		if (!Pieces.initialized()) return
-		// handle all reactivity here, so we know renderBoard itself will run fast
-		const args: RenderBoardArgs = {
-			squareSize: squareSize(),
-			boardFlipped: boardFlipped(),
-			shouldHideNonVisible: game.gameConfig.variant === 'fog-of-war' && !game.outcome,
-			visibleSquares: game.currentBoardView.visibleSquares,
-			context: boardCanvas.getContext('2d')!,
-		}
-		Pieces.pieceChangedEpoch()
-		scaleAndReset(args.context)
-
-		untrack(() => {
-			args.context.clearRect(0, 0, boardSize(), boardSize())
-			renderBoard(args)
-		})
-	})
-
-	//#endregion
-
-	function getBoardView() {
-		// consolidating signals for board view
-		return {
-			board: game.currentBoardView.board,
-			lastMove: game.currentBoardView.lastMove,
-			visibleSquares: game.currentBoardView.visibleSquares,
-			inCheck: game.currentBoardView.inCheck,
-		}
-	}
-
-	//#region render highlights
-	createEffect(() => {
-		const args: RenderHighlightsArgs = {
-			squareSize: squareSize(),
-			boardFlipped: boardFlipped(),
-			shouldHideNonVisible: game.gameConfig.variant === 'fog-of-war' && !game.outcome,
-			boardView: getBoardView(),
-			legalMovesForActivePiece: legalMovesForActivePiece(),
-			playerColor: game.bottomPlayer.color,
-			activePieceSquare: activePieceSquare(),
-			hoveredSquare: hoveredSquare(),
-			context: highlightsCanvas.getContext('2d')!,
-		}
-		scaleAndReset(args.context)
-		Pieces.pieceChangedEpoch()
-
-		untrack(() => {
-			args.context.clearRect(0, 0, boardSize(), boardSize())
-			renderHighlights(args)
-		})
-	})
-	//#endregion
-
-	//#region render pieces
-	createEffect(() => {
-		if (!Pieces.initialized()) return
-		const args: RenderPiecesArgs = {
-			squareSize: squareSize(),
-			boardFlipped: boardFlipped(),
-			shouldHideNonVisible: game.gameConfig.variant === 'fog-of-war' && !game.outcome,
-			boardView: getBoardView(),
-			grabbedMousePos: grabbedMousePos(),
-			activePieceSquare: activePieceSquare(),
-			context: piecesCanvas.getContext('2d')!,
-		}
-		Pieces.pieceChangedEpoch()
-		scaleAndReset(args.context)
-		untrack(() => {
-			renderPieces(args)
-		})
-	})
-	//#endregion
-
-	//#region render grabbed piece
-	createEffect(() => {
-		const args: RenderGrabbedPieceArgs = {
-			squareSize: squareSize(),
-			boardView: getBoardView(),
-			grabbedMousePos: grabbedMousePos(),
-			activePieceSquare: activePieceSquare(),
-			currentMousePos: P.settings.usingTouch ? null : currentMousePos(),
-			context: grabbedPieceCanvas.getContext('2d')!,
-			placingDuck: game.placingDuck(),
-			touchScreen: P.settings.usingTouch,
-		}
-		Pieces.pieceChangedEpoch()
-
-		scaleAndReset(args.context)
-		untrack(() => {
-			args.context.clearRect(0, 0, boardSize(), boardSize())
-			renderGrabbedPiece(args)
-		})
-	})
-	//#endregion
-
-	createEffect(() => {
-		if (game.bottomPlayer.color === 'black') {
-			setBoardFlipped(true)
-		} else {
-			setBoardFlipped(false)
-		}
-	})
-
-	// contextually set cursor style
-	createEffect(() => {
-		if (!game.isClientPlayerParticipating || !game.viewingLiveBoard) {
-			if (grabbedPieceCanvas.style.cursor !== 'default') grabbedPieceCanvas.style.cursor = 'default'
-			return
-		}
-		if (grabbingPieceSquare()) {
-			grabbedPieceCanvas.style.cursor = 'grabbing'
-		} else if (
-			hoveredSquare() &&
-			game.currentBoardView.board.pieces[hoveredSquare()!] &&
-			game.currentBoardView.board.pieces[hoveredSquare()!]!.color === game.bottomPlayer.color
-		) {
-			grabbedPieceCanvas.style.cursor = 'grab'
-		} else {
-			grabbedPieceCanvas.style.cursor = 'default'
-		}
-	})
-
-	//#endregion
-
-	//#region mouse events
-	function isLegalForActive(square: string) {
-		return legalMovesForActivePiece().some((m) => GL.notationFromCoords(m.to) === square)
-	}
-
-	function squareContainsPlayerPiece(square: string) {
-		return game.currentBoardView.board.pieces[square]?.color === game.bottomPlayer.color
-	}
-
-	function makeMove(move?: GL.SelectedMove) {
-		batch(() => {
-			const resPromise = game.tryMakeMove(move)
-			setActivePieceSquare(null)
-			setGrabbingPieceSquare(false)
-			setGrabbedMousePos(null)
-			resPromise.then((res) => {
-				if (res.type === 'accepted') {
-					untrack(() => {
-						Audio.playSoundEffectForMove(res.move, true, true)
-					})
-				}
-			})
-		})
-	}
-
-	onMount(() => {
-		function getSquareFromDisplayCoords(x: number, y: number) {
-			let col = Math.floor(x / squareSize())
-			let row = Math.floor(y / squareSize())
-			if (boardFlipped()) {
-				col = 7 - col
-				row = 7 - row
-			}
-
-			return String.fromCharCode('a'.charCodeAt(0) + col) + (8 - row)
-		}
-
-		const touchOffsetX = () => {
-			switch (P.settings.touchOffsetDirection) {
-				case 'left':
-					return -20
-				case 'right':
-					return 20
-				case 'none':
-					return 0
-			}
-		}
-		const touchOffsetY = () => (P.settings.touchOffsetDirection !== 'none' ? -Math.abs(touchOffsetX()) : 0)
-		grabbedPieceCanvas.addEventListener('mousemove', (e) => moveListener(e.clientX, e.clientY))
-		grabbedPieceCanvas.addEventListener('touchmove', (e) => {
-			if (e.targetTouches.length === 0) return
-			const touch = e.targetTouches[0]
-			const touchingPiece = moveListener(touch.clientX + touchOffsetX(), touch.clientY + touchOffsetY())
-			if (touchingPiece) {
-				e.preventDefault()
-			}
-		})
-
-		function moveListener(clientX: number, clientY: number) {
-			let modified = false
-			if (!game.isClientPlayerParticipating) return modified
-			batch(() => {
-				const rect = grabbedPieceCanvas.getBoundingClientRect()
-				const x = clientX - rect.left
-				const y = clientY - rect.top
-				// check if mouse is over a square with a piece
-				setHoveredSquare(getSquareFromDisplayCoords(x, y))
-				if (grabbingPieceSquare() || grabbingPieceSquare()) {
-					setGrabbedMousePos({ x, y })
-					modified = true
-				}
-				setCurrentMousePos({ x, y })
-			})
-			return modified
-		}
-
-		grabbedPieceCanvas.addEventListener('mousedown', (e) => {
-			e.button === 0 && handlePrimaryPress(e.clientX, e.clientY)
-		})
-
-		grabbedPieceCanvas.addEventListener('contextmenu', (e) => {
-			e.preventDefault()
-			handleSecondaryPress()
-		})
-
-		grabbedPieceCanvas.addEventListener('touchstart', (e) => {
-			if (e.targetTouches.length === 0) return
-			const touch = e.targetTouches[0]
-			handlePrimaryPress(touch.clientX, touch.clientY)
-		})
-
-		function handlePrimaryPress(clientX: number, clientY: number) {
-			if (!game.isClientPlayerParticipating || !game.viewingLiveBoard) return
-			const rect = grabbedPieceCanvas.getBoundingClientRect()
-			const [x, y] = [clientX - rect.left, clientY - rect.top]
-			const mouseSquare = getSquareFromDisplayCoords(x, y)
-			batch(() => {
-				if (game.placingDuck()) {
-					game.setCurrentMove({ ...game.currentMove()!, duck: mouseSquare })
-					makeMove()
-					return
-				}
-
-				if (activePieceSquare()) {
-					if (isLegalForActive(mouseSquare)) {
-						makeMove({ from: activePieceSquare()!, to: mouseSquare })
-						return
-					}
-
-					if (squareContainsPlayerPiece(mouseSquare)) {
-						setActivePieceSquare(mouseSquare)
-						setGrabbingPieceSquare(true)
-						return
-					}
-
-					setActivePieceSquare(null)
-					return
-				}
-
-				if (squareContainsPlayerPiece(mouseSquare)) {
-					batch(() => {
-						// we're not setting grabbedSquareMousePos here because we don't want to visually move the piece until the mouse moves
-						setActivePieceSquare(mouseSquare)
-						setGrabbingPieceSquare(true)
-					})
-					return
-				} else {
-					setActivePieceSquare(null)
-				}
-			})
-		}
-
-		function handleSecondaryPress() {
-			if (!game.isClientPlayerParticipating || !game.viewingLiveBoard) return
-			// TODO draw arrows
-			if (grabbingPieceSquare()) {
-				batch(() => {
-					setGrabbingPieceSquare(false)
-					setGrabbedMousePos(null)
-				})
-			} else {
-				batch(() => {
-					setActivePieceSquare(null)
-				})
-			}
-		}
-
-		grabbedPieceCanvas.addEventListener('mouseup', (e) => {
-			if (e.button === 0) handlePrimaryRelease(e.clientX, e.clientY)
-		})
-		grabbedPieceCanvas.addEventListener('touchend', (e) => {
-			if (e.changedTouches.length === 0) return
-			const touch = e.changedTouches[0]
-			handlePrimaryRelease(touch.clientX + touchOffsetX(), touch.clientY + touchOffsetY())
-		})
-
-		function handlePrimaryRelease(clientX: number, clientY: number) {
-			if (!game.isClientPlayerParticipating || !game.viewingLiveBoard) return
-			const rect = grabbedPieceCanvas.getBoundingClientRect()
-			const square = getSquareFromDisplayCoords(clientX - rect.left, clientY - rect.top)
-			const _activePiece = activePieceSquare()
-
-			batch(() => {
-				if (_activePiece && _activePiece !== square) {
-					if (grabbingPieceSquare() && isLegalForActive(square)) {
-						makeMove({ from: _activePiece!, to: square })
-						setActivePieceSquare(null)
-					}
-				}
-				setGrabbingPieceSquare(false)
-				setGrabbedMousePos(null)
-			})
-		}
-	})
-
-	//#endregion
-
-	//#endregion
-
-	//#region promotion
-
-	const promoteModalPosition = () => {
-		if (!game.currentMoveAmbiguity) return undefined
-		let [x, y] = squareNotationToDisplayCoords(game.currentMove()!.to, boardFlipped(), squareSize())
-		y += boardCanvas.getBoundingClientRect().top + window.scrollY
-		x += boardCanvas.getBoundingClientRect().left + window.scrollX
-		if (boardSize() / 2 < x) {
-			x -= 180
-		}
-
-		return [x, y].map((c) => `${c}px`) as [string, string]
-	}
-
-	Modal.addModal({
-		title: null,
-		render: () => (
-			<Switch>
-				<Match when={game.currentMoveAmbiguity?.type === 'promotion'}>
-					<div class="flex w-[180px] flex-row justify-between space-x-1">
-						<For each={GL.PROMOTION_PIECES}>
-							{(pp) => {
-								const Piece = Pieces.getPieceSvg({ type: pp, color: game.bottomPlayer.color })
-								return (
-									<Button
-										classList={{ 'bg-neutral-200': game.bottomPlayer.color !== 'white' }}
-										variant={game.bottomPlayer.color === 'white' ? 'ghost' : 'default'}
-										size="icon"
-										onclick={() => {
-											if (game.currentMoveAmbiguity?.type !== 'promotion') return
-											game.setCurrentDisambiguation({
-												type: 'promotion',
-												piece: pp as GL.PromotionPiece,
-											})
-											makeMove()
-										}}
-									>
-										<Piece />
-									</Button>
-								)
-							}}
-						</For>
-					</div>
-				</Match>
-				<Match when={game.currentMoveAmbiguity?.type === 'castle'}>
-					<div class="flex flex-col items-center">
-						<h3>Castle?</h3>
-						<div class="flex space-between space-x-1">
-							<Button
-								onclick={() => {
-									if (game.currentMoveAmbiguity?.type !== 'castle') return
-									game.setCurrentDisambiguation({ type: 'castle', castling: true })
-									void game.tryMakeMove()
-								}}
-							>
-								Yes
-							</Button>
-							<Button
-								onclick={() => {
-									if (game.currentMoveAmbiguity?.type !== 'castle') return
-									game.setCurrentDisambiguation({ type: 'castle', castling: false })
-									void game.tryMakeMove()
-								}}
-							>
-								No
-							</Button>
-						</div>
-					</div>
-				</Match>
-			</Switch>
-		),
-		position: promoteModalPosition,
-		visible: () => !!game.currentMoveAmbiguity,
-		closeOnEscape: false,
-		closeOnOutsideClick: false,
-		setVisible: () => {},
-	})
 	//#endregion
 
 	//#region draw offer events
 	{
-		const sub = game.gameContext.event$.subscribe((event) => {
+		let sub: Subscription | undefined
+		function onEvent(event: G.GameEvent) {
 			switch (event.type) {
 				case 'draw-offered':
-					if (event.playerId === game.bottomPlayer.id) {
+					if (event.playerId === S.game.bottomPlayer.id) {
 						toast('Draw offered')
 					} else {
-						toast(`${game.topPlayer.name} offered a draw`)
+						toast(`${S.game.topPlayer.name} offered a draw`)
 						Audio.playSound('drawOffered')
 						Audio.vibrate()
 					}
 					break
 				case 'draw-canceled':
-					if (event.playerId === game.bottomPlayer.id) {
+					if (event.playerId === S.game.bottomPlayer.id) {
 						toast('Draw cancelled')
 					} else {
-						toast(`${game.topPlayer.name} cancelled their draw offer`)
+						toast(`${S.game.topPlayer.name} cancelled their draw offer`)
 						Audio.vibrate()
 					}
 					break
 				case 'draw-declined':
-					if (event.playerId === game.bottomPlayer.id) {
+					if (event.playerId === S.game.bottomPlayer.id) {
 						toast('Draw declined')
 					} else {
-						toast(`${game.topPlayer.name} declined draw offer`)
+						toast(`${S.game.topPlayer.name} declined draw offer`)
 						Audio.vibrate()
 					}
 					break
 				// draw being accepted is dealt with in the end game screen
 			}
-		})
+		}
+		createEffect(
+			on(
+				() => S.game,
+				() => {
+					sub?.unsubscribe()
+					sub = S.game.gameContext.event$.subscribe(onEvent)
+				}
+			)
+		)
+
 		onCleanup(() => {
-			sub.unsubscribe()
+			sub?.unsubscribe()
 		})
 	}
-
 	//#endregion
 
 	//#region warn with sound effect on low time
@@ -559,8 +152,8 @@ export default function Game() {
 			observable(
 				() =>
 					[
-						checkPastWarnThreshold(game.gameConfig.timeControl, game.clock[game.bottomPlayer.color]),
-						game.isClientPlayerParticipating,
+						checkPastWarnThreshold(S.game.gameConfig.timeControl, S.game.clock[S.game.bottomPlayer.color]),
+						S.game.isClientPlayerParticipating,
 					] as const
 			)
 		)
@@ -580,58 +173,56 @@ export default function Game() {
 
 	//#endregion
 
-	//#region sound effects for incoming moves
-	{
-		const sub = game.gameContext.event$.subscribe(async (event) => {
-			if (event.type !== 'make-move' || event.playerId === game.gameContext.player.id) return
-			const move = game.gameContext.state.moves[event.moveIndex]
-			const isVisible = game.gameConfig.variant !== 'fog-of-war' || game.currentBoardView.visibleSquares.has(move.to)
-			Audio.playSoundEffectForMove(move, false, isVisible)
-			Audio.vibrate()
-		})
-
-		onCleanup(() => {
-			sub.unsubscribe()
-		})
-	}
-	//#endregion
-
 	//#region game outcome sound effects
 	{
-		const sub = game.outcome$.subscribe((event) => {
+		let sub: Subscription | undefined
+		function onEvent(event: GL.GameOutcome | undefined) {
 			if (!event) return
-			if (event.winner === game.bottomPlayer.color) {
+			if (event.winner === S.game.bottomPlayer.color) {
 				Audio.playSound('winner')
 				Audio.vibrate()
 			} else {
 				Audio.playSound('loser')
 				Audio.vibrate()
 			}
-		})
+		}
+		createEffect(
+			on(
+				() => S.game,
+				() => {
+					sub?.unsubscribe()
+					sub = S.game.outcome$.subscribe(onEvent)
+				}
+			)
+		)
 		onCleanup(() => {
-			sub.unsubscribe()
+			sub?.unsubscribe()
 		})
 	}
 	//#endregion
 
 	//#region handle move navigation
-	function handleMoveNavigation(moveIndex: number | 'live') {
-		if (game.gameConfig.variant === 'fog-of-war') throw new Error('move history navigation not supported for fog of war games')
-		const move = game.state.moveHistory[moveIndex === 'live' ? game.state.moveHistory.length - 1 : moveIndex]
+	async function handleMoveNavigation(moveIndex: number | 'live') {
+		if (S.game.gameConfig.variant === 'fog-of-war') throw new Error('move history navigation not supported for fog of war games')
+		moveIndex = moveIndex === 'live' ? S.game.state.moveHistory.length - 1 : moveIndex
+		const boardIndex = moveIndex + 1
+		if (boardIndex < 0 || boardIndex >= S.game.state.boardHistory.length) throw new Error('invalid move index')
+		await S.boardView.updateBoard(boardIndex)
+		const move = S.game.state.moveHistory[moveIndex]
+		// TODO time this better
 		move && Audio.playSoundEffectForMove(move, false, true)
-		game.setViewedMove(moveIndex)
 	}
 
 	const moveNavProps = () => {
 		return {
-			isLive: game.viewingLiveBoard,
-			viewedMoveIndex: game.viewedMoveIndex(),
+			isLive: S.boardView.state.s.boardIndex === S.game.state.boardHistory.length - 1,
+			viewedMoveIndex: S.boardView.state.s.boardIndex - 1,
 			setViewedMoveIndex: handleMoveNavigation,
 		}
 	}
 
 	//#endregion
-	const hideHistory = () => game.gameConfig.variant === 'fog-of-war'
+	const hideHistory = () => S.game.gameConfig.variant === 'fog-of-war'
 
 	return (
 		<div
@@ -646,44 +237,37 @@ export default function Game() {
 				<MoveHistory {...moveNavProps()} />
 			</Show>
 			<div class={`${styles.topLeftActions} flex items-start space-x-1`}>
-				<Button variant="ghost" size="icon" onclick={() => setBoardFlipped((f) => !f)} class="mb-1">
+				<Button variant="ghost" size="icon" onclick={() => S.boardView.state.set('boardFlipped', (flipped) => !flipped)} class="mb-1">
 					<Svgs.Flip />
 				</Button>
-				<Show when={game.gameConfig.variant !== 'regular'}>
-					<VariantInfoDialog variant={game.gameConfig.variant}>
+				<Show when={S.game.gameConfig.variant !== 'regular'}>
+					<VariantInfoDialog variant={S.game.gameConfig.variant}>
 						<Button variant="ghost" size="icon" class="mb-1">
 							<Svgs.Help />
 						</Button>
 					</VariantInfoDialog>
 				</Show>
 			</div>
-			<Player class={styles.topPlayer} player={game.topPlayer} />
+			<Player class={styles.topPlayer} player={S.game.topPlayer} />
 			<Clock
 				class={styles.clockTopPlayer}
-				clock={game.clock[game.topPlayer.color]}
-				ticking={game.isPlayerTurn(game.topPlayer.color) && game.clock[game.topPlayer.color] > 0}
-				timeControl={game.gameConfig.timeControl}
-				color={game.topPlayer.color}
+				clock={S.game.clock[S.game.topPlayer.color]}
+				ticking={S.game.isPlayerTurn(S.game.topPlayer.color) && S.game.clock[S.game.topPlayer.color] > 0}
+				timeControl={S.game.gameConfig.timeControl}
+				color={S.game.topPlayer.color}
 			/>
 			<CapturedPieces class={styles.capturedPiecesContainer} />
-			<div class={`${styles.board} grid place-items-center`} ref={boardRef}>
-				<div>
-					<span>{boardCanvas}</span>
-					<span class="absolute -translate-y-full">{highlightsCanvas}</span>
-					<span class="absolute -translate-y-full">{piecesCanvas}</span>
-					<span class="absolute -translate-y-full">{grabbedPieceCanvas}</span>
-				</div>
-			</div>
-			<Show when={game.isClientPlayerParticipating} fallback={<div class={styles.bottomLeftActions} />}>
-				<ActionsPanel class={styles.bottomLeftActions} placingDuck={game.placingDuck()} />
+			<Board ref={boardRef} />
+			<Show when={S.game.isClientPlayerParticipating} fallback={<div class={styles.bottomLeftActions} />}>
+				<ActionsPanel class={styles.bottomLeftActions} placingDuck={S.boardView.isPlacingDuck()} />
 			</Show>
-			<Player class={styles.bottomPlayer} player={game.bottomPlayer} />
+			<Player class={styles.bottomPlayer} player={S.game.bottomPlayer} />
 			<Clock
 				class={styles.clockBottomPlayer}
-				clock={game.clock[game.bottomPlayer.color]}
-				ticking={game.isPlayerTurn(game.bottomPlayer.color) && game.clock[game.bottomPlayer.color] > 0}
-				timeControl={game.gameConfig.timeControl}
-				color={game.bottomPlayer.color}
+				clock={S.game.clock[S.game.bottomPlayer.color]}
+				ticking={S.game.isPlayerTurn(S.game.bottomPlayer.color) && S.game.clock[S.game.bottomPlayer.color] > 0}
+				timeControl={S.game.gameConfig.timeControl}
+				color={S.game.bottomPlayer.color}
 			/>
 			<Show when={!hideHistory()}>
 				<div class={cn(styles.moveNav, 'self-center justify-self-center min-w-0 wc:self-start')}>
@@ -697,11 +281,11 @@ export default function Game() {
 
 //#region subcomponents
 function GameOutcomeDialog() {
-	const game = G.game()!
+	const S = useContext(GameContext)
 	const [open, setOpen] = createSignal(false)
 	const [showedOutcome, setShowedOutcome] = createSignal(false)
 	createEffect(() => {
-		if (game.outcome && !open() && !showedOutcome()) {
+		if (S.game.outcome && !open() && !showedOutcome()) {
 			setOpen(true)
 			setShowedOutcome(true)
 		}
@@ -710,12 +294,12 @@ function GameOutcomeDialog() {
 		<Dialog open={open()} onOpenChange={setOpen}>
 			<DialogContent class="w-min">
 				<DialogHeader>
-					<DialogTitle>{showGameOutcome(game.outcome!)[0]}</DialogTitle>
+					<DialogTitle>{showGameOutcome(S.game.outcome!)[0]}</DialogTitle>
 				</DialogHeader>
 				<DialogFooter>
-					<DialogDescription>{showGameOutcome(game.outcome!)[1]}</DialogDescription>
+					<DialogDescription>{showGameOutcome(S.game.outcome!)[1]}</DialogDescription>
 					<div class="flex justify-center space-x-1">
-						<Button onclick={() => game.gameContext.configureNewGame()}>New Game</Button>
+						<Button onclick={() => S.game.gameContext.backToPregame()}>New Game</Button>
 						<Button variant="secondary" onclick={() => setOpen(false)}>
 							Continue
 						</Button>
@@ -727,9 +311,9 @@ function GameOutcomeDialog() {
 }
 
 function Player(props: { player: G.PlayerWithColor; class: string }) {
-	const game = G.game()!
+	const S = useContext(GameContext)
 	const { colorMode } = useColorMode()
-	const isPlayerTurn = () => game.isPlayerTurn(props.player.color)
+	const isPlayerTurn = () => S.game.isPlayerTurn(props.player.color)
 	const font = () => {
 		if (isPlayerTurn() && colorMode() === 'light') {
 			return 'text-neutral-900'
@@ -752,29 +336,424 @@ function Player(props: { player: G.PlayerWithColor; class: string }) {
 	)
 	return (
 		<div class={props.class + ' m-auto whitespace-nowrap'}>
-			<Show when={game.bottomPlayer.color === props.player.color} fallback={title}>
-				<HoverCard placement="bottom" open={game.placingDuck()}>
+			<Show when={S.game.bottomPlayer.color === props.player.color} fallback={title}>
+				<HoverCard placement="bottom" open={S.boardView.isPlacingDuck()}>
 					<HoverCardTrigger>{title}</HoverCardTrigger>
-					<HoverCardContent class="bg-destructive border-destructive p-1 w-max text-sm flex space-x-2 items-center justify-between">
-						<span class="text-balance text-destructive-foreground">{`${P.settings.usingTouch ? 'Tap' : 'Click'} square to place duck`}</span>
-						<Button
-							class="text-xs text-destructive-foreground whitespace-nowrap bg-black"
-							variant="secondary"
-							size="sm"
-							onclick={() => {
-								game.setPlacingDuck(false)
-								game.setBoardWithCurrentMove(null)
-								game.setCurrentMove(null)
-							}}
-						>
-							Change Move
-						</Button>
+					<HoverCardContent class="bg-destructive border-destructive p-1 w-max text-sm">
+						<span class="text-balance text-destructive-foreground">{`${P.settings.usingTouch ? 'Tap' : 'Click'} square to ${S.boardView.duckOnBoard() ? 'move' : 'place'} duck`}</span>
 					</HoverCardContent>
 				</HoverCard>
 			</Show>
 		</div>
 	)
 }
+
+//#region board
+
+export function Board(props: { ref: HTMLDivElement }) {
+	const S = useContext(GameContext)
+	const bs = S.boardView.state.s
+	// eslint-disable-next-line prefer-const
+	let boardRef = null as unknown as HTMLDivElement
+
+	//#region board updates sound effects for incoming moves
+	{
+		async function onEvent(event: G.GameEvent) {
+			if (event.type === 'committed-in-progress-move' && event.playerId !== S.game.bottomPlayer.id) {
+				if (!S.boardView.viewingLiveBoard) return
+				S.boardView.visualizeMove(S.game.inProgressMove!)
+				// TODO we need to play the appropriate sound effect here instead of a generic one
+				Audio.playSound('moveOpponent')
+			}
+			// TODO this is a bug because this move may have happened in a different client
+			if (event.type !== 'make-move' || event.playerId === P.playerId()) return
+			// to get around moveHistory not being updated by the time the event is dispatched Sadge
+			const move = await until(() => S.game.state.moveHistory[event.moveIndex])
+			await S.boardView.snapBackToLive()
+			const isVisible = S.game.gameConfig.variant !== 'fog-of-war' || S.boardView.visibleSquares().has(move.to)
+			if (!move) return
+			Audio.playSoundEffectForMove(move, false, isVisible)
+			Audio.vibrate()
+		}
+		let sub: Subscription | undefined
+		createEffect(() => {
+			sub?.unsubscribe()
+			sub = S.game.gameContext.sharedStore.event$.subscribe(onEvent)
+		})
+		onCleanup(() => {
+			sub?.unsubscribe()
+		})
+	}
+	//#endregion
+
+	//#region handle board rollbacks
+
+	{
+		let sub: Subscription | undefined
+		createEffect(() => {
+			sub?.unsubscribe()
+			sub = S.game.gameContext.sharedStore.rollback$.subscribe(async (rolledBack) => {
+				const events = rolledBack.map((t) => t.events).flat()
+				if (events.some((e) => e.type === 'make-move')) {
+					S.boardView.updateBoard(S.game.state.boardHistory.length - 1, true)
+				}
+			})
+		})
+		onCleanup(() => {
+			sub?.unsubscribe()
+		})
+	}
+	//#endregion
+
+	//#region mouse events
+	// TODO change move type
+	async function makeMove(move?: GL.InProgressMove, animate: boolean = false) {
+		S.game.inProgressMoveLocal.set(move)
+		const validationRes = await S.game.validateInProgressMove()
+		if (validationRes.code === 'invalid') {
+			console.warn('Invalid move')
+			return
+		}
+		if (validationRes.code === 'placing-duck') {
+			S.boardView.state.set({ activeSquare: null })
+			await S.game.commitInProgressMove()
+			S.boardView.visualizeMove(S.game.inProgressMoveLocal.get()!, animate)
+			return
+		}
+		if (validationRes.code === 'ambiguous') {
+			const ambiguity = S.game.currentMoveAmbiguity!
+			if (ambiguity.type === 'promotion') {
+				S.game.commitInProgressMove()
+				S.boardView.visualizeMove(S.game.inProgressMoveLocal.get()!, animate)
+			}
+			return
+		}
+
+		if (validationRes.code === 'valid') {
+			await S.game.makePlayerMove()
+			const boardIndex = S.game.state.boardHistory.length - 1
+			await S.boardView.updateBoard(boardIndex, animate)
+			Audio.playSoundEffectForMove(S.game.state.moveHistory[S.game.state.moveHistory.length - 1], true, true)
+			return
+		}
+	}
+
+	onMount(() => {
+		const touchOffsetX = () => {
+			switch (P.settings.touchOffsetDirection) {
+				case 'left':
+					return -20
+				case 'right':
+					return 20
+				case 'none':
+					return 0
+			}
+		}
+		const touchOffsetY = () => (P.settings.touchOffsetDirection !== 'none' ? -Math.abs(touchOffsetX()) : 0)
+		boardRef.addEventListener('mousemove', (e) => mouseMoveListener(e.clientX, e.clientY))
+		boardRef.addEventListener('touchmove', (e) => {
+			if (e.targetTouches.length === 0) return
+			const touch = e.targetTouches[0]
+			const touchingPiece = mouseMoveListener(touch.clientX + touchOffsetX(), touch.clientY + touchOffsetY())
+			if (touchingPiece) {
+				e.preventDefault()
+			}
+		})
+
+		function mouseMoveListener(clientX: number, clientY: number) {
+			if (!S.game.isClientPlayerParticipating || !bs.activeSquare) return false
+			const rect = boardRef.getBoundingClientRect()
+			const x = clientX - rect.left
+			const y = clientY - rect.top
+			// TODO check if mouse has left board for a certain period and reset grabbed piece
+			S.boardView.mousePos.set({ x, y })
+			const update = {} as Partial<BV.BoardViewState>
+			if (S.boardView.state.s.grabbingActivePiece && !S.boardView.state.s.mouseMovedAfterGrab) {
+				S.boardView.state.set({ mouseMovedAfterGrab: true })
+			}
+			return true
+		}
+
+		boardRef.addEventListener('mousedown', (e) => {
+			e.button === 0 && handlePrimaryPress(e.clientX, e.clientY)
+		})
+
+		boardRef.addEventListener('contextmenu', (e) => {
+			e.preventDefault()
+			handleSecondaryPress()
+		})
+
+		boardRef.addEventListener('touchstart', (e) => {
+			if (e.targetTouches.length === 0) return
+			const touch = e.targetTouches[0]
+			handlePrimaryPress(touch.clientX, touch.clientY)
+		})
+
+		async function handlePrimaryPress(clientX: number, clientY: number) {
+			if (!S.game.isClientPlayerParticipating || !S.boardView.viewingLiveBoard) return
+			const rect = boardRef.getBoundingClientRect()
+			const clickCoords = { x: clientX - rect.left, y: clientY - rect.top }
+			const mouseSquare = S.boardView.getSquareFromDisplayCoords(clickCoords)
+			if (S.boardView.isPlacingDuck()) {
+				const valid = S.game.setDuck(mouseSquare)
+				if (!valid) return
+				const boardIndex = S.game.state.boardHistory.length - 1
+				S.boardView.updateBoard(boardIndex)
+				return
+			}
+
+			if (S.boardView.state.s.activeSquare) {
+				if (S.boardView.isLegalForActive(mouseSquare)) {
+					makeMove({ from: S.boardView.state.s.activeSquare, to: mouseSquare }, true)
+					return
+				}
+
+				if (S.boardView.squareContainsPlayerPiece(mouseSquare)) {
+					S.boardView.mousePos.set(clickCoords)
+					S.boardView.state.set({ activeSquare: mouseSquare, grabbingActivePiece: true, mouseMovedAfterGrab: false })
+					return
+				}
+
+				S.boardView.state.set({ activeSquare: null, mouseMovedAfterGrab: false })
+				return
+			}
+
+			if (S.boardView.squareContainsPlayerPiece(mouseSquare)) {
+				S.boardView.mousePos.set(clickCoords)
+				S.boardView.state.set({ activeSquare: mouseSquare, grabbingActivePiece: true, mouseMovedAfterGrab: false })
+				return
+			} else {
+				S.boardView.state.set({ activeSquare: null, mouseMovedAfterGrab: false })
+			}
+		}
+
+		function handleSecondaryPress() {
+			if (!S.game.isClientPlayerParticipating || !S.boardView.viewingLiveBoard) return
+			// TODO draw arrows
+			S.boardView.state.set({ activeSquare: null, grabbingActivePiece: false, mouseMovedAfterGrab: false })
+		}
+
+		boardRef.addEventListener('mouseup', (e) => {
+			if (e.button === 0) handlePrimaryRelease(e.clientX, e.clientY)
+		})
+		boardRef.addEventListener('touchend', (e) => {
+			if (e.changedTouches.length === 0) return
+			const touch = e.changedTouches[0]
+			handlePrimaryRelease(touch.clientX + touchOffsetX(), touch.clientY + touchOffsetY())
+		})
+
+		function handlePrimaryRelease(clientX: number, clientY: number) {
+			if (!S.game.isClientPlayerParticipating || !S.boardView.viewingLiveBoard) return
+			const rect = boardRef.getBoundingClientRect()
+			const square = S.boardView.getSquareFromDisplayCoords({ x: clientX - rect.left, y: clientY - rect.top })
+
+			if (S.boardView.state.s.grabbingActivePiece && S.boardView.isLegalForActive(square)) {
+				makeMove({ from: S.boardView.state.s.activeSquare!, to: square })
+			} else if (S.boardView.state.s.grabbingActivePiece) {
+				S.boardView.state.set({ grabbingActivePiece: false, mouseMovedAfterGrab: false })
+			}
+		}
+	})
+	const promoteModalPosition = () => {
+		if (!S.game.currentMoveAmbiguity) return undefined
+		let { x, y } = S.boardView.squareNotationToDisplayCoords(S.game.inProgressMove!.to)
+		y += boardRef.getBoundingClientRect().top + window.scrollY
+		x += boardRef.getBoundingClientRect().left + window.scrollX
+		if (S.boardView.state.s.boardSize / 2 < x) {
+			x -= 180
+		}
+
+		return [`${x}px`, `${y}px`] as [string, string]
+	}
+
+	Modal.addModal({
+		title: null,
+		render: () => (
+			<Switch>
+				<Match when={S.game.currentMoveAmbiguity?.type === 'promotion'}>
+					<div class="flex w-[180px] flex-row justify-between space-x-1">
+						<For each={GL.PROMOTION_PIECES}>
+							{(pp) => {
+								const Piece = Pieces.getPieceSvg({ type: pp, color: S.game.bottomPlayer.color })
+								return (
+									<Button
+										classList={{ 'bg-neutral-200': S.game.bottomPlayer.color !== 'white' }}
+										variant={S.game.bottomPlayer.color === 'white' ? 'ghost' : 'default'}
+										size="icon"
+										onclick={() => {
+											if (S.game.currentMoveAmbiguity?.type !== 'promotion') return
+											S.game.selectPromotion(pp)
+										}}
+									>
+										<Piece />
+									</Button>
+								)
+							}}
+						</For>
+					</div>
+				</Match>
+				<Match when={S.game.currentMoveAmbiguity?.type === 'castle'}>
+					<div class="flex flex-col items-center">
+						<h3>Castle?</h3>
+						<div class="flex space-between space-x-1">
+							<Button
+								onclick={() => {
+									if (S.game.currentMoveAmbiguity?.type !== 'castle')
+										throw new Error("This shouldn't happen, if it does that's interesting at least")
+									S.game.selectIsCastling(true)
+								}}
+							>
+								Yes
+							</Button>
+							<Button
+								onclick={() => {
+									if (S.game.currentMoveAmbiguity?.type !== 'castle')
+										throw new Error("This shouldn't happen, if it does that's interesting at least")
+									S.game.selectIsCastling(false)
+								}}
+							>
+								No
+							</Button>
+						</div>
+					</div>
+				</Match>
+			</Switch>
+		),
+		position: promoteModalPosition,
+		visible: () => !!S.game.currentMoveAmbiguity,
+		closeOnEscape: false,
+		closeOnOutsideClick: false,
+		setVisible: () => {},
+	})
+	//#endregion
+	const occupiedSquares = new ReactiveSet()
+	createRenderEffect(() => {
+		Object.keys(trackAndUnwrap(bs.board.pieces)).forEach((square) => {
+			occupiedSquares.add(square)
+		})
+	})
+
+	return (
+		<div class={`w-full h-full ${styles.board}`} ref={props.ref}>
+			<div ref={boardRef} class="bg-board-brown relative mx-auto" style={{ width: `${bs.boardSize}px`, height: `${bs.boardSize}px` }}>
+				<Show when={S.boardView.moveOnBoard() && (S.game.gameConfig.variant !== 'fog-of-war' || !S.game.isPlayerTurn)}>
+					<div
+						class={cn(GRID_ALIGNED_CLASSES, `bg-green-300`)}
+						style={boardPositionStyles(S.boardView.squareNotationToDisplayCoords(S.boardView.moveOnBoard()!.from))}
+					/>
+					<div
+						class={cn(GRID_ALIGNED_CLASSES, `bg-green-300`)}
+						style={boardPositionStyles(S.boardView.squareNotationToDisplayCoords(S.boardView.moveOnBoard()!.to))}
+					/>
+				</Show>
+				<Show when={bs.activeSquare}>
+					<HighlightOutlineSvg
+						class={cn(GRID_ALIGNED_CLASSES)}
+						stroke="rgb(96 165 250)"
+						style={boardPositionStyles(S.boardView.squareNotationToDisplayCoords(bs.activeSquare!))}
+					/>
+				</Show>
+				<For each={S.boardView.squareWarnings()}>
+					{(square) => (
+						<div
+							class={cn(GRID_ALIGNED_CLASSES, `bg-red-400`)}
+							style={boardPositionStyles(S.boardView.squareNotationToDisplayCoords(square))}
+						/>
+					)}
+				</For>
+				<Show when={S.boardView.hoveredSquare()}>
+					<HighlightOutlineSvg
+						class={cn(GRID_ALIGNED_CLASSES)}
+						style={boardPositionStyles(S.boardView.squareNotationToDisplayCoords(S.boardView.hoveredSquare()!))}
+						stroke="white"
+					/>
+				</Show>
+				<Show when={P.settings.showAvailablemoves}>
+					<For each={S.boardView.legalMovesForActiveSquare()}>
+						{(square) => (
+							<div
+								class={cn(GRID_ALIGNED_CLASSES, 'grid place-items-center')}
+								style={boardPositionStyles(S.boardView.squareNotationToDisplayCoords(square))}
+							>
+								<span class="w-[12%] h-[12%] bg-zinc-50 rounded-full" />
+							</div>
+						)}
+					</For>
+				</Show>
+				<For each={GL.ALL_SQUARES}>
+					{(square) => {
+						const res = createMemo(() => S.boardView.getPieceDisplayDetails(square)!)
+						return (
+							<>
+								<Show when={occupiedSquares.has(square) && S.boardView.isVisibleSquare(square) && res()}>
+									<Piece pieceGrabbed={false} position={res().coords} piece={bs.board.pieces[square]} />
+								</Show>
+								<Show when={!S.boardView.isVisibleSquare(square)}>
+									<span
+										class={cn(GRID_ALIGNED_CLASSES, 'h-[12.5%] w-[12.5%] z-5 bg-black border-0 opacity-40')}
+										style={boardPositionStyles(S.boardView.squareNotationToDisplayCoords(square))}
+									/>
+								</Show>
+							</>
+						)
+					}}
+				</For>
+				<Show when={bs.activeSquare && S.boardView.state.s.grabbingActivePiece}>
+					<GrabbedPiece />
+				</Show>
+			</div>
+		</div>
+	)
+}
+
+function GrabbedPiece() {
+	const S = useContext(GameContext)
+	const s = S.boardView.state.s
+	if (!s.activeSquare || !S.boardView.mousePos.get()) throw new Error('Mouse position should be set')
+
+	return (
+		<Piece
+			pieceGrabbed={true}
+			piece={s.board.pieces[s.activeSquare!]}
+			position={{ x: S.boardView.mousePos.get()!.x - s.squareSize / 2, y: S.boardView.mousePos.get()!.y - s.squareSize / 2 }}
+		/>
+	)
+}
+
+function HighlightOutlineSvg(props: JSX.SvgSVGAttributes<SVGSVGElement>) {
+	return (
+		<svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+			<rect x="0" y="0" width="100" height="100" stroke-width="8" fill="none" />
+		</svg>
+	)
+}
+
+type PieceProps = {
+	position: BV.DisplayCoords
+	piece: GL.ColoredPiece
+	pieceGrabbed: boolean
+}
+
+const GRID_ALIGNED_CLASSES = 'absolute top-0 left-0 w-[12.5%] h-[12.5%] will-change-transform'
+function Piece(props: PieceProps) {
+	return (
+		<div
+			class={cn(
+				GRID_ALIGNED_CLASSES,
+				'h-[12.5%] w-[12.5%] z-5 will-change-transform',
+				`${styles.piece} ${styles[Pieces.getPieceKey(props.piece)]}`,
+				props.pieceGrabbed ? 'cursor-grabbing' : 'cursor-grab'
+			)}
+			style={{ ...boardPositionStyles(props.position), 'background-image': `url(${Pieces.getPieceSrc(props.piece)})` }}
+		/>
+	)
+}
+
+function boardPositionStyles(position: BV.DisplayCoords) {
+	return { transform: `translate(${position.x}px, ${position.y}px)` }
+}
+
+//#endregion
 
 function Clock(props: { clock: number; class: string; ticking: boolean; timeControl: GL.TimeControl; color: GL.Color }) {
 	const formattedClock = () => {
@@ -806,20 +785,20 @@ function Clock(props: { clock: number; class: string; ticking: boolean; timeCont
 }
 
 function ActionsPanel(props: { class: string; placingDuck: boolean }) {
-	const game = G.game()!
+	const S = useContext(GameContext)
 	return (
 		<span class={props.class}>
 			<Switch>
-				<Match when={!game.outcome}>
+				<Match when={!S.game.outcome}>
 					<DrawHoverCard>
 						<span>
-							<Show when={!game.gameConfig.bot}>
+							<Show when={!S.game.gameConfig.bot}>
 								<Button
-									disabled={!!game.drawIsOfferedBy}
+									disabled={!!S.game.drawIsOfferedBy}
 									title="Offer Draw"
 									size="icon"
 									variant="ghost"
-									onclick={() => game.offerOrAcceptDraw()}
+									onclick={() => S.game.offerOrAcceptDraw()}
 								>
 									<Svgs.OfferDraw />
 								</Button>
@@ -828,8 +807,8 @@ function ActionsPanel(props: { class: string; placingDuck: boolean }) {
 						</span>
 					</DrawHoverCard>
 				</Match>
-				<Match when={game.outcome}>
-					<Button size="sm" onclick={() => game.gameContext.configureNewGame()}>
+				<Match when={S.game.outcome}>
+					<Button size="sm" onclick={() => S.game.gameContext.backToPregame()}>
 						New Game
 					</Button>
 				</Match>
@@ -839,13 +818,13 @@ function ActionsPanel(props: { class: string; placingDuck: boolean }) {
 }
 
 function ResignButton() {
-	const game = G.game()!
+	const S = useContext(GameContext)
 	const [open, setOpen] = createSignal(false)
 
 	return (
 		<Dialog open={open()} onOpenChange={setOpen}>
 			<DialogTrigger>
-				<Button disabled={!!game.drawIsOfferedBy} title="Resign" size="icon" variant="ghost">
+				<Button disabled={!!S.game.drawIsOfferedBy} title="Resign" size="icon" variant="ghost">
 					<Svgs.Resign />
 				</Button>
 			</DialogTrigger>
@@ -859,7 +838,7 @@ function ResignButton() {
 						<Button variant="secondary" onClick={() => setOpen(false)}>
 							Cancel
 						</Button>
-						<Button onClick={() => game.resign()}>Resign</Button>
+						<Button onClick={() => S.game.resign()}>Resign</Button>
 					</div>
 				</DialogFooter>
 			</DialogContent>
@@ -868,22 +847,22 @@ function ResignButton() {
 }
 
 function DrawHoverCard(props: ParentProps) {
-	const game = G.game()!
+	const S = useContext(GameContext)
 	return (
-		<HoverCard placement="bottom" open={!!game.drawIsOfferedBy}>
+		<HoverCard placement="bottom" open={!!S.game.drawIsOfferedBy}>
 			<HoverCardTrigger>{props.children}</HoverCardTrigger>
 			<HoverCardContent class="w-max p-[0.25rem]">
-				<Show when={game.drawIsOfferedBy === game.bottomPlayer.color}>
-					<Button size="sm" onClick={() => game.declineOrCancelDraw()}>
+				<Show when={S.game.drawIsOfferedBy === S.game.bottomPlayer.color}>
+					<Button size="sm" onClick={() => S.game.declineOrCancelDraw()}>
 						Cancel Draw
 					</Button>
 				</Show>
-				<Show when={game.drawIsOfferedBy === game.topPlayer.color}>
+				<Show when={S.game.drawIsOfferedBy === S.game.topPlayer.color}>
 					<div class="flex space-x-1">
-						<Button size="sm" onClick={() => game.offerOrAcceptDraw()}>
+						<Button size="sm" onClick={() => S.game.offerOrAcceptDraw()}>
 							Accept Draw
 						</Button>
-						<Button size="sm" onClick={() => game.declineOrCancelDraw()}>
+						<Button size="sm" onClick={() => S.game.declineOrCancelDraw()}>
 							Decline Draw
 						</Button>
 					</div>
@@ -894,8 +873,9 @@ function DrawHoverCard(props: ParentProps) {
 }
 
 function MoveHistory(props: MoveNavProps) {
+	const S = useContext(GameContext)
 	const itemClass = 'grid grid-cols-[min-content_1fr_1fr] gap-1 text-xs items-center'
-	const game = G.game()!
+
 	return (
 		<div class={`${styles.moveHistoryContainer} grid grid-cols-2 h-max max-h-full gap-x-4 min-w-96 gap-y-1 p-1 overflow-y-auto`}>
 			<div class={itemClass}>
@@ -909,7 +889,7 @@ function MoveHistory(props: MoveNavProps) {
 					Start
 				</Button>
 			</div>
-			<For each={GL.getMoveHistoryAsNotation(game.stateSignal().moveHistory)}>
+			<For each={GL.getMoveHistoryAsNotation(S.game.state.moveHistory)}>
 				{(moves, index) => {
 					const viewingFirstMove = () => props.viewedMoveIndex === index() * 2
 					const viewingSecondMove = () => props.viewedMoveIndex === index() * 2 + 1
@@ -974,11 +954,11 @@ function MoveNav(props: MoveNavProps) {
 
 //#region captured pieces
 export function CapturedPieces(props: { class: string }) {
-	const game = G.game()!
+	const S = useContext(GameContext)
 	return (
 		<div class={cn(props.class, 'flex flex-col wc:flex-row justify-between space-y-1 wc:space-y-0 wc:space-x-1')}>
-			<CapturedPiecesForColor pieces={game.capturedPieces(game.bottomPlayer.color)} capturedBy={'top-player'} />
-			<CapturedPiecesForColor pieces={game.capturedPieces(game.topPlayer.color)} capturedBy={'bottom-player'} />
+			<CapturedPiecesForColor pieces={S.game.capturedPieces(S.game.bottomPlayer.color)} capturedBy={'top-player'} />
+			<CapturedPiecesForColor pieces={S.game.capturedPieces(S.game.topPlayer.color)} capturedBy={'bottom-player'} />
 		</div>
 	)
 }
@@ -1011,209 +991,10 @@ function CapturedPiecesForColor(props: { pieces: GL.ColoredPiece[]; capturedBy: 
 
 //#endregion
 
-//#region canvas rendering
-
-type RenderBoardArgs = {
-	context: CanvasRenderingContext2D
-	shouldHideNonVisible: boolean
-	squareSize: number
-	boardFlipped: boolean
-	visibleSquares: Set<string>
-}
-
-function renderBoard(args: RenderBoardArgs) {
-	const ctx = args.context
-	// fill in light squares as background
-	ctx.fillStyle = args.shouldHideNonVisible ? BOARD_COLORS.lightFog : BOARD_COLORS.light
-	ctx.fillRect(0, 0, args.squareSize * 8, args.squareSize * 8)
-
-	if (args.shouldHideNonVisible) {
-		ctx.fillStyle = BOARD_COLORS.light
-		for (const square of args.visibleSquares) {
-			let { x, y } = GL.coordsFromNotation(square)
-			if ((x + y) % 2 === 0) continue
-			;[x, y] = boardCoordsToDisplayCoords({ x, y }, args.boardFlipped, args.squareSize)
-			ctx.fillRect(x, y, args.squareSize, args.squareSize)
-		}
-	}
-
-	// fill in dark squares
-	for (let i = 0; i < 8; i++) {
-		for (let j = i % 2; j < 8; j += 2) {
-			const visible =
-				!args.shouldHideNonVisible ||
-				args.visibleSquares.has(
-					GL.notationFromCoords({
-						x: j,
-						y: i,
-					})
-				)
-
-			const [x, y] = boardCoordsToDisplayCoords({ x: j, y: i }, args.boardFlipped, args.squareSize)
-
-			ctx.fillStyle = visible ? BOARD_COLORS.dark : BOARD_COLORS.darkFog
-			ctx.fillRect(x, y, args.squareSize, args.squareSize)
-		}
-	}
-}
-
-type RenderPiecesArgs = {
-	context: CanvasRenderingContext2D
-	shouldHideNonVisible: boolean
-	squareSize: number
-	boardFlipped: boolean
-	boardView: G.BoardView
-	grabbedMousePos: {
-		x: number
-		y: number
-	} | null
-	activePieceSquare: string | null
-}
-
-function renderPieces(args: RenderPiecesArgs) {
-	const ctx = args.context
-	for (const [square, piece] of Object.entries(args.boardView.board.pieces)) {
-		if (
-			(args.grabbedMousePos && args.activePieceSquare === square) ||
-			(args.shouldHideNonVisible ? !args.boardView.visibleSquares.has(square) : false)
-		) {
-			continue
-		}
-
-		let x = square[0].charCodeAt(0) - 'a'.charCodeAt(0)
-		let y = 8 - parseInt(square[1])
-		if (args.boardFlipped) {
-			x = 7 - x
-			y = 7 - y
-		}
-		ctx.drawImage(Pieces.getCachedPiece(piece), x * args.squareSize, y * args.squareSize, args.squareSize, args.squareSize)
-	}
-}
-
-type RenderHighlightsArgs = {
-	context: CanvasRenderingContext2D
-	boardView: G.BoardView
-	shouldHideNonVisible: boolean
-	squareSize: number
-	boardFlipped: boolean
-	legalMovesForActivePiece: GL.CandidateMove[]
-	playerColor: GL.Color
-	hoveredSquare: string | null
-	activePieceSquare: string | null
-}
-
-function renderHighlights(args: RenderHighlightsArgs) {
-	const ctx = args.context
-	//#region draw last move highlight
-	const highlightColor = '#aff682'
-	if (args.boardView.lastMove && !args.shouldHideNonVisible) {
-		const highlightedSquares = [args.boardView.lastMove.from, args.boardView.lastMove.to]
-		for (const square of highlightedSquares) {
-			if (!square) continue
-			const [x, y] = squareNotationToDisplayCoords(square, args.boardFlipped, args.squareSize)
-			ctx.fillStyle = highlightColor
-			ctx.fillRect(x, y, args.squareSize, args.squareSize)
-		}
-	}
-	//#endregion
-
-	//#region draw legal move highlights
-	const dotColor = '#f2f2f2'
-	const captureHighlightColor = '#fc3c3c'
-	if (P.settings.showAvailablemoves) {
-		for (const move of args.legalMovesForActivePiece) {
-			// draw dot in center of move end
-			const [x, y] = boardCoordsToDisplayCoords(move.to, args.boardFlipped, args.squareSize)
-			const piece = args.boardView.board.pieces[GL.notationFromCoords(move.to)]
-			// we need to check if the piece is our color we visually move pieces in the current board view while we're placing a duck and promoting
-			if (piece && piece.type !== 'duck' && piece.color !== args.playerColor) {
-				ctx.fillStyle = captureHighlightColor
-				ctx.fillRect(x, y, args.squareSize, args.squareSize)
-			} else {
-				ctx.fillStyle = dotColor
-				ctx.beginPath()
-				ctx.arc(x + args.squareSize / 2, y + args.squareSize / 2, args.squareSize / 10, 0, 2 * Math.PI)
-				ctx.fill()
-				ctx.closePath()
-			}
-		}
-	}
-
-	//#endregion
-
-	function renderHighlightRect(color: string, square: string) {
-		const [x, y] = squareNotationToDisplayCoords(square, args.boardFlipped, args.squareSize)
-		ctx.beginPath()
-		ctx.strokeStyle = color
-		const lineWidth = args.squareSize / 16
-		ctx.lineWidth = lineWidth
-		ctx.rect(x + lineWidth / 2, y + lineWidth / 2, args.squareSize - lineWidth, args.squareSize - lineWidth)
-		ctx.stroke()
-		ctx.closePath()
-	}
-
-	//#region draw hovered move highlight
-	const moveHighlightColor = '#ffffff'
-	if (
-		args.hoveredSquare &&
-		args.activePieceSquare &&
-		args.legalMovesForActivePiece.some((m) => deepEquals(m.to, GL.coordsFromNotation(args.hoveredSquare!)))
-	) {
-		// draw empty square in hovered square
-		renderHighlightRect(moveHighlightColor, args.hoveredSquare!)
-	}
-	//#endregion
-
-	//#region draw clicked move highlight
-	const clickedHighlightColor = '#809dfd'
-
-	if (args.activePieceSquare) {
-		renderHighlightRect(clickedHighlightColor, args.activePieceSquare)
-	}
-
-	//#endregion
-}
-
-type RenderGrabbedPieceArgs = {
-	context: CanvasRenderingContext2D
-	grabbedMousePos: {
-		x: number
-		y: number
-	} | null
-	boardView: G.BoardView
-	squareSize: number
-	activePieceSquare: string | null
-	placingDuck: boolean
-	currentMousePos: {
-		x: number
-		y: number
-	} | null
-	touchScreen: boolean
-}
-
-function renderGrabbedPiece(args: RenderGrabbedPieceArgs) {
-	const ctx = args.context
-
-	const size = args.touchScreen ? args.squareSize * 1.5 : args.squareSize
-	if (args.grabbedMousePos) {
-		const x = args.grabbedMousePos!.x
-		const y = args.grabbedMousePos!.y
-		ctx.drawImage(Pieces.getCachedPiece(args.boardView.board.pieces[args.activePieceSquare!]!), x - size / 2, y - size / 2, size, size)
-	}
-
-	if (args.placingDuck && args.currentMousePos) {
-		const { x, y } = args.currentMousePos!
-		const size = args.touchScreen ? args.squareSize * 1.5 : args.squareSize
-		ctx.drawImage(Pieces.getCachedPiece(GL.DUCK), x - size / 2, y - size / 2, size, size)
-	}
-}
-
-//#endregion
-
 //#region helpers
 function showGameOutcome(outcome: GL.GameOutcome): [string, string] {
-	const game = G.game()!
-	const winner = outcome.winner ? game.players.find((p) => p.color === outcome.winner)! : null
+	const S = useContext(GameContext)
+	const winner = outcome.winner ? S.game.players.find((p) => p.color === outcome.winner)! : null
 	const winnerTitle = `${winner?.name} (${winner?.color})`
 	switch (outcome.reason) {
 		case 'checkmate':
@@ -1233,21 +1014,6 @@ function showGameOutcome(outcome: GL.GameOutcome): [string, string] {
 		case 'king-captured':
 			return [`${winnerTitle} wins`, `king captured`]
 	}
-}
-
-function boardCoordsToDisplayCoords(square: GL.Coords, boardFlipped: boolean, squareSize: number) {
-	let { x, y } = square
-	if (!boardFlipped) {
-		y = 7 - y
-	} else {
-		x = 7 - x
-	}
-	return [x * squareSize, y * squareSize] as [number, number]
-}
-
-function squareNotationToDisplayCoords(square: string, boardFlipped: boolean, squareSize: number) {
-	const { x, y } = GL.coordsFromNotation(square)
-	return boardCoordsToDisplayCoords({ x, y }, boardFlipped, squareSize)
 }
 
 function checkPastWarnThreshold(timeControl: GL.TimeControl, clock: number) {

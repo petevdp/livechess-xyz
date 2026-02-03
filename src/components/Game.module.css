@@ -48,8 +48,6 @@
 
 .board {
 	grid-area: board;
-	/* width: 100%; */
-	/* height: 100%; */
 }
 
 .bottomLeftActions {
@@ -87,3 +85,43 @@
 .capturedPiecesContainer {
 	grid-area: captured-pieces;
 }
+
+/*.piece.wqueen {
+	background-image: url('/pieces/wQueen.svg');
+}
+.piece.wbishop {
+	background-image: url('/pieces/wBishop.svg');
+}
+.piece.wking {
+	background-image: url('/pieces/wKing.svg');
+}
+.piece.wknight {
+	background-image: url('/pieces/wKnight.svg');
+}
+.piece.wpawn {
+	background-image: url('/pieces/wPawn.svg');
+}
+.piece.wrook {
+	background-image: url('/pieces/wRook.svg');
+}
+.piece.bqueen {
+	background-image: url('/pieces/bQueen.svg');
+}
+.piece.bbishop {
+	background-image: url('/pieces/bBishop.svg');
+}
+.piece.bking {
+	background-image: url('/pieces/bKing.svg');
+}
+.piece.bknight {
+	background-image: url('/pieces/bKnight.svg');
+}
+.piece.bpawn {
+	background-image: url('/pieces/bPawn.svg');
+}
+.piece.brook {
+	background-image: url('/pieces/bRook.svg');
+}
+.piece.duck {
+	background-image: url('/pieces/duck.svg');
+}*/
