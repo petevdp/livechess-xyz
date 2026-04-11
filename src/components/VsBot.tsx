@@ -1,4 +1,5 @@
-import { Match, Switch } from 'solid-js'
+import { Subscription } from 'rxjs'
+import { Match, Owner, Switch, createEffect, getOwner, onCleanup } from 'solid-js'
 import * as P from 'systems/player.ts'
 import * as VB from 'systems/vsBot.ts'
 
@@ -12,20 +13,32 @@ import * as GlobalLoading from '~/systems/globalLoading.ts'
 
 export default function VsBot() {
 	P.ensurePlayerSystemSetup()
-	// Pieces.ensureSetupPieceSystem()
-	VB.setupVsBot()
-	VB.vsBotContext()!.event$.subscribe((e) => {
-		switch (e.type) {
-			case 'new-game':
-				Audio.playSound('gameStart')
-				Audio.vibrate()
-				break
-		}
+	const owner = getOwner()!
+	let sub: Subscription | undefined
+	createEffect(() => {
+		const ctx = VB.vsBotContext()
+		if (!ctx) return
+		sub?.unsubscribe()
+		sub = ctx.event$.subscribe((e) => {
+			switch (e.type) {
+				case 'new-game':
+					Audio.playSound('gameStart')
+					Audio.vibrate()
+					break
+			}
+		})
 	})
+	onCleanup(() => {
+		sub?.unsubscribe()
+	})
+
 	GlobalLoading.clear()
 	return (
 		<AppContainer>
 			<Switch>
+				<Match when={!VB.vsBotContext()}>
+					<LoadGameDialog owner={owner} />
+				</Match>
 				<Match when={VB.vsBotContext()?.game}>
 					<Game game={VB.vsBotContext()!.game!} />
 				</Match>
@@ -34,6 +47,36 @@ export default function VsBot() {
 				</Match>
 			</Switch>
 		</AppContainer>
+	)
+}
+
+function LoadGameDialog(props: { owner: Owner }) {
+	return (
+		<ScreenFittingContent class="grid place-items-center p-2">
+			<Card class="w-[95vw] p-1 sm:w-auto space-y-2">
+				<CardHeader class="w-[95vw] p-1 sm:w-auto">
+					<CardTitle class="text-center">Start Game vs AI</CardTitle>
+				</CardHeader>
+				<CardContent class="p-1 flex gap-1 justify-center">
+					{VB.hasSavedGame && (
+						<Button
+							onclick={() => {
+								VB.setupVsBot(true, props.owner)
+							}}
+						>
+							Load Existing Game
+						</Button>
+					)}
+					<Button
+						onclick={() => {
+							VB.setupVsBot(false, props.owner)
+						}}
+					>
+						New Game
+					</Button>
+				</CardContent>
+			</Card>
+		</ScreenFittingContent>
 	)
 }
 

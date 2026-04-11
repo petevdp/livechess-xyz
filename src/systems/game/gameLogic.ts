@@ -608,6 +608,7 @@ export function getLegalMoves(piecePositions: Coords[], game: GameState, variant
 
 	for (const start of piecePositions) {
 		const piece = getBoard(game).pieces[notationFromCoords(start)]
+		if (!piece) continue
 		if (piece.color !== getBoard(game).toMove) {
 			continue
 		}

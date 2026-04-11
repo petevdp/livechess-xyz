@@ -30,14 +30,14 @@ if (!fs.existsSync('./logs')) {
 const envToLogger: { [env in Env['NODE_ENV']]: LoggerOptions } = {
 	development: {
 		level: 'trace',
-		// transport: {
-		// 	target: 'pino-pretty',
-		// 	options: {
-		// 		translateTime: 'HH:MM:ss Z',
-		// 		ignore: 'pid,hostname',
-		// 		color: true,
-		// 	},
-		// },
+		transport: {
+			target: 'pino-pretty',
+			options: {
+				translateTime: 'HH:MM:ss Z',
+				ignore: 'pid,hostname',
+				color: true,
+			},
+		},
 	},
 	production: {
 		transport: {
