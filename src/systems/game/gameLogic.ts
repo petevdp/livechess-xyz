@@ -509,6 +509,9 @@ export function validateAndPlayMove(move: InProgressMove, game: GameState, varia
 		return true
 	})
 	const candidate = candidates[0]
+	if (!candidate) {
+		return
+	}
 	const isCapture = !!getBoard(game).pieces[move.to] || candidate.enPassant
 	const [newBoard] = applyMoveToBoard(candidate, getBoard(game))
 	const checkmate = !VARIANTS_ALLOWING_SELF_CHECKS.includes(variant) && checkmated(game, variant)
@@ -529,7 +532,7 @@ export function applyInProgressMoveToBoardInPlace(move: { from: string; to: stri
 }
 
 // Uncritically apply a move to the board. Does not mutate input.
-function applyMoveToBoard(move: CandidateMove | Move, board: Board, duckSquare?: string) {
+export function applyMoveToBoard(move: CandidateMove | Move, board: Board, duckSquare?: string) {
 	const _move = (typeof move.from === 'string' ? moveToCandidateMove(move as Move) : move) as CandidateMove
 	const piece = board.pieces[notationFromCoords(_move.from)]
 	const newBoard = JSON.parse(JSON.stringify(board)) as Board
@@ -1084,7 +1087,7 @@ export function hashBoard(board: Board) {
 	return JSON.stringify(board)
 }
 
-export function oppositeColor(color: Color) {
+export function oppositeColor(color: Color): Color {
 	return color === 'white' ? 'black' : 'white'
 }
 

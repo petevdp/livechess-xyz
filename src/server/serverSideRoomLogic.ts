@@ -1,113 +1,94 @@
-import { trackDeep } from '@solid-primitives/deep'
-import deepEquals from 'fast-deep-equal'
-import { interval } from 'rxjs'
-import { createEffect, createMemo, untrack } from 'solid-js'
-import { unwrap } from 'solid-js/store'
+import { onCleanup } from 'solid-js'
 
 import { PLAYER_TIMEOUT } from '~/config.ts'
-import * as SS from '~/sharedStore/sharedStore.ts'
-import * as GL from '~/systems/game/gameLogic.ts'
-import * as R from '~/systems/room.ts'
+import { SharedStore } from '~/sharedStore/sharedStore.ts'
+import { initClockAuthority } from '~/systems/game/clockAuthority.ts'
+import * as RO from '~/systems/roomOps.ts'
 
-export function initServerSideRoomLogic(store: R.RoomStore, transport: SS.Transport<R.RoomMessage>) {
-	const room = new R.RoomStoreHelpers(store, transport)
+type RoomStore = SharedStore<RO.RoomState, RO.RoomOp, RO.RoomEvent, RO.ClientOwnedState>
 
-	//#region set initial state
-	{
-		const state: R.RoomState = {
-			members: [],
-			status: 'pregame',
-			gameParticipants: {} as R.RoomState['gameParticipants'],
-			agreePieceSwap: null,
-			isReadyForGame: {},
-			gameConfig: GL.getDefaultGameConfig(),
-			drawOffers: {} as R.RoomState['drawOffers'],
-			moves: [],
+export function initServerSideRoomLogic(store: RoomStore) {
+	initConnectionTracking(store)
+	initClockAuthority(store)
+}
+
+// mirrors socket-level presence into the shared room state via server-authored ops. all the actual
+// state transitions live in the room reducer -- this system just decides when to dispatch. it is
+// driven by the store's update streams (solid reactivity is inert in the server build) and uses
+// precise one-shot timers for disconnect timeouts instead of polling.
+function initConnectionTracking(store: RoomStore) {
+	const previouslyConnected = new Set<string>()
+	const timeoutTimers = new Map<string, ReturnType<typeof setTimeout>>()
+	// players we've already reported a timeout for during their current disconnect episode
+	const timedOutEpisode = new Set<string>()
+
+	function cancelTimeout(playerId: string) {
+		const timer = timeoutTimers.get(playerId)
+		if (timer !== undefined) {
+			clearTimeout(timer)
+			timeoutTimers.delete(playerId)
 		}
-		void store.setStore({ path: [], value: state })
 	}
-	//#endregion
 
-	//#region player event tracking
-	{
-		const prevConnected: R.RoomMember[] = []
-		const connectedPlayers = createMemo(() => {
-			const states = trackDeep(store.clientControlled.states)
-			const playerIds: string[] = Object.values(states).map((s) => s.playerId)
-			const currConnected = room.members.filter((p) => playerIds.includes(p.id) && p.name)
-			// return same object so equality check passes
-			if (deepEquals(playerIds, prevConnected)) return prevConnected
-			return currConnected
-		})
+	function reconcile() {
+		// players with at least one connected client that has identified itself
+		const connected = new Set(
+			Object.values(store.clientControlled.states)
+				.map((s) => s.playerId)
+				.filter((id) => !!id)
+		)
 
-		//#region track reconnects and disconnects
-		const previouslyConnected = new Set<string>()
-		createEffect(() => {
-			const _connectedPlayers = unwrap(connectedPlayers())
-			untrack(() => {
-				for (const player of room.members) {
-					const isConnected = _connectedPlayers.some((p) => p.id === player.id)
-					if (!previouslyConnected.has(player.id) && isConnected) {
-						previouslyConnected.add(player.id)
-						void store.setStoreWithRetries((state) => {
-							const playerIndex = state.members.findIndex((p) => p.id === player.id)
-							if (playerIndex === -1 || !player.disconnectedAt) return []
-							return {
-								events: [{ type: 'player-reconnected', playerId: player.id }],
-								mutations: [
-									{
-										path: ['members', playerIndex, 'disconnectedAt'],
-										value: undefined,
-									},
-								],
-							}
-						})
-					} else if (previouslyConnected.has(player.id) && !isConnected) {
-						const disconnectedAt = Date.now()
-						previouslyConnected.delete(player.id)
-
-						void store.setStoreWithRetries((state) => {
-							const playerIndex = state.members.findIndex((p) => p.id === player.id)
-							if (playerIndex === -1) return []
-							console.debug('player disconnected', player.id, 'at', disconnectedAt, 'state', state)
-							return {
-								events: [],
-								mutations: [
-									{
-										path: ['members', playerIndex, 'disconnectedAt'],
-										value: disconnectedAt,
-									},
-								],
-							}
-						})
-					}
-				}
-			})
-		})
-		interval(PLAYER_TIMEOUT / 4).subscribe(() => {
-			for (const id of previouslyConnected) {
-				const member = store.rollbackState.members.find((p) => p.id === id)!
-				if (member.disconnectedAt !== undefined && Date.now() - member.disconnectedAt) {
-					void store.setStoreWithRetries(() => {
-						const participant = room.participants.find((p) => p.id === id)!
-						if (!participant) return
-						if (room.state.status !== 'pregame') {
-							return { events: [{ type: 'player-disconnected', playerId: id }], mutations: [] }
-						}
-						return {
-							events: [{ type: 'player-disconnected', playerId: id }],
-							mutations: [
-								{
-									path: ['gameParticipants', participant.color],
-									value: SS.DELETE,
-								},
-							],
-						}
-					})
-				}
+		for (const member of store.snapshot().members) {
+			const isConnected = connected.has(member.id)
+			if (!previouslyConnected.has(member.id) && isConnected) {
+				previouslyConnected.add(member.id)
+				cancelTimeout(member.id)
+				timedOutEpisode.delete(member.id)
+				// the reducer no-ops this unless the player was actually marked disconnected
+				void store.dispatch({ code: 'player-reconnected', playerId: member.id })
+			} else if (previouslyConnected.has(member.id) && !isConnected) {
+				previouslyConnected.delete(member.id)
+				void store.dispatch({ code: 'player-disconnected', playerId: member.id, time: Date.now() })
 			}
-		})
-		//#endregion
+
+			// once the reducer has stamped disconnectedAt (the dispatch above triggers another
+			// reconcile pass), arm a one-shot timer for the exact end of the timeout window
+			if (member.disconnectedAt !== undefined && !isConnected && !timeoutTimers.has(member.id) && !timedOutEpisode.has(member.id)) {
+				const remaining = Math.max(PLAYER_TIMEOUT - (Date.now() - member.disconnectedAt), 0)
+				timeoutTimers.set(
+					member.id,
+					setTimeout(() => {
+						timeoutTimers.delete(member.id)
+						timedOutEpisode.add(member.id)
+						const current = store.snapshot().members.find((m) => m.id === member.id)
+						if (!current || current.disconnectedAt === undefined) return
+						void store.dispatch({ code: 'player-timed-out', playerId: member.id })
+					}, remaining)
+				)
+			}
+		}
 	}
-	//#endregion
+
+	// dispatches inside reconcile fire stateUpdate$ synchronously -- coalesce to one pass per tick
+	// instead of re-entering
+	let queued = false
+	function requestReconcile() {
+		if (queued) return
+		queued = true
+		queueMicrotask(() => {
+			queued = false
+			reconcile()
+		})
+	}
+
+	const stateSub = store.stateUpdate$.subscribe(requestReconcile)
+	const ccsSub = store.clientControlled.update$.subscribe(requestReconcile)
+	requestReconcile()
+
+	onCleanup(() => {
+		stateSub.unsubscribe()
+		ccsSub.unsubscribe()
+		for (const timer of timeoutTimers.values()) clearTimeout(timer)
+		timeoutTimers.clear()
+	})
 }

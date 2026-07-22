@@ -1,54 +1,29 @@
-import { until } from '@solid-primitives/promise'
-import deepEquals from 'fast-deep-equal'
-import { Observable, ReplaySubject, distinctUntilChanged, filter, first, from as rxFrom } from 'rxjs'
+import { Observable, filter } from 'rxjs'
 import { map } from 'rxjs/operators'
-import { Accessor, createEffect, createMemo, createRoot, createSignal, getOwner, observable, on, onCleanup } from 'solid-js'
+import { Accessor, createMemo, createRoot, createSignal, getOwner, on, onCleanup } from 'solid-js'
 import { unwrap } from 'solid-js/store'
 
 import * as SS from '~/sharedStore/sharedStore.ts'
-import { PUSH, StoreMutation } from '~/sharedStore/sharedStore.ts'
 import * as DS from '~/systems/debugSystem'
 import { createId } from '~/utils/ids.ts'
 import { deepClone } from '~/utils/obj.ts'
-import { SignalProperty, createSignalProperty, trackAndUnwrap } from '~/utils/solid.ts'
+import { SignalProperty, createSignalProperty } from '~/utils/solid.ts'
 
 import { log } from '../logger.browser.ts'
 import * as P from '../player.ts'
 import * as GL from './gameLogic.ts'
+import * as GO from './gameOps.ts'
 
 //#region types
+export type { GameEvent, DrawEventType, GameParticipant, RootGameState } from './gameOps.ts'
+export { DRAW_EVENTS, getDrawIsOfferedBy } from './gameOps.ts'
+
 export type PlayerWithColor = P.Player & { color: GL.Color }
 export type BoardView = {
 	board: GL.Board
 	lastMove: GL.Move | null
 	moveIndex: number
 }
-export const DRAW_EVENTS = ['draw-offered', 'draw-accepted', 'draw-declined', 'draw-canceled'] as const
-export type DrawEventType = (typeof DRAW_EVENTS)[number]
-
-export type GameEvent =
-	| {
-			type: 'make-move'
-			playerId: string
-			moveIndex: number
-	  }
-	| {
-			type: 'game-over'
-	  }
-	| {
-			type: DrawEventType
-			playerId: string
-	  }
-	| {
-			type: 'new-game'
-			playerId: string
-			gameId: string
-	  }
-	| {
-			type: 'committed-in-progress-move'
-			playerId: string
-			gameId: string
-	  }
 
 export type ValidateMoveResult =
 	| { code: 'invalid' }
@@ -67,11 +42,6 @@ export type MoveAmbiguity =
 			options: GL.CandidateMove[]
 	  }
 
-export type GameParticipant = {
-	id: string
-	color: GL.Color
-}
-
 export type BoardViewEvent =
 	| {
 			type: 'return-to-live'
@@ -84,27 +54,19 @@ export type BoardViewEvent =
 			type: 'flip-board'
 	  }
 
-export type GameParticipantWithDetails = GameParticipant & { name: string }
+export type GameParticipantWithDetails = GO.GameParticipant & { name: string }
 
-export type RootGameState = {
-	// TODO eventually just make this an array, it's just easier that way
-	gameParticipants: { [key in GL.Color]: GameParticipant }
-	gameConfig: GL.GameConfig
-	moves: GL.Move[]
-	outcome?: GL.GameOutcome
-	inProgressMove?: GL.InProgressMove
-	activeGameId?: string
-	drawOffers: { [key in GL.Color]: number }
-}
+// any store whose state embeds the game state and whose ops include the game ops satisfies this
+// (the room store does, and the vs-bot store is exactly this)
+export type GameStore = SS.SharedStore<GO.RootGameState, GO.GameOp, GO.GameEvent>
 
 export interface RootGameContext {
-	state: RootGameState
-	sharedStore: SS.SharedStore<RootGameState, object, GameEvent>
-	rollbackState: RootGameState
+	state: GO.RootGameState
+	sharedStore: GameStore
 	members: P.Player[]
 
 	backToPregame(): void
-	event$: Observable<GameEvent>
+	event$: Observable<GO.GameEvent>
 
 	player: P.Player
 }
@@ -151,7 +113,7 @@ export class Game {
 
 	//#region game state / board
 	get isActiveGame() {
-		return this.gameContext.rollbackState.activeGameId === this.gameId
+		return this.gameContext.state.activeGameId === this.gameId
 	}
 
 	stateSignal!: Accessor<GL.GameState>
@@ -164,15 +126,9 @@ export class Game {
 	boardWithInProgressMove!: Accessor<GL.Board>
 
 	setupGameState() {
-		const moveHistory = () => trackAndUnwrap(this.gameContext.rollbackState.moves)
+		// the move list is a raw path: a plain array behind a reference-equality signal, no proxying
+		const moveHistory = () => this.gameContext.sharedStore.raw.moves ?? []
 		const boardHistory = GL.useBoardHistory(moveHistory, GL.getStartPos(this.gameConfig))
-		// createEffect(() => {
-		// 	console.log('moves raw', trackAndUnwrap(this.gameContext.rollbackState.moves))
-		// })
-		// createEffect(() => {
-		// 	console.log('move history', moveHistory())
-		// 	console.log('board history', boardHistory())
-		// })
 
 		// only update state on board history change because syncing chained signals can be annoying
 		this.stateSignal = createMemo(
@@ -181,8 +137,8 @@ export class Game {
 					boardHistory: boardHistory,
 					moveHistory: moveHistory(),
 					players: {
-						[this.gameContext.rollbackState.gameParticipants.white.id]: 'white',
-						[this.gameContext.rollbackState.gameParticipants.black.id]: 'black',
+						[this.gameContext.state.gameParticipants.white.id]: 'white',
+						[this.gameContext.state.gameParticipants.black.id]: 'black',
 					}!,
 				}
 				return state
@@ -192,7 +148,7 @@ export class Game {
 		DS.addHook('board', () => this.board, getOwner()!)
 
 		this.inProgressMoveLocal = createSignalProperty<GL.InProgressMove | undefined>(
-			this.isThisPlayersTurn() ? this.gameContext.rollbackState.inProgressMove : undefined
+			this.isThisPlayersTurn() ? this.gameContext.state.inProgressMove : undefined
 		)
 
 		this.boardWithInProgressMove = createMemo(() => {
@@ -211,31 +167,24 @@ export class Game {
 	//#region move selection, validation and updates
 
 	get inProgressMove() {
-		return this.gameContext.rollbackState.inProgressMove
+		return this.gameContext.state.inProgressMove
 	}
 	get comittedInProgressMove() {
-		return this.gameContext.rollbackState.inProgressMove
+		return this.gameContext.state.inProgressMove
 	}
 	setBaseInProgressMove(move: { from: string; to: string }) {
 		this.inProgressMoveLocal.set(move)
 	}
 
-	// boardcasts in progress move to other clients
+	// broadcasts in progress move to other clients
 	async commitInProgressMove() {
-		await this.gameContext.sharedStore.setStoreWithRetries(() => {
-			if (!this.isActiveGame || !this.isThisPlayersTurn() || !this.inProgressMoveLocal.get()) return
-
-			return {
-				events: [
-					{
-						type: 'committed-in-progress-move',
-						gameId: this.gameId,
-						playerId: this.bottomPlayer.id,
-						move: this.inProgressMoveLocal.get(),
-					},
-				],
-				mutations: [{ path: ['inProgressMove'], value: this.inProgressMoveLocal.get() }],
-			}
+		const move = this.inProgressMoveLocal.get()
+		if (!this.isActiveGame || !this.isThisPlayersTurn() || !move) return
+		await this.gameContext.sharedStore.dispatch({
+			code: 'commit-in-progress-move',
+			playerId: this.bottomPlayer.id,
+			gameId: this.gameId,
+			move,
 		})
 	}
 	async setDuck(duckSquare: string) {
@@ -293,15 +242,20 @@ export class Game {
 	}
 
 	makeMoveProgrammatic(move: GL.InProgressMove) {
-		const result = GL.validateAndPlayMove(move, this.stateSignal(), this.gameConfig.variant)
+		const state = this.stateSignal()
+		const result = GL.validateAndPlayMove(move, state, this.gameConfig.variant)
 		if (!result) {
-			throw new Error(`invalid move: ${JSON.stringify(result)}`)
+			throw new Error(`invalid move: ${JSON.stringify(move)}`)
 		}
-		const expectedMoveIndex = this.state.moveHistory.length
-		void this.gameContext.sharedStore.setStoreWithRetries(() => {
-			if (!this.isActiveGame) return
-			if (this.state.moveHistory.length !== expectedMoveIndex) return
-			return this.getMoveTransaction(result, this.state)
+		const board = GL.getBoard(state)
+		const playerId = Object.keys(state.players).find((id) => state.players[id] === board.toMove)!
+		void this.gameContext.sharedStore.dispatch({
+			code: 'make-move',
+			playerId,
+			gameId: this.gameId,
+			expectedMoveIndex: state.moveHistory.length,
+			move,
+			time: this.gameContext.sharedStore.serverNow(),
 		})
 	}
 
@@ -335,91 +289,25 @@ export class Game {
 		if (!move) throw new Error('no in progress move')
 		if (!this.isClientPlayerParticipating) return { code: 'invalid' }
 		if (this.outcome) return { code: 'invalid' }
-		const expectedMoveIndex = this.state.moveHistory.length
+		const state = unwrap(this.state)
 
-		const [cancelled, setCancelled] = createSignal(false)
-		void this.gameContext.sharedStore.setStoreWithRetries(() => {
-			if (!this.isActiveGame) {
-				setCancelled(true)
-				return
-			}
-			const state = unwrap(this.state)
-			if (this.outcome) {
-				setCancelled(true)
-				return
-			}
-			// check that we're still on the same currentMove
-			if (this.state.moveHistory.length !== expectedMoveIndex) {
-				setCancelled(true)
-				return
-			}
-			const board = GL.getBoard(state)
-			if (!GL.isPlayerTurn(board, this.bottomPlayer.color) || !board.pieces[move.from]) {
-				setCancelled(true)
-				return
-			}
-			const result = GL.validateAndPlayMove(move, state, this.gameConfig.variant)
-			if (!result) {
-				setCancelled(true)
-				return
-			}
-			return this.getMoveTransaction(result, state)
+		// the reducer re-validates against whatever state the op actually lands on; this is just a
+		// local fast-path check so obviously stale moves don't get dispatched at all
+		const board = GL.getBoard(state)
+		if (!GL.isPlayerTurn(board, this.bottomPlayer.color) || !board.pieces[move.from]) return
+		if (!GL.validateAndPlayMove(move, state, this.gameConfig.variant)) return
+
+		const res = await this.gameContext.sharedStore.dispatch({
+			code: 'make-move',
+			playerId: this.bottomPlayer.id,
+			gameId: this.gameId,
+			expectedMoveIndex: state.moveHistory.length,
+			move,
+			time: this.gameContext.sharedStore.serverNow(),
 		})
 		this.inProgressMoveLocal.set(undefined)
-		await until(() => {
-			return expectedMoveIndex === this.state.moveHistory.length - 1 || cancelled()
-		})
-	}
-
-	private getMoveTransaction(_result: ReturnType<typeof GL.validateAndPlayMove>, state: GL.GameState) {
-		const result = _result!
-		const mutations: StoreMutation[] = [
-			{
-				path: ['moves', PUSH],
-				value: result.move,
-			},
-			{
-				path: ['inProgressMove'],
-				value: SS.DELETE,
-			},
-		]
-		const toMove = state.boardHistory[state.boardHistory.length - 1].board.toMove
-		const playerId = Object.keys(state.players).find((id) => state.players[id] === toMove)!
-		const events: GameEvent[] = [
-			{
-				type: 'make-move',
-				playerId: playerId,
-				moveIndex: state.moveHistory.length,
-			},
-		]
-		const newState: GL.GameState = {
-			players: this.state.players,
-			moveHistory: [...state.moveHistory, result.move],
-			boardHistory: [...state.boardHistory, { board: result.board }],
-		}
-		const outcome = GL.getGameOutcome(newState, this.parsedGameConfig)
-		if (outcome) {
-			mutations.push({
-				path: ['outcome'],
-				value: outcome,
-			})
-			events.push({
-				type: 'game-over',
-			})
-		}
-
-		if (this.drawIsOfferedBy) {
-			mutations.push({ path: ['drawOfferedBy'], value: null })
-			if (this.drawIsOfferedBy === this.bottomPlayer.color) {
-				events.push({ type: 'draw-canceled', playerId: playerId })
-			} else {
-				events.push({ type: 'draw-declined', playerId: playerId })
-			}
-		}
-
-		return {
-			events,
-			mutations,
+		if (res.rejected) {
+			log.warn(res.error.data, 'move rejected')
 		}
 	}
 
@@ -469,57 +357,24 @@ export class Game {
 	private getClocks = () => ({ white: 0, black: 0 })
 
 	setupClocks() {
+		// display only: flagging is done by whichever session is the clock authority (the server for
+		// rooms, the local leader store for vs-bot -- see clockAuthority.ts). derived statelessly
+		// from the move history on every tick, so rolled-back moves can't corrupt the clocks; move
+		// timestamps are in server time, so elapsed time is measured on the same clock (serverNow).
 		if (this.gameConfig.timeControl === 'unlimited') return
-		const move$ = observeMoves(this.stateSignal)
-		this.getClocks = useClock(move$, this.parsedGameConfig, () => !!this.outcome)
-
-		type Timeouts = {
-			white: boolean
-			black: boolean
-		}
-
-		const timeout$ = rxFrom(observable(this.getClocks)).pipe(
-			map(
-				(clocks) =>
-					({
-						white: clocks.white <= 0,
-						black: clocks.black <= 0,
-					}) as Timeouts
-			),
-			distinctUntilChanged(deepEquals)
-		)
-
-		const sub = timeout$
-			.pipe(
-				filter((t) => t.white || t.black),
-				first()
+		const [tick, setTick] = createSignal(0)
+		const interval = setInterval(() => {
+			if (!this.outcome) setTick((t) => t + 1)
+		}, 100)
+		onCleanup(() => clearInterval(interval))
+		this.getClocks = createMemo(() => {
+			tick()
+			const clocks = GO.computeClocks(
+				{ gameConfig: this.gameConfig, moves: this.state.moveHistory },
+				this.gameContext.sharedStore.serverNow()
 			)
-			.subscribe((timeouts) => {
-				if (!timeouts) return
-				const outcome: GL.GameOutcome = {
-					winner: timeouts.white ? 'black' : 'white',
-					reason: 'flagged',
-				}
-				void this.gameContext.sharedStore.setStoreWithRetries(() => {
-					if (!this.isActiveGame) return
-					if (this.outcome) return
-					const events: GameEvent[] = [{ type: 'game-over' }]
-
-					const mutations: StoreMutation[] = [
-						{
-							path: ['outcome'],
-							value: outcome,
-						},
-					]
-					return {
-						events,
-						mutations,
-					}
-				})
-			})
-
-		onCleanup(() => {
-			sub.unsubscribe()
+			if (!clocks) return { white: 0, black: 0 }
+			return { white: Math.max(clocks.white, 0), black: Math.max(clocks.black, 0) }
 		})
 	}
 
@@ -542,94 +397,33 @@ export class Game {
 
 	//#region draws and resignation
 	offerOrAcceptDraw() {
-		if (!this.isClientPlayerParticipating) return
-		const moveOffered = this.state.moveHistory.length
-		const offerTime = Date.now()
-		void this.gameContext.sharedStore.setStoreWithRetries(() => {
-			if (!this.isActiveGame) return
-			if (!this.state || this.state.moveHistory.length !== moveOffered || this.drawIsOfferedBy === this.bottomPlayer.color) return
-			if (this.drawIsOfferedBy) {
-				const outcome: GL.GameOutcome = {
-					winner: null,
-					reason: 'draw-accepted',
-				}
-				return {
-					events: [{ type: 'draw-accepted', playerId: this.bottomPlayer.id }, { type: 'game-over' }],
-					mutations: [
-						{
-							path: ['outcome'],
-							value: outcome,
-						},
-					],
-				}
-			} else {
-				return {
-					events: [{ type: 'draw-offered', playerId: this.bottomPlayer.id }],
-					mutations: [
-						{
-							path: ['drawOffers', this.bottomPlayer.color],
-							value: offerTime,
-						},
-					],
-				}
-			}
-		})
+		if (!this.isClientPlayerParticipating || !this.isActiveGame || this.outcome) return
+		const drawIsOfferedBy = this.drawIsOfferedBy
+		if (drawIsOfferedBy === this.bottomPlayer.color) return
+		if (drawIsOfferedBy) {
+			void this.gameContext.sharedStore.dispatch({ code: 'accept-draw', playerId: this.bottomPlayer.id })
+		} else {
+			void this.gameContext.sharedStore.dispatch({
+				code: 'offer-draw',
+				playerId: this.bottomPlayer.id,
+				time: this.gameContext.sharedStore.serverNow(),
+			})
+		}
 	}
 
 	declineOrCancelDraw() {
-		if (!this.isClientPlayerParticipating) return
-		const moveOffered = this.state.moveHistory.length
-		void this.gameContext.sharedStore.setStoreWithRetries(() => {
-			if (!this.isActiveGame) return
-			if (!this.state || this.state.moveHistory.length !== moveOffered || GL.getGameOutcome(this.state, this.parsedGameConfig)) return
-			const drawIsOfferedBy = getDrawIsOfferedBy(this.gameContext.state.drawOffers)
-			if (!this.drawIsOfferedBy) return
-			if (drawIsOfferedBy === this.bottomPlayer.color) {
-				return {
-					events: [{ type: 'draw-canceled', playerId: this.bottomPlayer.id }],
-					mutations: [
-						{
-							path: ['drawOffers', this.bottomPlayer.color],
-							value: null,
-						},
-					],
-				}
-			} else {
-				return {
-					events: [{ type: 'draw-declined', playerId: this.bottomPlayer.id }],
-					mutations: [
-						{
-							path: ['drawOffers', this.topPlayer.color],
-							value: null,
-						},
-					],
-				}
-			}
-		})
+		if (!this.isClientPlayerParticipating || !this.isActiveGame || this.outcome) return
+		if (!this.drawIsOfferedBy) return
+		void this.gameContext.sharedStore.dispatch({ code: 'decline-or-cancel-draw', playerId: this.bottomPlayer.id })
 	}
 
 	resign() {
-		void this.gameContext.sharedStore.setStoreWithRetries(() => {
-			if (!this.isActiveGame) return
-			if (!this.isClientPlayerParticipating || this.outcome) return
-			const outcome: GL.GameOutcome = {
-				winner: this.topPlayer.color,
-				reason: 'resigned',
-			}
-
-			return {
-				events: [
-					{
-						type: 'game-over',
-					},
-				],
-				mutations: [{ path: ['outcome'], value: outcome }],
-			}
-		})
+		if (!this.isClientPlayerParticipating || !this.isActiveGame || this.outcome) return
+		void this.gameContext.sharedStore.dispatch({ code: 'resign', playerId: this.bottomPlayer.id })
 	}
 
 	get drawIsOfferedBy() {
-		return getDrawIsOfferedBy(this.gameContext.rollbackState.drawOffers)
+		return GO.getDrawIsOfferedBy(this.gameContext.state.drawOffers)
 	}
 
 	//#endregion
@@ -678,103 +472,8 @@ export class Game {
 }
 
 //#region helpers
-function observeMoves(gameState: Accessor<GL.GameState>) {
-	const subject = new ReplaySubject<GL.Move>()
-	let lastObserved = -1
-	createEffect(() => {
-		for (let i = lastObserved + 1; i < gameState().moveHistory.length; i++) {
-			subject.next(gameState().moveHistory[i])
-		}
-		lastObserved = gameState().moveHistory.length - 1
-	})
-
-	onCleanup(() => {
-		subject.complete()
-	})
-
-	return subject.asObservable()
-}
-
-function useClock(move$: Observable<GL.Move>, gameConfig: GL.ParsedGameConfig, gameEnded: Accessor<boolean>) {
-	const startingTime = gameConfig.timeControl
-	if (gameConfig.timeControl === null) {
-		return () => ({ white: 0, black: 0 })
-	}
-	const [white, setWhite] = createSignal(startingTime!)
-	const [black, setBlack] = createSignal(startingTime!)
-	let lastMoveTs = 0
-	let toPlay: GL.Color = 'white'
-
-	const sub = move$.subscribe((move) => {
-		if (gameEnded()) return
-		// this means that time before the first move is not counted towards the player's clock
-		if (lastMoveTs !== 0) {
-			const lostTime = move.ts - lastMoveTs - gameConfig.increment
-			if (toPlay === 'white') {
-				setWhite(Math.min(white() - lostTime, startingTime!))
-			} else {
-				setBlack(Math.min(black() - lostTime, startingTime!))
-			}
-		}
-		toPlay = toPlay === 'white' ? 'black' : 'white'
-		lastMoveTs = move.ts
-	})
-
-	const [elapsedSinceLastMove, setElapsedSinceLastMove] = createSignal(0)
-
-	function elapsedListener() {
-		if (lastMoveTs === 0) return
-		const elapsed = Date.now() - lastMoveTs
-		setElapsedSinceLastMove(elapsed)
-	}
-
-	const timeout = setInterval(elapsedListener, 10)
-
-	const clocks = () => {
-		const times = {
-			white: white(),
-			black: black(),
-		}
-		times[toPlay] -= elapsedSinceLastMove()
-		return {
-			white: Math.max(times.white, 0),
-			black: Math.max(times.black, 0),
-		}
-	}
-
-	createEffect(() => {
-		if (gameEnded()) {
-			clearInterval(timeout)
-			sub.unsubscribe()
-		}
-	})
-
-	onCleanup(() => {
-		clearInterval(timeout)
-		sub.unsubscribe()
-	})
-
-	return clocks
-}
-
-export function getDrawIsOfferedBy(offers: RootGameState['drawOffers']) {
-	for (const [color, draw] of Object.entries(offers)) {
-		if (draw !== null) return color as GL.Color
-	}
-	return null
-}
-
-export function getNewGameTransaction(playerId: string): { mutations: SS.StoreMutation[]; events: GameEvent[] } {
-	const gameId = createId(6)
-	return {
-		events: [{ type: 'new-game', playerId, gameId }],
-		mutations: [
-			{ path: ['moves'], value: [] },
-			{ path: ['drawOffers'], value: { white: null, black: null } },
-			{ path: ['activeGameId'], value: gameId },
-			{ path: ['outcome'], value: undefined },
-		],
-	}
+export function newGameId() {
+	return createId(6)
 }
 
 //#endregion

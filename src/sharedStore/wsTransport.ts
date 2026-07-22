@@ -35,8 +35,11 @@ export class WsTransport<Msg extends SharedStoreMessage> implements Transport<Ms
 			)
 		) as Promise<void>
 
-		if (typeof document !== 'undefined') {
-			document.addEventListener('beforeunload', () => {
+		if (typeof window !== 'undefined') {
+			// pagehide (unlike beforeunload) also fires when the page is frozen into the back/forward
+			// cache, where chrome would otherwise keep the socket open and the server would never see
+			// the client leave
+			window.addEventListener('pagehide', () => {
 				this.ws.close()
 			})
 		}

@@ -1,38 +1,59 @@
 import { until } from '@solid-primitives/promise'
 import deepEquals from 'fast-deep-equal'
 import { Logger } from 'pino'
-import { Observable, Subject, Subscription, concatMap, endWith, filter, first, firstValueFrom, map, mapTo } from 'rxjs'
+import { Observable, Subject, Subscription, filter } from 'rxjs'
 import { Accessor, batch, createSignal, onCleanup } from 'solid-js'
-import { createStore, produce, unwrap } from 'solid-js/store'
+import { createStore, produce, reconcile } from 'solid-js/store'
+
+import { createId } from '~/utils/ids.ts'
+import { deepClone } from '~/utils/obj.ts'
+
+import * as ODSM from './odsm.ts'
 
 //#region types
 
-// TODO: strong typing for paths and values like in solid's setStore
-export type StoreMutation = {
-	path: (string | number)[]
-	value: any
-}
+export type { OpId } from './odsm.ts'
+export { RejectedError } from './odsm.ts'
 
-type NewSharedStoreOrderedTransaction<Event extends BaseEvent = BaseEvent> = {
-	index: number
-	mutations: StoreMutation[]
-	events: Event[]
-}
+export type BaseOp = ODSM.BaseOp
 export type BaseEvent = { type: string }
 
-type NewSharedStoreTransaction<Event extends BaseEvent> = NewSharedStoreOrderedTransaction<Event>
-export type SharedStoreTransaction<Event extends BaseEvent> = NewSharedStoreTransaction<Event> & {
-	mutationId: string
-}
-export type SharedStoreOrderedTransaction<Event extends BaseEvent> = NewSharedStoreOrderedTransaction<Event> & {
-	mutationId: string
+export type DistributiveOmit<T, K extends keyof any> = T extends any ? Omit<T, K> : never
+// a domain op minus the fields the store stamps at dispatch time
+export type NewOp<Op extends BaseOp> = DistributiveOmit<Op, 'opId'>
+
+// convenience for reducers: reject the batch being applied
+export function reject<T = unknown>(data: T, message?: string): never {
+	throw new ODSM.RejectedError(data, { message })
 }
 
-export type NewNetworkResponse = {
-	networkId: string
+/**
+ * builds a batch reducer from a single-op handler. the handler either returns the next state
+ * (using structural sharing), emits side effects via `emit`, or throws via `reject` -- which
+ * rejects the whole batch, per ODSM's all-or-nothing batch semantics.
+ */
+export function makeReducer<Op extends BaseOp, S, SE extends BaseEvent>(
+	applyOp: (state: S, op: Op, emit: (se: SE) => void) => S
+): ODSM.Reducer<Op, S, SE> {
+	return (state, ops, _prevOps) => {
+		const sideEffects: SE[] = []
+		const emit = (se: SE) => sideEffects.push(se)
+		let next = state
+		for (const op of ops) next = applyOp(next, op, emit)
+		return [next, sideEffects] as const
+	}
 }
 
-export type Json = string
+export type StoreDefinition<Op extends BaseOp, S, SE extends BaseEvent> = {
+	reducer: ODSM.Reducer<Op, S, SE>
+	/**
+	 * paths into the state whose values are NOT reconciled into the reactive proxy tree. instead
+	 * they're exposed as plain javascript values on `store.raw`, tracked by reference equality --
+	 * reducers use structural sharing, so an untouched raw value keeps its identity and doesn't
+	 * notify. use for large/hot values (e.g. move history) where deep proxying is a perf drag.
+	 */
+	rawPaths?: readonly (readonly string[])[]
+}
 
 export type ClientControlledState = { [key: string]: any | null }
 export type ClientControlledStates<T extends ClientControlledState> = {
@@ -43,30 +64,43 @@ export type ClientControlledStatesUpdate<S extends ClientControlledState> = {
 	[key: string]: null | S
 }
 
-export type ClientConfig<T, CCS extends ClientControlledState> = {
+export type ClientConfig<S, Op extends BaseOp, CCS extends ClientControlledState> = {
 	clientId: string
-	initialState: T
+	state: S
+	// the tail of the committed op history, so a (re)connecting client can dedupe in-flight ops
+	ops: Op[]
 	clientControlledStates: ClientControlledStates<CCS>
-	lastMutationIndex: number
+	// the server's wall clock at config time, so clients can stamp op times in server time
+	// (see SharedStore.serverNow) instead of trusting their possibly-skewed local clock
+	serverTime: number
 }
 
-export type SharedStoreMessage<
-	Event extends BaseEvent = BaseEvent,
-	State = any,
-	CCS extends ClientControlledState = ClientControlledState,
-> =
+// why the server refused to commit an op batch. `message` is user-facing.
+export type OpsRejectedReason = { code: string; message: string }
+
+export type NewNetworkResponse = {
+	networkId: string
+}
+
+export type SharedStoreMessage<Op extends BaseOp = BaseOp, State = any, CCS extends ClientControlledState = ClientControlledState> =
 	| {
-			type: 'mutation'
-			mutation: SharedStoreTransaction<Event>
+			// client -> server: a new (dependent) batch of ops
+			// server -> clients: a batch committed to the canonical history, broadcast to everyone
+			// including the originator (who treats it as an ack and replays its own pending copies)
+			type: 'ops'
+			ops: Op[]
+	  }
+	| {
+			// server -> originator: the batch failed validation at the network layer (bad identity,
+			// implausible timestamps, ...) and was never committed. the originator discards the ops
+			// and rolls its optimistic state back.
+			type: 'ops-rejected'
+			opIds: ODSM.OpId[]
+			reason: OpsRejectedReason
 	  }
 	| {
 			type: 'client-config'
-			config: ClientConfig<State, CCS>
-	  }
-	| {
-			type: 'state'
-			state: State
-			lastMutationIndex: number
+			config: ClientConfig<State, Op, CCS>
 	  }
 	| {
 			type: 'client-controlled-states'
@@ -80,322 +114,523 @@ type SharedStoreTimeoutMessage = {
 	idleTime: number
 }
 
-export type ClientControlledStateNode<CCS extends ClientControlledState, Event extends BaseEvent, State> = ReturnType<
-	typeof initClientControlledStateNode<CCS, Event, State>
->
-
 type SharedStoreContext = {
 	log: Logger
 }
 
+export type DispatchResult<SE extends BaseEvent = BaseEvent> =
+	| {
+			rejected: true
+			error: ODSM.RejectedError
+	  }
+	| {
+			rejected: false
+			/**
+			 * resolves once the batch lands on the synced timeline: true if it applied cleanly, false if
+			 * it was rejected against the canonical history (i.e. our optimistic apply got rolled back)
+			 * or the connection dropped first. side effects for the batch fire on `event$`.
+			 */
+			confirmed: Promise<boolean>
+			sideEffects?: SE[]
+	  }
+
+export type ClientControlledStateNode<CCS extends ClientControlledState> = ReturnType<typeof initClientControlledStateNode<CCS>>
+
 export interface SharedStore<
 	State extends object,
+	Op extends BaseOp = BaseOp,
+	SE extends BaseEvent = BaseEvent,
 	CCS extends ClientControlledState = ClientControlledState,
-	Event extends BaseEvent = BaseEvent,
 > {
-	lockstepState: State
-	rollbackState: State
-	clientControlled: ClientControlledStateNode<CCS, Event, State>
-
-	setStore(
-		mutation: StoreMutation,
-		transactionBuilder?: SharedStoreTransactionBuilder<Event>,
-		events?: Event[]
-	): Promise<boolean | undefined>
-
-	setStoreWithRetries(
-		fn: (s: State) => StoreMutation[] | { mutations: StoreMutation[]; events: Event[] } | void,
-		numRetries?: number
-	): Promise<boolean>
+	/**
+	 * reactive (deeply proxied) view of the local optimistic state. values at rawPaths are absent
+	 * here -- read them from `raw` instead.
+	 */
+	state: State
 
 	/**
-	 * listen to events fired after a transaction is fully committed
+	 * plain (non-proxied) values for the configured rawPaths, behind reference-equality signals.
+	 * only the configured paths are populated.
 	 */
-	event$: Observable<Event>
+	raw: Readonly<State>
+
+	/** the plain local (optimistic) state -- always current, no tracking */
+	snapshot(): State
+
+	/** the plain synced (canonical-so-far) state */
+	syncedSnapshot(): State
+
+	/** the committed op history tail (leader) / synced op history tail (follower) */
+	history(): Op[]
 
 	/**
-	 * Fired on rollbacks
+	 * stamps opIds onto the given ops and applies them as one all-or-nothing batch: optimistically on
+	 * a follower (then sends them to the server), authoritatively on a leader (then broadcasts them).
+	 * a batch the reducer rejects against the current local state is dropped entirely.
 	 */
-	rollback$: Observable<NewSharedStoreOrderedTransaction<Event>[]>
+	dispatch(...ops: NewOp<Op>[]): Promise<DispatchResult<SE>>
+
+	/** side effects emitted by ops landing on the synced timeline */
+	event$: Observable<SE>
+
+	/** fired when optimistic local state gets replaced by a diverging canonical replay */
+	rollback$: Observable<void>
+
+	/** the plain local state after every change (optimistic or synced) -- for persistence etc. */
+	stateUpdate$: Observable<State>
 
 	/**
-	 * listen to events fired before a transaction is committed
+	 * batches of ours the server refused to commit (failed network-layer validation). the ops have
+	 * already been discarded and the optimistic state rolled back by the time this fires -- the
+	 * reason is for surfacing to the user.
 	 */
+	opsRejected$: Observable<OpsRejectedReason>
+
+	/**
+	 * the current time on the server's clock (estimated via the config handshake on followers).
+	 * op payload times must be stamped with this: the server rejects timestamps that are
+	 * implausible on ITS clock, however skewed the local one is.
+	 */
+	serverNow(): number
+
+	clientControlled: ClientControlledStateNode<CCS>
+	config: Accessor<ClientConfig<State, Op, CCS> | null>
 	initialized: Accessor<boolean>
-	config: Accessor<ClientConfig<State, CCS> | null>
-	lastMutationIndex: number
+}
+
+export interface Transport<Msg extends SharedStoreMessage<any, any, any>> {
+	networkId: string
+	message$: Observable<Msg>
+
+	send(message: Msg): void
+
+	waitForConnected(): Promise<void>
+
+	dispose(): void
+
+	disposed$: Promise<void>
 }
 
 //#endregion
 
-function applyMutationsToStore(mutations: StoreMutation[], setStore: (...args: any[]) => any, store: any) {
-	for (const mutation of mutations) {
-		// if (mutation.path.includes('outcome')) debugger
-		const container = unwrap(resolveValue(mutation.path.slice(0, -1), store))
-		if (mutation.value === DELETE && container instanceof Array) {
-			setStore(
-				...mutation.path.slice(0, -1),
-				(container as any[]).filter((_, i) => i !== mutation.path[mutation.path.length - 1])
-			)
-			continue
-		} else if (mutation.value === DELETE && typeof container === 'object') {
-			setStore(
-				produce((store) => {
-					const container = resolveValue(mutation.path.slice(0, -1), store)
-					delete container[mutation.path[mutation.path.length - 1]]
-				})
-			)
-			continue
-		} else if (mutation.value === DELETE) {
-			throw new Error('unhandled type ' + typeof container)
-		}
-		setStore(...mutation.path, mutation.value)
-	}
+export function createOpId() {
+	return createId(12)
 }
 
-async function setStoreWithRetries<State, Event extends BaseEvent>(
-	fn: (s: State) =>
-		| StoreMutation[]
-		| {
-				mutations: StoreMutation[]
-				events: Event[]
-		  }
-		| void,
-	applyTransaction: (transaction: NewSharedStoreOrderedTransaction<Event>) => Promise<boolean>,
-	appliedTransactions: NewSharedStoreOrderedTransaction<Event>[],
-	rollbackStore: State,
-	numRetries = 5
-) {
-	for (let i = 0; i < numRetries + 1; i++) {
-		const res = fn(rollbackStore)
-		if (!res) return true
-		let transaction: NewSharedStoreOrderedTransaction<Event>
-		if ('mutations' in res) {
-			// if (res.mutations.some((m) => m.path.includes('outcome'))) debugger
-			transaction = {
-				index: appliedTransactions.length,
-				events: res.events,
-				mutations: res.mutations,
-			}
-		} else {
-			transaction = {
-				mutations: res,
-				events: [],
-				index: appliedTransactions.length,
-			}
-		}
-		if (transaction.mutations.length === 0) return true
-		const success = await applyTransaction(transaction)
-		if (success) {
-			return true
-		}
+//#region reactive views
+
+function resolvePath(obj: any, path: readonly string[]) {
+	let current = obj
+	for (const seg of path) {
+		if (current == null) return undefined
+		current = current[seg]
 	}
-	return false
+	return current
 }
 
-// magical strings wooooo
-export const DELETE = '__DELETE__'
+// returns a copy of `state` with the raw paths removed, cloning containers along each path so the
+// original is untouched (structural sharing everywhere else)
+function stripRawPaths<S>(state: S, rawPaths: readonly (readonly string[])[]): S {
+	if (rawPaths.length === 0) return state
+	const root: any = Array.isArray(state) ? [...(state as any)] : { ...state }
+	const cloned = new Set<any>([root])
+	for (const path of rawPaths) {
+		let node = root
+		let missing = false
+		for (let i = 0; i < path.length - 1; i++) {
+			const child = node[path[i]]
+			if (child == null || typeof child !== 'object') {
+				missing = true
+				break
+			}
+			if (!cloned.has(child)) {
+				const copy = Array.isArray(child) ? [...child] : { ...child }
+				node[path[i]] = copy
+				cloned.add(copy)
+			}
+			node = node[path[i]]
+		}
+		if (!missing) delete node[path[path.length - 1]]
+	}
+	return root
+}
 
-export const PUSH = '__PUSH__'
+function initReactiveViews<S extends object>(rawPaths: readonly (readonly string[])[]) {
+	const [state, setState] = createStore<S>({} as S)
 
+	const rawSignals = new Map<string, [Accessor<unknown>, (v: () => unknown) => void]>()
+	const raw: any = {}
+	for (const path of rawPaths) {
+		const [get, set] = createSignal<unknown>(undefined)
+		rawSignals.set(path.join('/'), [get, set as any])
+		let node = raw
+		for (let i = 0; i < path.length - 1; i++) {
+			node[path[i]] ??= {}
+			node = node[path[i]]
+		}
+		Object.defineProperty(node, path[path.length - 1], {
+			get,
+			enumerable: true,
+		})
+	}
+
+	function update(next: S) {
+		batch(() => {
+			// reconcile mutates the store's target tree in place and adopts source nodes by reference,
+			// so hand it a clone -- the session's states use structural sharing and must never be
+			// reachable (and thus mutable) through the store
+			setState(reconcile(deepClone(stripRawPaths(next, rawPaths))))
+			for (const path of rawPaths) {
+				const [, set] = rawSignals.get(path.join('/'))!
+				set(() => resolvePath(next, path))
+			}
+		})
+	}
+
+	return { state, raw: raw as Readonly<S>, update }
+}
+
+//#endregion
+
+//#region leader store
+
+/**
+ * the authoritative replica: applies batches directly to the canonical history and broadcasts them.
+ * used server-side (one per network) and for purely local sessions (vs bot) with a null transport.
+ */
 export function initLeaderStore<
 	State extends object,
+	Op extends BaseOp = BaseOp,
+	SE extends BaseEvent = BaseEvent,
 	CCS extends ClientControlledState = ClientControlledState,
-	Event extends BaseEvent = BaseEvent,
 >(
-	transport: Transport<SharedStoreMessage<Event, State, CCS>>,
+	transport: Transport<SharedStoreMessage<Op, State, CCS>>,
+	def: StoreDefinition<Op, State, SE>,
 	ctx: SharedStoreContext,
-	startingState: State = {} as State
-): SharedStore<State, CCS, Event> {
-	ctx.log = ctx.log.child({ client: 'LEADER' })
-	const [store, _setStore] = createStore<State>(startingState)
-	const config: ClientConfig<State, CCS> = {
-		clientControlledStates: {},
-		clientId: 'LEADER',
-		initialState: startingState,
-		lastMutationIndex: -1,
-	}
+	startingState: State
+): SharedStore<State, Op, SE, CCS> {
+	const log = ctx.log.child({ client: 'LEADER' })
+	let session = ODSM.Server.initSession<Op, State>(startingState)
 
-	function setStoreWithPath(...args: any[]) {
-		const path = args.slice(0, -1)
-		//@ts-expect-error
-		_setStore(...interpolatePath(path, store), args[args.length - 1])
-	}
+	const views = initReactiveViews<State>(def.rawPaths ?? [])
+	views.update(session.state)
 
 	const subscription = new Subscription()
-
-	//#region events
-	const event$ = new Subject<Event>()
+	const event$ = new Subject<SE>()
+	const rollback$ = new Subject<void>() // a leader never rolls back; interface parity only
+	const stateUpdate$ = new Subject<State>()
+	const opsRejected$ = new Subject<OpsRejectedReason>() // interface parity; leader batches reject locally
 	subscription.add(event$)
+	subscription.add(rollback$)
+	subscription.add(stateUpdate$)
+	subscription.add(opsRejected$)
 	subscription.add(
 		event$.subscribe((event) => {
-			ctx.log.debug(event, 'emitting %s', event.type)
+			log.debug(event, 'emitting %s', event.type)
 		})
 	)
 
-	// we never actually call .next in a leader store, but we need to satisfy the interface
-	const rollback$ = new Subject<NewSharedStoreOrderedTransaction<Event>[]>()
-	subscription.add(rollback$)
+	const config: ClientConfig<State, Op, CCS> = {
+		clientId: 'LEADER',
+		state: startingState,
+		ops: [],
+		clientControlledStates: {},
+		serverTime: Date.now(),
+	}
+	const clientControlled = initClientControlledStateNode<CCS>(
+		() => config.clientId,
+		() => config.clientControlledStates,
+		transport,
+		null
+	)
 
-	const appliedTransactions = [] as NewSharedStoreOrderedTransaction<Event>[]
-	const transactionsBeingBuilt = new Set<SharedStoreTransactionBuilder<Event>>()
-	const clientControlled = initClientControlledStateNode(() => config, transport, null)
-	let nextAtomId = config.lastMutationIndex + 1
-
-	//#endregion
+	function commit(ops: Op[]): ODSM.Applied<ODSM.Server.Session<Op, State>, SE> {
+		const applied = ODSM.Server.applyOps(session, ops, def.reducer)
+		session = applied.session
+		// rejected batches are still recorded in history and broadcast so every replica's history
+		// stays coherent -- they just don't change state
+		transport.send({ type: 'ops', ops })
+		if (!applied.rejected) {
+			views.update(session.state)
+			stateUpdate$.next(session.state)
+			for (const se of applied.sideEffects) event$.next(se)
+		}
+		return applied
+	}
 
 	subscription.add(
-		observeIncomingMutations(transport).subscribe(async (_receivedTransaction) => {
-			ctx.log.trace('received transaction %s', _receivedTransaction.mutationId, _receivedTransaction)
-			const log = ctx.log.child({ mutationId: _receivedTransaction.mutationId })
-			// annoying but we have both receivedAtom and _receivedAtom for type narrowing reasons,
-			const receivedTransaction = _receivedTransaction as SharedStoreOrderedTransaction<Event>
-			if (receivedTransaction.index == null) {
-				throw new Error('impossible')
-			}
-			for (const mut of receivedTransaction.mutations) {
-				mut.path = interpolatePath(mut.path, store)
-			}
-
-			// we've received the first valid mutation with this index
-			if (receivedTransaction.index === appliedTransactions.length) {
-				batch(() => {
-					applyMutationsToStore(receivedTransaction.mutations, setStoreWithPath, store)
-				})
-				appliedTransactions.push(receivedTransaction)
-				// this is now canonical state, and we can broadcast it
-				broadcastAsCommitted(receivedTransaction, receivedTransaction.mutationId)
-				for (const action of receivedTransaction.events) {
-					event$.next(action)
-				}
-			} else {
-				// TODO what to do here
-				log
-					.child({ mutationId: _receivedTransaction.mutationId })
-					.warn(
-						receivedTransaction,
-						'received mutation with index %d that is not the next index: length: %d ',
-						receivedTransaction.index,
-						appliedTransactions.length
-					)
+		transport.message$.subscribe((msg) => {
+			if (msg.type !== 'ops') return
+			log.debug('received op batch: %s', msg.ops.map((o) => o.opId).join(','))
+			try {
+				commit(msg.ops)
+			} catch (err) {
+				// duplicate opIds etc: a protocol violation, not a rejection
+				log.error(err, 'failed to process incoming op batch')
 			}
 		})
 	)
 
-	async function setStore(mutation: StoreMutation, transactionBuilder?: SharedStoreTransactionBuilder<Event>, events: Event[] = []) {
-		let transaction: NewSharedStoreOrderedTransaction<Event>
-		if (transactionBuilder) {
-			transactionBuilder.push(mutation)
-			if (transactionsBeingBuilt.has(transactionBuilder)) {
-				return false
+	async function dispatch(...newOps: NewOp<Op>[]): Promise<DispatchResult<SE>> {
+		const ops = newOps.map((op) => ({ ...op, opId: createOpId() })) as unknown as Op[]
+		// like client-authored batches, a batch rejected against the current state is dropped entirely
+		// instead of polluting the canonical history
+		try {
+			def.reducer(session.state, ops, session.ops)
+		} catch (error) {
+			if (error instanceof ODSM.RejectedError) {
+				log.debug(error.data, 'batch rejected locally: %s', error.message)
+				return { rejected: true, error }
 			}
-			transactionsBeingBuilt.add(transactionBuilder)
-
-			const completed = await transactionBuilder.completed()
-			transactionsBeingBuilt.delete(transactionBuilder)
-			if (!completed) {
-				return false
-			}
-
-			transaction = transactionBuilder.build(appliedTransactions.length, events)
-		} else {
-			transaction = {
-				index: appliedTransactions.length,
-				events: events,
-				mutations: [mutation],
-			}
+			throw error
 		}
-		return await applyTransaction(transaction)
+		const applied = commit(ops)
+		if (applied.rejected) return { rejected: true, error: applied.error }
+		return { rejected: false, confirmed: Promise.resolve(true), sideEffects: applied.sideEffects }
 	}
 
-	function broadcastAsCommitted(newAtom: NewSharedStoreOrderedTransaction<Event>, mutationId?: string) {
-		const atom: SharedStoreTransaction<Event> = {
-			...newAtom,
-			mutationId: mutationId || `${config.clientId}:${nextAtomId}`,
-		}
-		nextAtomId++
-		const message: SharedStoreMessage<Event, State, CCS> = {
-			type: 'mutation',
-			mutation: atom,
-		}
-		transport.send(message)
-	}
-
-	async function _setStoreWithRetries(
-		fn: (s: State) =>
-			| StoreMutation[]
-			| {
-					mutations: StoreMutation[]
-					events: Event[]
-			  }
-			| void,
-		numRetries = 5
-	) {
-		return setStoreWithRetries(fn, applyTransaction, appliedTransactions, store, numRetries)
-	}
-
-	function applyTransaction(transaction: NewSharedStoreTransaction<Event>) {
-		for (const mut of transaction.mutations) {
-			mut.path = interpolatePath(mut.path, store)
-		}
-		let orderedTransaction: SharedStoreOrderedTransaction<Event>
-		if (transaction.index == null) {
-			orderedTransaction = {
-				...transaction,
-				index: appliedTransactions.length,
-				mutationId: `${config.clientId}:${appliedTransactions.length}`,
-			}
-		} else {
-			orderedTransaction = {
-				...transaction,
-				mutationId: `${config.clientId}:${transaction.index}`,
-			}
-		}
-		ctx.log.info(orderedTransaction, 'applying transaction %s', orderedTransaction.mutationId)
-		broadcastAsCommitted(orderedTransaction)
-		appliedTransactions.push(orderedTransaction)
-		// if (orderedTransaction.mutations.some((m) => m.path.includes('outcoome'))) debugger
-		batch(() => {
-			applyMutationsToStore(transaction.mutations, setStoreWithPath, store)
-		})
-		for (const action of orderedTransaction.events) {
-			event$.next(action)
-		}
-		return Promise.resolve(true)
-	}
+	onCleanup(() => {
+		subscription.unsubscribe()
+	})
 
 	return {
-		setStore,
-		setStoreWithRetries: _setStoreWithRetries,
-		lockstepState: store,
-		rollbackState: store,
+		state: views.state,
+		raw: views.raw,
+		snapshot: () => session.state,
+		syncedSnapshot: () => session.state,
+		history: () => session.ops,
+		dispatch,
 		event$,
 		rollback$,
+		stateUpdate$,
+		opsRejected$,
+		serverNow: () => Date.now(),
+		clientControlled,
 		config: () => config,
-		clientControlled: clientControlled,
-		get lastMutationIndex() {
-			return nextAtomId - 1
-		},
 		initialized: clientControlled.initialized,
 	}
 }
 
-function initClientControlledStateNode<CCS extends ClientControlledState, Event extends BaseEvent, State>(
-	config: () => ClientConfig<State, CCS> | null,
-	transport: Transport<SharedStoreMessage<Event, any, CCS>>,
+//#endregion
+
+//#region follower store
+
+export function initFollowerStore<
+	State extends object,
+	Op extends BaseOp = BaseOp,
+	SE extends BaseEvent = BaseEvent,
+	CCS extends ClientControlledState = ClientControlledState,
+>(
+	transport: Transport<SharedStoreMessage<Op, State, CCS>>,
+	def: StoreDefinition<Op, State, SE>,
+	ctx: SharedStoreContext,
+	startingClientState = {} as CCS
+): SharedStore<State, Op, SE, CCS> {
+	let log = ctx.log.child({ networkId: transport.networkId })
+
+	let session = ODSM.Client.initSession<Op, State>({} as State)
+	const views = initReactiveViews<State>(def.rawPaths ?? [])
+
+	const subscription = new Subscription()
+	const [config, setConfig] = createSignal<ClientConfig<State, Op, CCS> | null>(null)
+	const [initialized, setInitialized] = createSignal(false)
+
+	const event$ = new Subject<SE>()
+	const rollback$ = new Subject<void>()
+	const stateUpdate$ = new Subject<State>()
+	const opsRejected$ = new Subject<OpsRejectedReason>()
+	// estimated from the config handshake; kept at 0 until then
+	let serverTimeOffset = 0
+	subscription.add(event$)
+	subscription.add(rollback$)
+	subscription.add(stateUpdate$)
+	subscription.add(opsRejected$)
+	subscription.add(
+		event$.subscribe((e) => {
+			log.info(e, 'emitting %s', e.type)
+		})
+	)
+	subscription.add(
+		rollback$.subscribe(() => {
+			log.info('rolled back optimistic state')
+		})
+	)
+
+	// opId -> resolver for the dispatch confirmation promise
+	const confirmations = new Map<string, (confirmed: boolean) => void>()
+	function resolveConfirmations(opIds: string[], confirmed: boolean) {
+		for (const opId of opIds) {
+			confirmations.get(opId)?.(confirmed)
+			confirmations.delete(opId)
+		}
+	}
+	void transport.disposed$.then(() => {
+		for (const resolve of confirmations.values()) resolve(false)
+		confirmations.clear()
+	})
+
+	function afterSyncedApply(prev: ODSM.Client.Session<Op, State>, applied: ODSM.Applied<ODSM.Client.Session<Op, State>, SE>) {
+		session = applied.session
+		if (session.localState !== prev.localState) {
+			views.update(session.localState)
+			stateUpdate$.next(session.localState)
+		}
+		if (!applied.rejected) {
+			for (const se of applied.sideEffects) event$.next(se)
+		}
+		// our optimistic timeline got fully reconciled against the canonical history and came out
+		// different: downstream consumers may need to re-derive things they built off optimistic state
+		if (
+			prev.pendingOps.length > 0 &&
+			session.pendingOps.length === 0 &&
+			session.localState !== prev.localState &&
+			!deepEquals(session.localState, prev.localState)
+		) {
+			rollback$.next()
+		}
+	}
+
+	subscription.add(
+		transport.message$.subscribe((msg) => {
+			switch (msg.type) {
+				case 'client-config': {
+					log = log.child({ clientId: msg.config.clientId })
+					serverTimeOffset = msg.config.serverTime - Date.now()
+					session = ODSM.Client.processInit(session, msg.config.state, msg.config.ops, def.reducer)
+					views.update(session.localState)
+					stateUpdate$.next(session.localState)
+					setConfig(msg.config)
+					break
+				}
+				case 'ops': {
+					if (!config()) {
+						log.error('received ops before client-config, dropping')
+						break
+					}
+					const prev = session
+					try {
+						// the server broadcasts committed batches to everyone including the originator: a batch
+						// of our own ops doubles as the ack, and we replay our pending copies instead
+						if (msg.ops.some((op) => prev.pendingOps.some((p) => p.opId === op.opId))) {
+							const applied = ODSM.Client.processAcks(
+								prev,
+								msg.ops.map((op) => op.opId),
+								def.reducer
+							)
+							if (applied.unknownOpIds.length > 0) {
+								log.warn('acked opIds unknown to this client: %s', applied.unknownOpIds.join(','))
+							}
+							afterSyncedApply(prev, applied)
+							resolveConfirmations(
+								applied.ackedOps.map((op) => op.opId),
+								!applied.rejected
+							)
+						} else {
+							afterSyncedApply(prev, ODSM.Client.processIncomingOps(prev, msg.ops, def.reducer))
+						}
+					} catch (err) {
+						log.error(err, 'failed to process incoming op batch')
+					}
+					break
+				}
+				case 'ops-rejected': {
+					log.warn(msg.reason, 'server rejected op batch %s: %s', msg.opIds.join(','), msg.reason.code)
+					const prev = session
+					session = ODSM.Client.discardPendingOps(prev, msg.opIds, def.reducer)
+					if (session.localState !== prev.localState) {
+						views.update(session.localState)
+						stateUpdate$.next(session.localState)
+						if (!deepEquals(session.localState, prev.localState)) rollback$.next()
+					}
+					resolveConfirmations(msg.opIds, false)
+					opsRejected$.next(msg.reason)
+					break
+				}
+			}
+		})
+	)
+
+	async function dispatch(...newOps: NewOp<Op>[]): Promise<DispatchResult<SE>> {
+		await until(initialized)
+		const ops = newOps.map((op) => ({ ...op, opId: createOpId() })) as unknown as Op[]
+		const res = ODSM.Client.processOutgoingOps(session, ops, def.reducer)
+		if (res.rejected) {
+			log.debug(res.error.data, 'batch rejected locally: %s', res.error.message)
+			return { rejected: true, error: res.error }
+		}
+		session = res.session
+		views.update(session.localState)
+		stateUpdate$.next(session.localState)
+		const confirmed = Promise.all(ops.map((op) => new Promise<boolean>((resolve) => confirmations.set(op.opId, resolve)))).then((results) =>
+			results.every(Boolean)
+		)
+		log.debug('dispatching ops %s', ops.map((op) => op.opId).join(','))
+		transport.send({ type: 'ops', ops })
+		return { rejected: false, confirmed }
+	}
+
+	const ccs = initClientControlledStateNode<CCS>(
+		() => config()?.clientId ?? null,
+		() => config()?.clientControlledStates ?? null,
+		transport,
+		startingClientState
+	)
+
+	;(async () => {
+		await until(config)
+		await until(ccs.initialized)
+		log.debug('Initialized shared store for network %s', transport.networkId)
+		setInitialized(true)
+	})()
+
+	onCleanup(() => {
+		subscription.unsubscribe()
+	})
+
+	return {
+		state: views.state,
+		raw: views.raw,
+		snapshot: () => session.localState,
+		syncedSnapshot: () => session.syncedState,
+		history: () => session.syncedOps,
+		dispatch,
+		event$,
+		rollback$,
+		stateUpdate$,
+		opsRejected$,
+		serverNow: () => Date.now() + serverTimeOffset,
+		clientControlled: ccs,
+		config,
+		initialized,
+	}
+}
+
+//#endregion
+
+//#region client controlled state
+
+function initClientControlledStateNode<CCS extends ClientControlledState>(
+	clientId: () => string | null,
+	initialStates: () => ClientControlledStates<CCS> | null,
+	transport: Transport<SharedStoreMessage<any, any, CCS>>,
 	initialLocalState: CCS | null
 ) {
 	const [store, setStore] = createStore<ClientControlledStates<CCS>>({})
 	const subscription = new Subscription()
+	// fires after every change to `states`. solid reactivity is inert in the server build, so
+	// server-side routines subscribe to this instead of tracking the store
+	const update$ = new Subject<void>()
+	subscription.add(update$)
 
 	async function setClientControlledState(state: Partial<CCS>) {
 		await transport.waitForConnected()
-		const { clientId } = await until(config)
-		setStore(produce(updateLocalClientControlledState(clientId, state)))
+		const id = await until(clientId)
+		setStore(produce(updateLocalClientControlledState(id, state)))
+		update$.next()
 		transport.send({
 			type: 'client-controlled-states',
 			states: {
-				[clientId]: store[clientId],
+				[id]: store[id],
 			},
 		})
 	}
@@ -431,6 +666,7 @@ function initClientControlledStateNode<CCS extends ClientControlledState, Event 
 				if (msg.type !== 'client-controlled-states') return
 				const out = produce(updateAllLocalClientControlledState(msg.states))
 				setStore(out)
+				update$.next()
 			},
 		})
 	)
@@ -439,21 +675,23 @@ function initClientControlledStateNode<CCS extends ClientControlledState, Event 
 
 	;(async () => {
 		await transport.waitForConnected()
-		const { clientId, clientControlledStates } = await until(config)
+		const id = await until(clientId)
+		const states = (await until(initialStates)) as ClientControlledStates<CCS>
 		if (initialLocalState !== null) {
-			setStore(clientId, initialLocalState)
+			setStore(id, initialLocalState)
 			transport.send({
 				type: 'client-controlled-states',
-				states: { [clientId]: initialLocalState },
+				states: { [id]: initialLocalState },
 			})
 		}
 
 		batch(() => {
-			for (const [id, state] of Object.entries(clientControlledStates)) {
-				if (id === clientId) continue
-				setStore(produce(updateLocalClientControlledState(id, state)))
+			for (const [otherId, state] of Object.entries(states)) {
+				if (otherId === id) continue
+				setStore(produce(updateLocalClientControlledState(otherId, state)))
 			}
 		})
+		update$.next()
 		setInitialized(true)
 	})()
 
@@ -464,391 +702,22 @@ function initClientControlledStateNode<CCS extends ClientControlledState, Event 
 	return {
 		updateState: setClientControlledState,
 		states: store,
-		localState: () => (config()?.clientId ? store[config()!.clientId] : null),
+		update$: update$ as Observable<void>,
+		localState: () => (clientId() ? store[clientId()!] : null),
 		initialized,
 	}
 }
 
-export function initFollowerStore<
-	State extends object,
-	CCS extends ClientControlledState = ClientControlledState,
-	Event extends BaseEvent = BaseEvent,
->(
-	transport: Transport<SharedStoreMessage<Event, State, CCS>>,
-	ctx: SharedStoreContext,
-	startingClientState = {} as CCS
-): SharedStore<State, CCS, Event> {
-	let nextAtomId = -1
-	ctx.log = ctx.log.child({ networkId: transport.networkId })
+//#endregion
 
-	//#region statuses
-	const [initialized, setInitialized] = createSignal(false)
-	type Config = ClientConfig<State, CCS>
-	const [config, setConfig] = createSignal(null as Config | null)
-	const subscription = new Subscription()
-	subscription.add(
-		transport.message$
-			.pipe(
-				filter((msg) => msg.type === 'client-config'),
-				endWith(null),
-				first()
-			)
-			.subscribe((msg) => {
-				if (!msg) return
-				nextAtomId = msg.config.lastMutationIndex + 1
-				setConfig(msg.config)
-				ctx.log = ctx.log.child({ clientId: msg.config.clientId })
-			})
-	)
-
-	//#endregion
-
-	//#region stores
-	const [lockstepStore, _setLockstepStore] = createStore<State>({} as State)
-	const setLockstepStore = (...args: any[]) => {
-		const path = args.slice(0, -1)
-		//@ts-expect-error
-		_setLockstepStore(...interpolatePath(path, lockstepStore), args[args.length - 1])
-	}
-
-	const [rollbackStore, _setRollbackStore] = createStore<State>({} as State)
-	const setRollbackStore = (...args: any[]) => {
-		const path = args.slice(0, -1)
-		//@ts-expect-error
-		_setRollbackStore(...interpolatePath(path, rollbackStore), args[args.length - 1])
-	}
-
-	//#endregion
-
-	//#region actions
-	const event$ = new Subject<Event>()
-	const rollback$ = new Subject<NewSharedStoreOrderedTransaction<Event>[]>()
-	subscription.add(event$)
-	subscription.add(
-		event$.subscribe((e) => {
-			ctx.log.info(e, 'emitting %s', e.type)
-		})
-	)
-	// allow any downstream effects to happen before events are dispatched
-	subscription.add(rollback$)
-	subscription.add(
-		rollback$.subscribe((transactions) => {
-			const indexes = transactions.map((t) => t.index).join(',')
-			const events = transactions
-				.map((t) => t.events)
-				.flat()
-				.map((e) => e.type)
-				.join(',')
-			ctx.log.info('rolling back transactions :  (indexes: %s, events: %s', indexes, events)
-		})
-	)
-	//#endregion
-
-	//#region outgoing transactions
-	const previousValues = new Map<number, any[]>()
-	const transactionsBeingBuilt = new Set<SharedStoreTransactionBuilder<Event>>()
-	const appliedTransactions = [] as NewSharedStoreOrderedTransaction<Event>[]
-	const setStore = async (mutation: StoreMutation, transactionBuilder?: SharedStoreTransactionBuilder<Event>, events: Event[] = []) => {
-		await until(initialized)
-		let transaction: NewSharedStoreOrderedTransaction<Event>
-		if (transactionBuilder) {
-			transactionBuilder.push(mutation)
-			if (transactionsBeingBuilt.has(transactionBuilder)) {
-				return
-			}
-			transactionsBeingBuilt.add(transactionBuilder)
-
-			const completed = await transactionBuilder.completed()
-			transactionsBeingBuilt.delete(transactionBuilder)
-			if (!completed) {
-				return
-			}
-
-			transaction = transactionBuilder.build(appliedTransactions.length, events)
-		} else {
-			transaction = {
-				index: appliedTransactions.length,
-				events: events,
-				mutations: [mutation],
-			}
-		}
-		return await applyTransaction(transaction, ctx)
-	}
-
-	async function applyTransaction(newTransaction: NewSharedStoreTransaction<Event>, ctx: SharedStoreContext): Promise<boolean> {
-		const previous: any[] = []
-		const _config = await until(config)
-		const transaction: SharedStoreTransaction<Event> = {
-			...newTransaction,
-			mutationId: `${_config.clientId!}:${nextAtomId}`,
-		}
-		ctx.log.debug(transaction, 'applying transaction %s', transaction.mutationId)
-		nextAtomId++
-		const message: SharedStoreMessage<Event, State, CCS> = {
-			type: 'mutation',
-			mutation: transaction,
-		}
-		transport.send(message)
-
-		batch(() => {
-			applyMutationsToStore(newTransaction.mutations, setRollbackStore, rollbackStore)
-		})
-		appliedTransactions.push(newTransaction)
-		previousValues.set(newTransaction.index!, previous)
-
-		return await firstValueFrom(
-			observeIncomingMutations(transport).pipe(
-				filter((m) => {
-					if (m.index !== newTransaction.index) return false
-					return m.mutationId === transaction.mutationId
-				}),
-				map(() => true),
-				endWith(false)
-			)
-		)
-	}
-
-	async function _setStoreWithRetries(
-		fn: (s: State) =>
-			| StoreMutation[]
-			| {
-					mutations: StoreMutation[]
-					events: Event[]
-			  }
-			| void,
-		numRetries = 5
-	) {
-		await until(initialized)
-		return setStoreWithRetries(fn, (s) => applyTransaction(s, ctx), appliedTransactions, rollbackStore, numRetries)
-	}
-
-	//#endregion
-
-	//#region handle incoming transactions
-	function handleReceivedTransaction(transaction: SharedStoreOrderedTransaction<Event>, ctx: SharedStoreContext) {
-		ctx.log.info(transaction, `processing received transaction (%s)`, transaction.mutationId)
-		for (const mut of transaction.mutations) {
-			mut.path = interpolatePath(mut.path, lockstepStore)
-		}
-
-		applyMutationsToStore(transaction.mutations, setLockstepStore, lockstepStore)
-		if (appliedTransactions.length >= transaction.index + 1) {
-			const mutationToCompare = appliedTransactions[transaction.index]
-
-			// TODO we're handling this in a strange way. we're not handling cases where this client is multiple transactions ahead
-			if (areTransactionsEqual(mutationToCompare, transaction)) {
-				// everything is fine, we don't need to store the previous value anymore
-				previousValues.delete(transaction.index)
-				for (const action of transaction.events) {
-					event$.next(action)
-				}
-				return
-			}
-
-			// rollback
-			for (let i = appliedTransactions.length - 1; i >= 0; i--) {
-				const transactionToRollBack = appliedTransactions[i]
-				if (i === transaction.index) {
-					// we're done, set the new head of the applied mutations
-					applyMutationsToStore(transaction.mutations, setRollbackStore, rollbackStore)
-					previousValues.delete(transactionToRollBack.index)
-					break
-				} else {
-					for (let i = transactionToRollBack.mutations.length - 1; i >= 0; i--) {
-						const mutation = transactionToRollBack.mutations[i]
-						setRollbackStore(...mutation.path, previousValues.get(transactionToRollBack.index)![i])
-					}
-					previousValues.delete(transactionToRollBack.index)
-				}
-			}
-
-			const rolledBackTransactions = appliedTransactions.slice(transaction.index)
-			appliedTransactions.length = transaction.index
-			appliedTransactions.push(transaction)
-			rollback$.next(rolledBackTransactions)
-		} else {
-			appliedTransactions.push(transaction)
-			applyMutationsToStore(transaction.mutations, setRollbackStore, rollbackStore)
-		}
-		for (const action of transaction.events) {
-			event$.next(action)
-		}
-	}
-
-	subscription.add(
-		observeIncomingMutations(transport).subscribe(async (_receivedAtom) => {
-			await until(config)
-			// annoying but we have both receivedAtom and _receivedAtom for type narrowing reasons,
-			const receivedAtom = _receivedAtom as SharedStoreOrderedTransaction<Event>
-			if (receivedAtom.index == null) {
-				throw new Error('order invariant transactions are deprecated')
-			}
-
-			batch(() => {
-				handleReceivedTransaction(receivedAtom, ctx)
-			})
-		})
-	)
-
-	//#endregion
-	const ccs = initClientControlledStateNode(config, transport, startingClientState)
-
-	//#region initialize store
-	;(async () => {
-		const _config = await until(config)
-		batch(() => {
-			setRollbackStore(_config.initialState as State)
-			setLockstepStore(_config.initialState as State)
-		})
-		appliedTransactions.length = _config.lastMutationIndex + 1
-		ctx.log.debug('Initialized shared store for network ' + transport.networkId)
-		await until(ccs.initialized)
-		setInitialized(true)
-	})()
-	//#endregion
-
-	onCleanup(() => {
-		subscription.unsubscribe()
-	})
-
-	return {
-		rollbackState: rollbackStore,
-		lockstepState: lockstepStore,
-		setStore,
-		setStoreWithRetries: _setStoreWithRetries,
-		clientControlled: ccs,
-		config,
-		initialized,
-		event$,
-		rollback$,
-		get lastMutationIndex() {
-			return nextAtomId - 1
-		},
-	}
-}
-
-// TODO: usages are this function are messy, should clean up at some point
-function interpolatePath(path: (string | number)[], store: any) {
-	let current = store
-	const _path = [...path]
-	for (let i = 0; i < _path.length; i++) {
-		const elt = _path[i]
-		if (elt === PUSH) {
-			if (!Array.isArray(current)) throw new Error("can't push to non-array")
-			if (i !== _path.length - 1) throw new Error("can't push to non-terminal path")
-			_path[i] = current.length
-			break
-		}
-		if (!current) {
-			console.error('attempted to resolve invalid path for store', path, store)
-			throw new Error('invalid path')
-		}
-		current = current[_path[i]]
-	}
-
-	return _path
-}
-
-function resolveValue(path: (string | number)[], store: any) {
-	let current = store
-	for (let i = 0; i < path.length; i++) {
-		const elt = path[i]
-		if (!current) {
-			console.error('attempted to resolve invalid path for store', path, store)
-			throw new Error('invalid path')
-		}
-		current = current[elt]
-	}
-	return current
-}
-
-function areTransactionsEqual(a: NewSharedStoreTransaction<any>, b: NewSharedStoreTransaction<any>) {
-	const _a = { mutations: a.mutations, index: a.index }
-	const _b = { mutations: b.mutations, index: b.index }
-	return deepEquals(_a, _b)
-}
-
-export interface Transport<Msg extends SharedStoreMessage> {
-	networkId: string
-	message$: Observable<Msg>
-
-	send(message: Msg): void
-
-	waitForConnected(): Promise<void>
-
-	dispose(): void
-
-	disposed$: Promise<void>
-}
-
-function observeIncomingMutations<Event extends BaseEvent = BaseEvent>(transport: Transport<SharedStoreMessage<Event>>) {
-	return new Observable<SharedStoreTransaction<Event>>((subscriber) => {
-		const subscription = transport.message$.subscribe((message) => {
-			if (message.type === 'mutation') {
-				subscriber.next(message.mutation)
-			}
-		})
-		return () => {
-			subscription.unsubscribe()
-		}
-	})
-}
-
-export function observeTimedOut(transport: Transport<SharedStoreMessage<any>>) {
+export function observeTimedOut(transport: Transport<SharedStoreMessage<any, any, any>>) {
 	return new Observable<number>((subscriber) => {
-		const subscription = transport.message$.subscribe((message) => {
-			if (message.type === 'message-timeout') {
-				subscriber.next(message.idleTime)
-				subscriber.complete()
-			}
+		const subscription = transport.message$.pipe(filter((msg) => msg.type === 'message-timeout')).subscribe((message) => {
+			subscriber.next((message as SharedStoreTimeoutMessage).idleTime)
+			subscriber.complete()
 		})
 		return () => {
 			subscription.unsubscribe()
 		}
 	})
-}
-
-export class SharedStoreTransactionBuilder<Event extends BaseEvent = BaseEvent> {
-	mutations: StoreMutation[] = []
-	private commit$ = new Subject<boolean>()
-
-	constructor() {}
-
-	commit() {
-		this.commit$.next(true)
-		this.commit$.complete()
-	}
-
-	abort() {
-		this.commit$.next(false)
-		this.commit$.complete()
-	}
-
-	completed() {
-		return firstValueFrom(this.commit$)
-	}
-
-	push(mutation: StoreMutation) {
-		this.mutations.push(mutation)
-	}
-
-	build(index: number, events: Event[]): NewSharedStoreOrderedTransaction<Event> {
-		return {
-			index,
-			events,
-			mutations: this.mutations,
-		}
-	}
-}
-
-export async function buildTransaction<Event extends BaseEvent = BaseEvent>(
-	fn: (t: SharedStoreTransactionBuilder<Event>) => Promise<void>
-) {
-	const transaction = new SharedStoreTransactionBuilder<Event>()
-	try {
-		await fn(transaction)
-		transaction.commit()
-	} catch {
-		transaction.abort()
-	}
 }

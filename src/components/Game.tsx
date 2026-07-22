@@ -392,11 +392,10 @@ export function Board(props: { ref: HTMLDivElement }) {
 		let sub: Subscription | undefined
 		createEffect(() => {
 			sub?.unsubscribe()
-			sub = S.game.gameContext.sharedStore.rollback$.subscribe(async (rolledBack) => {
-				const events = rolledBack.map((t) => t.events).flat()
-				if (events.some((e) => e.type === 'make-move')) {
-					S.boardView.updateBoard(S.game.state.boardHistory.length - 1, true)
-				}
+			// optimistic state got replaced by a diverging canonical replay: snap the board back to
+			// whatever the live position actually is
+			sub = S.game.gameContext.sharedStore.rollback$.subscribe(() => {
+				S.boardView.updateBoard(S.game.state.boardHistory.length - 1, true)
 			})
 		})
 		onCleanup(() => {

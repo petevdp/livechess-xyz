@@ -2,8 +2,8 @@ let loc: URL | Location | null = null
 if (typeof window === 'undefined') {
 	loc = new URL('http://0.0.0.0:8080')
 } else if (import.meta.env?.VITE_RUNNING_VITEST === 'true') {
-	// just hardcode it as vitest doesn't support proxies and we can't grab the environment variable from the browser
-	loc = new URL(`http://0.0.0.0:8080`)
+	// vitest doesn't support proxies; VITE_ prefixed vars are the only env visible in the browser
+	loc = new URL(import.meta.env?.VITE_TEST_SERVER_ORIGIN || `http://0.0.0.0:8080`)
 } else {
 	loc = window.location
 }

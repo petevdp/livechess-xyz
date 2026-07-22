@@ -8,55 +8,19 @@ import * as Api from '~/api.ts'
 import { PLAYER_TIMEOUT } from '~/config.ts'
 import * as SS from '~/sharedStore/sharedStore.ts'
 import { WsTransport } from '~/sharedStore/wsTransport.ts'
-import { deepClone } from '~/utils/obj.ts'
 import { createSignalProperty } from '~/utils/solid.ts'
 
 import * as G from './game/game.ts'
 import * as GL from './game/gameLogic.ts'
 import { log } from './logger.browser.ts'
 import * as P from './player.ts'
+import * as RO from './roomOps.ts'
 
 //#region types
-export type RoomMember = P.Player & {
-	disconnectedAt?: number
-}
+export type { RoomMember, RoomState, ClientOwnedState, RoomEvent } from './roomOps.ts'
+export { ROOM_ONLY_EVENTS } from './roomOps.ts'
 
-export type RoomGameParticipant = RoomMember & G.GameParticipant & { agreePieceSwap: boolean; isReadyForGame: boolean }
-
-// not exhaustive of all state mutations, just the ones we want to name for convenience
-export type RoomEvent =
-	| {
-			type:
-				| 'initiate-piece-swap'
-				| 'agree-piece-swap'
-				| 'decline-or-cancel-piece-swap'
-				| 'player-connected'
-				| 'player-disconnected'
-				| 'player-reconnected'
-			playerId: string
-	  }
-	| G.GameEvent
-
-export const ROOM_ONLY_EVENTS = [
-	'initiate-piece-swap',
-	'agree-piece-swap',
-	'decline-or-cancel-piece-swap',
-	'player-connected',
-	'player-disconnected',
-	'player-reconnected',
-] as const
-
-export type RoomState = {
-	members: RoomMember[]
-	// will contain id of player that initiated the piece swap
-	agreePieceSwap: string | null
-	isReadyForGame: { [playerId: string]: boolean }
-	status: 'pregame' | 'playing' | 'postgame'
-} & G.RootGameState
-
-export type ClientOwnedState = {
-	playerId: string
-}
+export type RoomGameParticipant = RO.RoomMember & G.GameParticipant & { agreePieceSwap: boolean; isReadyForGame: boolean }
 //#endregion
 
 export async function createRoom() {
@@ -78,9 +42,9 @@ export type ConnectionState =
 			status: 'lost'
 	  }
 
-export type RoomMessage = SS.SharedStoreMessage<RoomEvent, RoomState, ClientOwnedState>
+export type RoomMessage = SS.SharedStoreMessage<RO.RoomOp, RO.RoomState, RO.ClientOwnedState>
 
-export type RoomStore = SS.SharedStore<RoomState, ClientOwnedState, RoomEvent>
+export type RoomStore = SS.SharedStore<RO.RoomState, RO.RoomOp, RO.RoomEvent, RO.ClientOwnedState>
 
 export function connectToRoom(
 	roomId: string,
@@ -97,7 +61,12 @@ export function connectToRoom(
 
 	let store = null as unknown as RoomStore
 	runWithOwner(parentOwner, () => {
-		store = SS.initFollowerStore<RoomState, ClientOwnedState, RoomEvent>(transport, { log }, { playerId })
+		store = SS.initFollowerStore<RO.RoomState, RO.RoomOp, RO.RoomEvent, RO.ClientOwnedState>(
+			transport,
+			RO.roomStoreDefinition,
+			{ log },
+			{ playerId }
+		)
 		onCleanup(() => {
 			console.warn('-----cleaning up store----')
 			setRoom(null)
@@ -106,55 +75,21 @@ export function connectToRoom(
 	})
 
 	const connected$ = until(() => store.initialized()).then(async () => {
-		if (!store.rollbackState.members.some((p) => p.id === playerId)) {
-			const { player, isSpectating } = await initPlayer(Object.values(store.rollbackState.gameParticipants).length)
-			//#region connect player
-			await store.setStoreWithRetries((state) => {
-				// leader will report player reconnection
-				if (state.members.some((p) => p.id === playerId)) return []
-				const mutations: SS.StoreMutation[] = [
-					{
-						path: ['members', SS.PUSH],
-						value: player satisfies RoomMember,
-					},
-				]
-
-				if (!isSpectating) {
-					let color: GL.Color
-					if (state.gameParticipants.white) {
-						color = 'black'
-					} else if (state.gameParticipants.black) {
-						color = 'white'
-					} else {
-						color = Math.random() < 0.5 ? 'white' : 'black'
-					}
-					const gameParticipant = {
-						id: playerId,
-						color,
-					} satisfies G.GameParticipant as G.GameParticipant
-
-					mutations.push({
-						path: ['gameParticipants', gameParticipant.color],
-						value: gameParticipant,
-					})
-
-					mutations.push({
-						path: ['isReadyForGame', playerId],
-						value: false,
-					})
-				}
-
-				return {
-					mutations,
-					events: [{ type: 'player-connected', playerId: player.id }],
-				}
-			})
+		const preferredColor = Math.random() < 0.5 ? 'white' : ('black' as const)
+		const existing = store.snapshot().members.find((p) => p.id === playerId)
+		if (!existing) {
+			const { player, isSpectating } = await initPlayer(Object.values(store.snapshot().gameParticipants).length)
+			// the reducer no-ops this if the player is already a member (e.g. we lost a race with
+			// another client for the same player)
+			await store.dispatch({ code: 'join', player, isSpectating, preferredColor })
+		} else if (!existing.isSpectator && !Object.values(store.snapshot().gameParticipants).some((p) => p && p.id === playerId)) {
+			// reclaim a seat lost to a pregame disconnect timeout; no-ops if the room filled up
+			await store.dispatch({ code: 'join', player: existing, isSpectating: false, preferredColor })
 		}
 
-		const room = new Room(store, transport, store.rollbackState.members.find((p) => playerId === p.id)!, parentOwner)
+		const room = new Room(store, transport, store.snapshot().members.find((p) => playerId === p.id)!, parentOwner)
 		setRoom(room)
 	})
-	//#endregion
 
 	return mergeAll()(rxFrom([rxFrom(connected$).pipe(map(() => ({ status: 'connected' }))), disconnected$])).pipe(
 		startWith({ status: 'connecting' } satisfies ConnectionState)
@@ -171,23 +106,19 @@ export class RoomStoreHelpers {
 		return this.transport.networkId
 	}
 
-	get rollbackState() {
-		return this.sharedStore.rollbackState
-	}
-
 	get state() {
-		return this.sharedStore.lockstepState
+		return this.sharedStore.state
 	}
 
 	playerColor(playerId: string) {
 		if (!playerId) throw new Error('playerId is missing')
-		if (this.rollbackState.gameParticipants.white?.id === playerId) return 'white'
-		if (this.rollbackState.gameParticipants.black?.id === playerId) return 'black'
+		if (this.state.gameParticipants.white?.id === playerId) return 'white'
+		if (this.state.gameParticipants.black?.id === playerId) return 'black'
 		return null
 	}
 
 	get members() {
-		return this.sharedStore.rollbackState.members
+		return this.state.members
 	}
 
 	// players that are connected, or have been disconnected for less than the timeout window
@@ -198,15 +129,15 @@ export class RoomStoreHelpers {
 	get participants(): RoomGameParticipant[] {
 		return this.members
 			.map((player): RoomGameParticipant[] => {
-				const gameParticipant = Object.values(this.rollbackState.gameParticipants).find((gp) => gp.id === player.id)
+				const gameParticipant = Object.values(this.state.gameParticipants).find((gp) => gp.id === player.id)
 				if (!gameParticipant) return []
 				return [
 					{
 						...player,
 						...gameParticipant,
 						color: this.playerColor(gameParticipant.id)!,
-						isReadyForGame: this.rollbackState.isReadyForGame[gameParticipant.id],
-						agreePieceSwap: this.rollbackState.agreePieceSwap === gameParticipant.id,
+						isReadyForGame: this.state.isReadyForGame[gameParticipant.id],
+						agreePieceSwap: this.state.agreePieceSwap === gameParticipant.id,
 					} satisfies RoomGameParticipant,
 				]
 			})
@@ -216,7 +147,7 @@ export class RoomStoreHelpers {
 	get event$() {
 		return this.sharedStore.event$.pipe(
 			concatMap((event) => {
-				let player: RoomMember | undefined = undefined
+				let player: RO.RoomMember | undefined = undefined
 				if (event.type !== 'game-over') {
 					player = this.members.find((p) => {
 						return p.id === event.playerId
@@ -235,8 +166,7 @@ export class RoomStoreHelpers {
 
 export class Room extends RoomStoreHelpers {
 	get canStartGame() {
-		// check both states because reasons
-		return this.rollbackState.status === 'pregame' && this.leftPlayer?.id === this.player.id && !!this.rightPlayer?.isReadyForGame
+		return this.state.status === 'pregame' && this.leftPlayer?.id === this.player.id && !!this.rightPlayer?.isReadyForGame
 	}
 
 	gameConfigContext: G.GameConfigContext
@@ -245,21 +175,21 @@ export class Room extends RoomStoreHelpers {
 	constructor(
 		public sharedStore: RoomStore,
 		transport: SS.Transport<RoomMessage>,
-		public player: RoomMember,
+		public player: RO.RoomMember,
 		owner: Owner
 	) {
 		super(sharedStore, transport)
 		this.gameConfigContext = {
-			gameConfig: this.rollbackState.gameConfig,
+			gameConfig: this.state.gameConfig,
 			vsBot: false,
 			editingConfigDisabled: () => {
 				return !this.isPlayerParticipating || !!this.leftPlayer?.isReadyForGame
 			},
 			setGameConfig: (config: Partial<GL.GameConfig>) => {
-				void this.sharedStore.setStore({ path: ['gameConfig'], value: config })
+				void this.sharedStore.dispatch({ code: 'set-game-config', config })
 			},
 			reseedFischerRandom: () => {
-				void this.sharedStore.setStore({ path: ['gameConfig', 'fischerRandomSeed'], value: GL.getFischerRandomSeed() })
+				void this.sharedStore.dispatch({ code: 'reseed-fischer-random', seed: GL.getFischerRandomSeed() })
 			},
 		}
 
@@ -269,7 +199,7 @@ export class Room extends RoomStoreHelpers {
 		this.gameContext = {
 			backToPregame: room.backToPregame,
 			event$: room.event$.pipe(
-				filter((event) => !ROOM_ONLY_EVENTS.includes(event.type as (typeof ROOM_ONLY_EVENTS)[number]))
+				filter((event) => !RO.ROOM_ONLY_EVENTS.includes(event.type as (typeof RO.ROOM_ONLY_EVENTS)[number]))
 			) as Observable<G.GameEvent>,
 			get members() {
 				return room.members
@@ -280,11 +210,8 @@ export class Room extends RoomStoreHelpers {
 			get state() {
 				return room.state
 			},
-			get rollbackState() {
-				return room.rollbackState
-			},
 			get sharedStore() {
-				return room.sharedStore as G.RootGameContext['sharedStore']
+				return room.sharedStore as unknown as G.GameStore
 			},
 		}
 
@@ -295,10 +222,10 @@ export class Room extends RoomStoreHelpers {
 
 			createEffect(
 				on(
-					() => this.sharedStore.rollbackState.activeGameId,
+					() => this.state.activeGameId,
 					() => {
-						if (this.sharedStore.rollbackState.activeGameId) {
-							this.setGame(new G.Game(this.sharedStore.rollbackState.activeGameId, this.gameContext, this.gameConfigContext.gameConfig))
+						if (this.state.activeGameId) {
+							this.setGame(new G.Game(this.state.activeGameId, this.gameContext, this.gameConfigContext.gameConfig))
 						} else {
 							this.setGame(null)
 						}
@@ -322,7 +249,7 @@ export class Room extends RoomStoreHelpers {
 	}
 
 	get spectators() {
-		return this.members.filter((p) => Object.values(this.rollbackState.gameParticipants).some((gp) => gp.id === p.id))
+		return this.members.filter((p) => Object.values(this.state.gameParticipants).some((gp) => gp.id === p.id))
 	}
 
 	get rightPlayer(): RoomGameParticipant | null {
@@ -336,27 +263,9 @@ export class Room extends RoomStoreHelpers {
 	}
 
 	async setCurrentPlayerName(name: string) {
-		void this.sharedStore.setStoreWithRetries((state) => {
-			let _name = name
-			// name already set
-			if (state.members.some((p) => p.id === this.player.id && p.name === name)) return []
-
-			// check if name taken
-			const duplicates = state.members.filter((p) => p.name === name)
-			if (duplicates.length > 0) {
-				_name = `${name} (${duplicates.length})`
-			}
-
-			return [
-				{
-					path: ['members', state.members.findIndex((p) => p.id === this.player.id), 'name'],
-					value: _name,
-				},
-			]
-		})
+		// the reducer dedupes names and no-ops if the name is unchanged
+		void this.sharedStore.dispatch({ code: 'set-name', playerId: this.player.id, name })
 	}
-
-	//#endregion
 
 	get playerHasMultipleClients() {
 		return Object.values(this.sharedStore.clientControlled.states).filter((v) => v.playerId === this.player.id).length > 1
@@ -364,85 +273,11 @@ export class Room extends RoomStoreHelpers {
 
 	//#region piece swapping
 	initiateOrAgreePieceSwap() {
-		void this.sharedStore.setStoreWithRetries(() => {
-			if (this.state.status !== 'pregame' || !this.isPlayerParticipating) return
-			if (!this.rightPlayer) {
-				const participant = { ...this.rollbackState.gameParticipants[this.leftPlayer!.color] }
-				participant.color = GL.oppositeColor(this.leftPlayer!.color)
-				return {
-					events: [{ type: 'agree-piece-swap', playerId: this.player.id }],
-					mutations: [
-						{
-							path: ['gameParticipants', participant.color],
-							value: participant,
-						},
-						{
-							path: ['gameParticipants', this.leftPlayer!.color],
-							value: undefined,
-						},
-					] satisfies SS.StoreMutation[],
-				}
-			}
-
-			if (this.rightPlayer.agreePieceSwap) {
-				return {
-					events: [{ type: 'agree-piece-swap', playerId: this.player.id }],
-					mutations: this.getPieceSwapMutation(),
-				}
-			}
-
-			return {
-				events: [{ type: 'initiate-piece-swap', playerId: this.player.id }],
-				mutations: [
-					{
-						path: ['gameParticipants', this.leftPlayer!.color, 'agreePieceSwap'],
-						value: true,
-					},
-					{
-						path: ['agreePieceSwap'],
-						value: this.player.id,
-					},
-				],
-			}
-		})
-	}
-
-	getPieceSwapMutation(): SS.StoreMutation[] {
-		const leftParticipant = deepClone(this.leftPlayer!)
-		const rightParticipant = deepClone(this.rightPlayer!)
-		const prevLeft = leftParticipant.color
-		leftParticipant.color = rightParticipant.color
-		rightParticipant.color = prevLeft
-		return [
-			{
-				path: ['gameParticipants', leftParticipant.color],
-				value: leftParticipant,
-			},
-			{
-				path: ['agreePieceSwap'],
-				value: null,
-			},
-			{
-				path: ['gameParticipants', rightParticipant.color],
-				value: rightParticipant,
-			},
-		]
+		void this.sharedStore.dispatch({ code: 'initiate-or-agree-piece-swap', playerId: this.player.id })
 	}
 
 	declineOrCancelPieceSwap() {
-		void this.sharedStore.setStoreWithRetries(() => {
-			if (this.state.status !== 'pregame') return []
-			if (!this.rightPlayer) return []
-			return {
-				events: [{ type: 'decline-or-cancel-piece-swap', playerId: this.player.id }],
-				mutations: [
-					{
-						path: ['agreePieceSwap'],
-						value: null,
-					},
-				],
-			}
-		})
+		void this.sharedStore.dispatch({ code: 'decline-or-cancel-piece-swap', playerId: this.player.id })
 	}
 
 	//#endregion
@@ -450,62 +285,20 @@ export class Room extends RoomStoreHelpers {
 	async toggleReadyOrStartGame() {
 		if (!this.isPlayerParticipating) return
 		if (!this.leftPlayer!.isReadyForGame) {
-			await this.sharedStore.setStoreWithRetries(() => {
-				if (!this.isPlayerParticipating || this.leftPlayer!.isReadyForGame) return []
-				if (this.rightPlayer?.isReadyForGame) {
-					const transaction = G.getNewGameTransaction(this.player.id)
-					transaction.mutations.push({
-						path: ['isReadyForGame', this.leftPlayer!.id],
-						value: false,
-					})
-					transaction.mutations.push({
-						path: ['isReadyForGame', this.rightPlayer!.id],
-						value: false,
-					})
-					transaction.mutations.push({
-						path: ['status'],
-						value: 'playing',
-					})
-
-					return transaction
-				} else {
-					return [
-						{
-							path: ['isReadyForGame', this.leftPlayer!.id],
-							value: true,
-						},
-					]
-				}
-			})
+			if (this.rightPlayer?.isReadyForGame) {
+				await this.sharedStore.dispatch({ code: 'start-game', playerId: this.player.id, gameId: G.newGameId() })
+			} else {
+				await this.sharedStore.dispatch({ code: 'set-ready', playerId: this.player.id, ready: true })
+			}
 		} else {
-			void this.sharedStore.setStoreWithRetries(() => {
-				if (!this.isPlayerParticipating || !this.leftPlayer!.isReadyForGame) return []
-				return [
-					{
-						path: ['isReadyForGame', this.leftPlayer!.id],
-						value: false,
-					},
-				]
-			})
+			await this.sharedStore.dispatch({ code: 'set-ready', playerId: this.player.id, ready: false })
 		}
 	}
 
 	backToPregame = async () => {
-		const res = await this.sharedStore.setStoreWithRetries(() => {
-			if (!this.rightPlayer || !this.rollbackState.activeGameId) return
-			return [
-				...this.getPieceSwapMutation(),
-				{ path: ['status'], value: 'pregame' },
-				{
-					path: ['activeGameId'],
-					value: undefined,
-				},
-			]
-		})
-		res && this.setGame(null)
+		// the game effect above tears the game down once activeGameId clears
+		await this.sharedStore.dispatch({ code: 'back-to-pregame', playerId: this.player.id })
 	}
-
-	//#endregion
 }
 
 export const [room, setRoom] = createSignal<Room | null>(null)

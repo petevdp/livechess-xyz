@@ -1,11 +1,13 @@
 /// <reference types="vitest" />
 import { defineConfig } from 'vite'
+import tsconfigPaths from 'vite-tsconfig-paths'
 
 let httpTarget = 'http://' + process.env.HOSTNAME + ':' + process.env.PORT;
 const wsTarget = 'ws://' + process.env.HOSTNAME + ':' + process.env.PORT;
 
 process.env.VITE_RUNNING_VITEST = 'true'
 export default defineConfig({
+	plugins: [tsconfigPaths()],
 	test: {
 		server: {
 			proxy: {

@@ -5,28 +5,36 @@ import { createRoot } from 'solid-js'
 import * as ws from 'ws'
 
 import { initServerSideRoomLogic } from '~/server/serverSideRoomLogic.ts'
-import { BaseEvent, ClientConfig, type NewNetworkResponse, SharedStore, Transport, initLeaderStore } from '~/sharedStore/sharedStore.ts'
-import type * as R from '~/systems/room.ts'
+import {
+	ClientConfig,
+	type NewNetworkResponse,
+	type OpsRejectedReason,
+	SharedStore,
+	type SharedStoreMessage,
+	Transport,
+	initLeaderStore,
+} from '~/sharedStore/sharedStore.ts'
+import * as RO from '~/systems/roomOps.ts'
 import { createId } from '~/utils/ids.ts'
 
 const NO_ACTIVITY_TIMEOUT = 1000 * 60 * 20
 
-const networks = new Map<string, Network<Msg>>()
+const networks = new Map<string, Network>()
 
-type State = R.RoomState
-type CCS = R.ClientOwnedState
-type Msg = R.RoomMessage
+type State = RO.RoomState
+type CCS = RO.ClientOwnedState
+type Msg = SharedStoreMessage<RO.RoomOp, State, CCS>
 
-type Network<Msg extends R.RoomMessage> = {
+type Network = {
 	id: string
 	timeoutAt: number | null
 	message$: Subject<Msg>
 	dispose: () => void
-	store: SharedStore<State, CCS, BaseEvent>
+	store: SharedStore<State, RO.RoomOp, RO.RoomEvent, CCS>
 	clients: Map<string, Client<Msg>>
 }
 
-function printNetwork(network: Network<Msg>) {
+function printNetwork(network: Network) {
 	return {
 		networkId: network.id,
 		cleanupAt: network.timeoutAt,
@@ -87,9 +95,8 @@ export function createNetwork(log: FastifyBaseLogger) {
 	log = log.child({ networkId })
 	const disposed$ = new Subject<void>()
 	message$.subscribe((msg) => {
-		if (msg.type === 'mutation') {
-			log.info('%s received %s: %s', networkId, msg.mutation.mutationId, msg.mutation.events.map((e) => e.type).join(', '))
-			log.trace('updated paths: %s', msg.mutation.mutations.map((m) => m.path).join(','), msg.mutation.mutations)
+		if (msg.type === 'ops') {
+			log.info('%s received ops: %s', networkId, msg.ops.map((op) => `${op.opId}:${op.code}`).join(', '))
 		}
 	})
 	message$.subscribe({
@@ -120,8 +127,13 @@ export function createNetwork(log: FastifyBaseLogger) {
 			},
 			disposed$: firstValueFrom(disposed$),
 		}
-		const store = initLeaderStore(leaderTransport, { log: log as Logger }) as R.RoomStore
-		initServerSideRoomLogic(store, leaderTransport)
+		const store = initLeaderStore<State, RO.RoomOp, RO.RoomEvent, CCS>(
+			leaderTransport,
+			RO.roomStoreDefinition,
+			{ log: log as Logger },
+			RO.getInitialRoomState()
+		)
+		initServerSideRoomLogic(store)
 		networks.set(networkId, {
 			id: networkId,
 			message$,
@@ -172,8 +184,37 @@ export function handleNewConnection(socket: ws.WebSocket, networkId: string, log
 
 	//#region client message handling
 
-	// have leader process client messages
-	client.sub.add(client.message$.subscribe((msg) => network.message$.next(msg)))
+	// have leader process client messages. op batches are validated first: server-only codes are
+	// never accepted from clients, an op claiming to act as a player must come from a client
+	// registered (via client-controlled-states) as that player, and client-reported timestamps must
+	// be plausible on the server's clock. a failing batch is rejected whole (batches are
+	// all-or-nothing): the originator is told so it can roll back its optimistic copy.
+	client.sub.add(
+		client.message$.subscribe((msg) => {
+			if (msg.type === 'ops') {
+				const reject = (reason: OpsRejectedReason) => {
+					client.log.warn(reason, 'rejecting op batch: %s', reason.code)
+					client.send({ type: 'ops-rejected', opIds: msg.ops.map((op) => op.opId), reason })
+				}
+				const registeredPlayerId = network.store.clientControlled.states[client.clientId]?.playerId
+				const unauthorized = msg.ops.find((op) => {
+					if (RO.SERVER_AUTHORED_OP_CODES.has(op.code)) return true
+					const author = RO.opAuthor(op)
+					return author !== null && author !== registeredPlayerId
+				})
+				if (unauthorized) {
+					reject({ code: 'unauthorized', message: 'Action rejected: you are not allowed to perform it.' })
+					return
+				}
+				const timeReason = RO.validateOpTimestamps(network.store.snapshot(), msg.ops, Date.now())
+				if (timeReason) {
+					reject(timeReason)
+					return
+				}
+			}
+			network.message$.next(msg)
+		})
+	)
 
 	// forward client-controlled-states to all clients
 	client.sub.add(
@@ -193,29 +234,33 @@ export function handleNewConnection(socket: ws.WebSocket, networkId: string, log
 
 		if (network.clients.size === 0) {
 			network.timeoutAt = thirtySecondsFromNow()
-		} else {
-			// asks clients to remove the disconnected client from their copy of client-controlled-states
-			log.info(`nulling out client-controlled-states for disconnected client %s`, client.clientId)
-			const message: Msg = {
-				type: 'client-controlled-states',
-				states: { [client.clientId]: null },
-			}
-			for (const clt of network.clients.values()) {
-				clt.send(message)
-			}
+		}
+		// removes the disconnected client from every copy of client-controlled-states. this also has
+		// to go through the leader's own message stream: the leader's copy seeds the config snapshot
+		// for (re)connecting clients and drives the server-side connection tracking, so a stale entry
+		// there leaks to late joiners and masks disconnects
+		log.info(`nulling out client-controlled-states for disconnected client %s`, client.clientId)
+		const message: Msg = {
+			type: 'client-controlled-states',
+			states: { [client.clientId]: null },
+		}
+		network.message$.next(message)
+		for (const clt of network.clients.values()) {
+			clt.send(message)
 		}
 		client.destroy()
 	})
 	//#endregion
 
-	const config: ClientConfig<State, CCS> = {
+	const config: ClientConfig<State, RO.RoomOp, CCS> = {
 		clientId: client.clientId,
-		initialState: network.store.lockstepState,
-		lastMutationIndex: network.store.lastMutationIndex,
+		state: network.store.snapshot(),
+		ops: network.store.history(),
 		clientControlledStates: network.store.clientControlled.states,
+		serverTime: Date.now(),
 	}
 
-	log.info(`sending client-config to client %s`, client.clientId, config)
+	log.info(`sending client-config to client %s`, client.clientId)
 	client.send({ type: 'client-config', config })
 }
 

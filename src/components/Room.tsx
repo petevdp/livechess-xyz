@@ -59,6 +59,15 @@ export function Room() {
 		sub.unsubscribe()
 	})
 	//#endregion
+
+	//#region surface server-rejected actions (bad timestamps, unauthorized ops)
+	const rejectionSub = room.sharedStore.opsRejected$.subscribe((reason) => {
+		toast.error(reason.message)
+	})
+	onCleanup(() => {
+		rejectionSub.unsubscribe()
+	})
+	//#endregion
 	const [dismissedMultipleClientsWarning, setDismissedMultipleClientsWarning] = createSignal(true)
 	onMount(() => {
 		if (room.playerHasMultipleClients && !P.settings.dismissMultipleClientsWarning) {
