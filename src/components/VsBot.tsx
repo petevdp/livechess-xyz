@@ -32,6 +32,10 @@ export default function VsBot() {
 		sub?.unsubscribe()
 	})
 
+	if (VB.hasSavedGame) {
+		VB.setupVsBot(true, owner)
+	}
+
 	GlobalLoading.clear()
 	return (
 		<AppContainer>
