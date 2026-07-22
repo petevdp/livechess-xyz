@@ -8,6 +8,7 @@ import * as Api from '~/api.ts'
 import { PLAYER_TIMEOUT } from '~/config.ts'
 import * as SS from '~/sharedStore/sharedStore.ts'
 import { WsTransport } from '~/sharedStore/wsTransport.ts'
+import { makePersistedSignal } from '~/utils/makePersisted.ts'
 import { createSignalProperty } from '~/utils/solid.ts'
 
 import * as G from './game/game.ts'
@@ -21,6 +22,7 @@ export type { RoomMember, RoomState, ClientOwnedState, RoomEvent } from './roomO
 export { ROOM_ONLY_EVENTS } from './roomOps.ts'
 
 export type RoomGameParticipant = RO.RoomMember & G.GameParticipant & { agreePieceSwap: boolean; isReadyForGame: boolean }
+export type RoomDetails = { roomId: string; memberNames: string[] }
 //#endregion
 
 export async function createRoom() {
@@ -89,6 +91,7 @@ export function connectToRoom(
 
 		const room = new Room(store, transport, store.snapshot().members.find((p) => playerId === p.id)!, parentOwner)
 		setRoom(room)
+		addRecentRoom(roomId)
 	})
 
 	return mergeAll()(rxFrom([rxFrom(connected$).pipe(map(() => ({ status: 'connected' }))), disconnected$])).pipe(
@@ -302,3 +305,12 @@ export class Room extends RoomStoreHelpers {
 }
 
 export const [room, setRoom] = createSignal<Room | null>(null)
+
+export const [recentRooms, setRecentRooms] = makePersistedSignal<string[]>('recentRooms', [])
+
+export function addRecentRoom(roomId: string) {
+	setRecentRooms((prev) => {
+		if (prev.includes(roomId)) return prev
+		return [...prev, roomId]
+	})
+}

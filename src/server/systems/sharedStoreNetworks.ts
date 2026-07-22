@@ -14,6 +14,7 @@ import {
 	Transport,
 	initLeaderStore,
 } from '~/sharedStore/sharedStore.ts'
+import { RoomDetails } from '~/systems/room'
 import * as RO from '~/systems/roomOps.ts'
 import { createId } from '~/utils/ids.ts'
 
@@ -276,4 +277,14 @@ export function setupSharedStoreSystem(log: FastifyBaseLogger) {
 		}
 	})
 	//#endregion
+}
+
+export function getRoomDetails(roomId: string): RoomDetails | undefined {
+	const network = networks.get(roomId)
+	if (!network) return undefined
+	const members = network.store.snapshot().members
+	return {
+		roomId,
+		memberNames: members.map((m) => m.name),
+	}
 }

@@ -10,6 +10,9 @@ import QRCode from 'qrcode'
 import { Transform } from 'stream'
 import { fileURLToPath } from 'url'
 import * as ws from 'ws'
+import { z } from 'zod'
+
+import { RoomDetails } from '~/systems/room.ts'
 
 import { ENV, Env, ensureSetupEnv } from '../env.ts'
 import * as SSN from './systems/sharedStoreNetworks.ts'
@@ -109,6 +112,21 @@ server.get('/api/ping', () => {
 
 server.post('/api/networks', (req) => {
 	return SSN.createNetwork(req.log)
+})
+
+const RoomIdsSchema = z.array(z.string())
+server.post('/api/roomDetails', (req, res) => {
+	const bodyRes = RoomIdsSchema.safeParse(req.body)
+	if (!bodyRes.success) {
+		return res.status(400).send(bodyRes.error)
+	}
+
+	const roomDetails: RoomDetails[] = []
+	for (const roomId of bodyRes.data) {
+		const details = SSN.getRoomDetails(roomId)
+		if (details) roomDetails.push(details)
+	}
+	return roomDetails
 })
 
 server.head('/api/networks/:networkId', (req, res) => {

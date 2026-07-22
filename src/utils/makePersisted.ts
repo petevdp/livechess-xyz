@@ -4,23 +4,39 @@ import { createStore } from 'solid-js/store'
 
 import { runWithOwnerOrCreateRoot } from './solid'
 
-export function makePersistedSignal<T>(key: string, defaultValue: T) {
+// a value we can't parse would otherwise throw at module scope and take down every page that
+// imports the calling module, with no way back short of clearing storage by hand. drop it instead.
+function readPersisted<T>(key: string, defaultValue: T): T {
 	const storedRaw = localStorage.getItem(key)
-	const [get, set] = createSignal(storedRaw === null ? defaultValue : JSON.parse(storedRaw))
+	if (storedRaw === null) return defaultValue
+	try {
+		return JSON.parse(storedRaw)
+	} catch {
+		console.warn(`discarding unparseable persisted value for "${key}":`, storedRaw)
+		localStorage.removeItem(key)
+		return defaultValue
+	}
+}
+
+export function makePersistedSignal<T>(key: string, defaultValue: T) {
+	const [get, set] = createSignal<T>(readPersisted(key, defaultValue))
 
 	return [
 		() => get(),
-		(value: T) => {
-			if (value === get()) return
-			localStorage.setItem(key, JSON.stringify(value))
-			set(() => value)
+		// we advertise solid's Signal<T> setter via the cast below, so the updater form has to work
+		// too -- passing a callback here used to persist JSON.stringify(fn), i.e. `undefined`.
+		(value: T | ((prev: T) => T)) => {
+			const prev = untrack(get)
+			const next = typeof value === 'function' ? (value as (prev: T) => T)(prev) : value
+			if (next === prev) return
+			localStorage.setItem(key, JSON.stringify(next))
+			set(() => next)
 		},
 	] as Signal<T>
 }
 
 export function makePersistedStore<T extends object>(key: string, defaultValue: T) {
-	const storedRaw = localStorage.getItem(key)
-	const [state, set] = createStore<T>(storedRaw === null ? defaultValue : JSON.parse(storedRaw))
+	const [state, set] = createStore<T>(readPersisted(key, defaultValue))
 	runWithOwnerOrCreateRoot(() => {
 		createRenderEffect(() => {
 			trackStore(state)
